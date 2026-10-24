@@ -3,7 +3,7 @@ import {
     Server, ShieldAlert, Clock, SearchX, LayoutTemplate, Check, Download, 
     Info, RefreshCw, CheckCircle2, AlertTriangle, X, Unlock, Flame, 
     CheckSquare, Square, MinusSquare, FileSpreadsheet, Shield, ExternalLink,
-    ClipboardCheck, Sparkles
+    ClipboardCheck, Sparkles, Filter, Calendar
 } from "lucide-react";
 import { EnrichmentDetailsModal } from "./EnrichmentDetailsModal";
 import { SmartSearchBar } from "@/components/common/SmartSearchBar";
@@ -28,6 +28,8 @@ export interface ShunDatabaseTabProps {
     isModal?: boolean;
 }
 
+type TimeframeOption = "1h" | "4h" | "12h" | "24h" | "7d" | "30d" | "all";
+
 export function ShunDatabaseTab({ initialSearch = "", onClose, isModal = false }: ShunDatabaseTabProps) {
     const [records, setRecords] = useState<any[]>([]);
     const [summary, setSummary] = useState<ShunSummary | null>(null);
@@ -38,12 +40,16 @@ export function ShunDatabaseTab({ initialSearch = "", onClose, isModal = false }
     const [activeSearch, setActiveSearch] = useState(initialSearch);
     const [statusFilter, setStatusFilter] = useState<"all" | "active" | "cleared">("active");
     
+    // Timeframe filters: 1h, 4h, 12h, 24h, 7d, 30d, all
+    const [timeframe, setTimeframe] = useState<TimeframeOption>("all");
+    const [timeField, setTimeField] = useState<"lastSeen" | "firstSeen">("lastSeen");
+
     const [page, setPage] = useState(1);
     const [limit, setLimit] = useState(50);
     const [totalPages, setTotalPages] = useState(1);
     const [totalRecords, setTotalRecords] = useState(0);
 
-    // Default to lastSeen desc to immediately generate/show recently shunned IPs
+    // Default to lastSeen desc to immediately show recently active/shunned IPs
     const [sortField, setSortField] = useState("lastSeen");
     const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
 
@@ -53,10 +59,14 @@ export function ShunDatabaseTab({ initialSearch = "", onClose, isModal = false }
     // Multi-select & Unshun State
     const [selectedIps, setSelectedIps] = useState<Set<string>>(new Set());
     const [targetFleet, setTargetFleet] = useState<string>("all");
+    
+    // Unshun Modal State: defaults to removing from all 4 FWs, with option to select one or more
     const [unshunModal, setUnshunModal] = useState<{
         ips: string[];
-        targetHost: string;
+        isAllFirewalls: boolean;
+        selectedFirewalls: string[];
     } | null>(null);
+    
     const [unshunExecuting, setUnshunExecuting] = useState(false);
     const [unshunResult, setUnshunResult] = useState<any | null>(null);
     const [unshunError, setUnshunError] = useState<string | null>(null);
@@ -122,6 +132,8 @@ export function ShunDatabaseTab({ initialSearch = "", onClose, isModal = false }
                 const term = (activeSearch || search).trim();
                 if (term) query.append("search", term);
                 if (statusFilter !== "all") query.append("status", statusFilter);
+                if (timeframe !== "all") query.append("timeframe", timeframe);
+                query.append("timeField", timeField);
                 query.append("sortField", sortField);
                 query.append("sortDir", sortDir);
             }
@@ -135,18 +147,26 @@ export function ShunDatabaseTab({ initialSearch = "", onClose, isModal = false }
         }
     };
 
-    const fetchRecords = useCallback(async (searchOverride?: string, statusOverride?: "all" | "active" | "cleared") => {
+    const fetchRecords = useCallback(async (
+        searchOverride?: string, 
+        statusOverride?: "all" | "active" | "cleared",
+        timeframeOverride?: TimeframeOption
+    ) => {
         setLoading(true);
         setError("");
         try {
             const currentSearch = searchOverride !== undefined ? searchOverride : activeSearch;
             const currentStatus = statusOverride !== undefined ? statusOverride : statusFilter;
+            const currentTimeframe = timeframeOverride !== undefined ? timeframeOverride : timeframe;
+            
             const query = new URLSearchParams({ 
                 page: page.toString(),
                 limit: limit.toString(),
                 sortField,
                 sortDir,
-                status: currentStatus
+                status: currentStatus,
+                timeframe: currentTimeframe,
+                timeField
             });
             if (currentSearch) query.append("search", currentSearch);
 
@@ -166,7 +186,7 @@ export function ShunDatabaseTab({ initialSearch = "", onClose, isModal = false }
         } finally {
             setLoading(false);
         }
-    }, [page, limit, activeSearch, statusFilter, sortField, sortDir]);
+    }, [page, limit, activeSearch, statusFilter, timeframe, timeField, sortField, sortDir]);
 
     useEffect(() => {
         fetchRecords();
@@ -215,10 +235,12 @@ export function ShunDatabaseTab({ initialSearch = "", onClose, isModal = false }
         setSearch("");
         setActiveSearch("");
         setStatusFilter("active");
+        setTimeframe("all");
+        setTimeField("lastSeen");
         setPage(1);
         setSortField("lastSeen");
         setSortDir("desc");
-        fetchRecords("", "active");
+        fetchRecords("", "active", "all");
     };
 
     const handleFirewallChipClick = (fwName: string) => {
@@ -229,25 +251,9 @@ export function ShunDatabaseTab({ initialSearch = "", onClose, isModal = false }
         fetchRecords(nextTerm);
     };
 
-    // Preset Buttons Handlers
-    const applyRecentlyShunnedPreset = () => {
-        setStatusFilter("active");
-        setSortField("lastSeen");
-        setSortDir("desc");
-        setPage(1);
-    };
-
-    const applyNewlyAddedPreset = () => {
-        setStatusFilter("active");
-        setSortField("firstSeen");
-        setSortDir("desc");
-        setPage(1);
-    };
-
-    const applyLongestStandingPreset = () => {
-        setStatusFilter("active");
-        setSortField("daysShunned");
-        setSortDir("desc");
+    // Quick Timeframe Selectors
+    const handleTimeframeChange = (tf: TimeframeOption) => {
+        setTimeframe(tf);
         setPage(1);
     };
 
@@ -284,32 +290,69 @@ export function ShunDatabaseTab({ initialSearch = "", onClose, isModal = false }
         setSelectedIps(new Set());
     };
 
+    // Open Unshun Modal: defaults to removing from all 4 firewalls
+    const openUnshunModalForIps = (ips: string[]) => {
+        const allFwNames = summary?.byFirewall?.map(f => f.firewall) || [];
+        setUnshunModal({
+            ips,
+            isAllFirewalls: true,
+            selectedFirewalls: allFwNames
+        });
+        setUnshunResult(null);
+        setUnshunError(null);
+    };
+
     // Execute Unshun Operation
-    const executeUnshun = async (ips: string[], host: string) => {
+    const executeUnshun = async () => {
+        if (!unshunModal || unshunModal.ips.length === 0) return;
+
         setUnshunExecuting(true);
         setUnshunError(null);
         setUnshunResult(null);
+
+        const payload: any = {
+            ipAddresses: unshunModal.ips,
+            action: "remove"
+        };
+
+        if (unshunModal.isAllFirewalls) {
+            payload.targetHost = "all";
+        } else {
+            payload.targetHosts = unshunModal.selectedFirewalls;
+        }
 
         try {
             const res = await fetch("/api/firewall/shun", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    ipAddresses: ips,
-                    action: "remove",
-                    targetHost: host
-                })
+                body: JSON.stringify(payload)
             });
 
             const data = await res.json();
             if (res.ok && data.success) {
                 setUnshunResult(data);
                 // Optimistically mark these IPs as inactive in local state
-                setRecords(prev => prev.map(rec => ips.includes(rec.ip) ? { ...rec, isActive: false } : rec));
+                setRecords(prev => prev.map(rec => {
+                    if (unshunModal.ips.includes(rec.ip)) {
+                        if (unshunModal.isAllFirewalls) {
+                            return { ...rec, isActive: false, activeCount: 0, isShunnedAll: false };
+                        } else {
+                            const remaining = (rec.activeFirewalls || []).filter((fw: string) => !unshunModal.selectedFirewalls.includes(fw));
+                            return {
+                                ...rec,
+                                activeFirewalls: remaining,
+                                activeCount: remaining.length,
+                                isShunnedAll: false,
+                                isActive: remaining.length > 0
+                            };
+                        }
+                    }
+                    return rec;
+                }));
                 // Remove from selection
                 setSelectedIps(prev => {
                     const next = new Set(prev);
-                    ips.forEach(ip => next.delete(ip));
+                    unshunModal.ips.forEach(ip => next.delete(ip));
                     return next;
                 });
                 // Refresh summary count in background
@@ -323,6 +366,15 @@ export function ShunDatabaseTab({ initialSearch = "", onClose, isModal = false }
             setUnshunExecuting(false);
         }
     };
+
+    const configuredFwsList = useMemo(() => {
+        return summary?.byFirewall?.map(f => f.firewall) || [
+            "Wilmington (Connect Primary)",
+            "Wilmington (Connect Secondary)",
+            "Keleman (Reconnect Primary)",
+            "Keleman (Reconnect Secondary)"
+        ];
+    }, [summary]);
 
     return (
         <div className={`flex flex-col gap-0 h-full overflow-hidden ${isModal ? "bg-[var(--bg-surface)] text-[var(--text-primary)]" : ""}`}>
@@ -338,7 +390,7 @@ export function ShunDatabaseTab({ initialSearch = "", onClose, isModal = false }
                                 Perimeter Firewall Shunned IPs Database
                             </h2>
                             <p className="text-xs text-slate-400">
-                                Search, browse recently shunned addresses, and un-shun across all perimeter firewalls.
+                                1 aggregated entry per IP address across all 4 firewalls. Filter by time window and un-shun across fleet.
                             </p>
                         </div>
                     </div>
@@ -358,31 +410,16 @@ export function ShunDatabaseTab({ initialSearch = "", onClose, isModal = false }
                 {/* Metric Pills & Status Selector */}
                 <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-[var(--border-color)]">
                     <div className="flex flex-wrap items-center gap-2">
-                        {/* Preset: Recently Shunned */}
-                        <button
-                            type="button"
-                            onClick={applyRecentlyShunnedPreset}
-                            className={`px-3 py-1.5 rounded-lg border text-xs font-semibold transition-all flex items-center gap-1.5 ${
-                                statusFilter === "active" && sortField === "lastSeen" && sortDir === "desc"
-                                    ? "bg-rose-500/25 border-rose-500/60 text-rose-200 shadow-sm ring-1 ring-rose-500/30"
-                                    : "bg-rose-500/10 border-rose-500/25 text-rose-300 hover:bg-rose-500/20"
-                            }`}
-                            title="Generate list of active shuns sorted by most recently verified (last seen)"
-                        >
-                            <Sparkles className="w-3.5 h-3.5 text-rose-400" />
-                            <span>Recently Shunned</span>
-                        </button>
-
                         {/* Status Filter: Active Shuns */}
                         <button
                             type="button"
                             onClick={() => {
-                                const next = statusFilter === "active" && sortField !== "lastSeen" ? "all" : "active";
+                                const next = statusFilter === "active" ? "all" : "active";
                                 setStatusFilter(next);
                                 setPage(1);
                             }}
                             className={`px-3 py-1.5 rounded-lg border text-xs font-medium transition-all flex items-center gap-2 ${
-                                statusFilter === "active" && sortField !== "lastSeen"
+                                statusFilter === "active"
                                     ? "bg-red-500/20 border-red-500/50 text-red-300 shadow-sm"
                                     : "bg-red-500/10 border-red-500/25 text-red-400 hover:bg-red-500/15"
                             }`}
@@ -392,15 +429,13 @@ export function ShunDatabaseTab({ initialSearch = "", onClose, isModal = false }
                                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
                                 <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
                             </span>
-                            <span>Active:</span>
+                            <span>Active Shuns:</span>
                             <span className="font-bold text-sm text-[var(--text-primary)]">
-                                {summary ? summary.activeTotal.toLocaleString() : "—"}
+                                {summary ? summary.uniqueActiveIps.toLocaleString() : "—"}
                             </span>
-                            {summary && (
-                                <span className="text-[11px] text-[var(--text-secondary)] border-l border-red-500/30 pl-1.5">
-                                    {summary.uniqueActiveIps.toLocaleString()} IPs
-                                </span>
-                            )}
+                            <span className="text-[11px] text-[var(--text-secondary)] border-l border-red-500/30 pl-1.5">
+                                Unique IPs
+                            </span>
                         </button>
 
                         {/* Status Filter: Cleared */}
@@ -438,7 +473,7 @@ export function ShunDatabaseTab({ initialSearch = "", onClose, isModal = false }
                             }`}
                             title="Show all active and historical cleared shuns"
                         >
-                            All ({summary ? summary.totalTracked.toLocaleString() : "—"})
+                            All Tracked ({summary ? summary.totalTracked.toLocaleString() : "—"})
                         </button>
 
                         {/* Per-Firewall Live Counts */}
@@ -456,7 +491,7 @@ export function ShunDatabaseTab({ initialSearch = "", onClose, isModal = false }
                                                     ? "bg-amber-500/20 border-amber-500/50 text-amber-300"
                                                     : "bg-[var(--bg-default)] border-[var(--border-color)] text-[var(--text-secondary)] hover:border-amber-500/40 hover:text-[var(--text-primary)]"
                                             }`}
-                                            title={`Filter by ${fw.firewall} (${fw.activeCount} active / ${fw.totalCount} total)`}
+                                            title={`Filter by ${fw.firewall} (${fw.activeCount} active)`}
                                         >
                                             <Server className="w-3 h-3 text-amber-400" />
                                             <span>{fw.firewall}:</span>
@@ -480,10 +515,10 @@ export function ShunDatabaseTab({ initialSearch = "", onClose, isModal = false }
                             onClick={handleManualSync}
                             disabled={isSyncing}
                             className="px-3 py-1.5 rounded-lg bg-[var(--accent-primary)] hover:bg-[var(--accent-primary)]/90 text-white text-xs font-semibold transition-all disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-1.5 shadow-sm whitespace-nowrap"
-                            title="SSH into all configured firewalls now and refresh active shun counts"
+                            title="SSH into all configured firewalls now and refresh active shun database"
                         >
                             <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? "animate-spin" : ""}`} />
-                            {isSyncing ? "Syncing..." : "Update Shun DB"}
+                            {isSyncing ? "Querying Fleet..." : "Update Shun DB Now"}
                         </button>
                     </div>
                 </div>
@@ -531,11 +566,11 @@ export function ShunDatabaseTab({ initialSearch = "", onClose, isModal = false }
                         fetchRecords(cleanTerm);
                     }}
                     onReset={clearFilters}
-                    placeholder="Search shunned IPs: IP, Subnet, ASN, Org, or Firewall (e.g. 198.51.100.1, cuh-fw1, AS15169)..."
+                    placeholder="Omnisearch: IP, Subnet, ASN, Org, or Firewall (e.g. 198.51.100.1, AS15169, Microsoft)..."
                     buttonLabel="Search"
                     loading={loading}
                     supportedFields={["IP Address", "Firewall Host", "ASN", "Organization", "Country"]}
-                    examples={["198.51.100.1", "cuh-fw1", "AS15169", "Microsoft OR Amazon"]}
+                    examples={["198.51.100.1", "Wilmington", "AS15169", "Microsoft OR Amazon"]}
                     enableBooleanHelp={true}
                     autoTrimOnSearch={true}
                     typeDetector={(term) => {
@@ -543,7 +578,7 @@ export function ShunDatabaseTab({ initialSearch = "", onClose, isModal = false }
                         if (/^AS\d+$/i.test(clean)) {
                             return { label: `ASN: ${clean.toUpperCase()}`, colorClass: "bg-emerald-500/15 text-emerald-300 border-emerald-500/30" };
                         }
-                        if (/-(?:fw|asa|firewall)/i.test(clean)) {
+                        if (/-(?:fw|asa|firewall)|wilmington|keleman/i.test(clean)) {
                             return { label: "Firewall Node", colorClass: "bg-amber-500/15 text-amber-300 border-amber-500/30" };
                         }
                         return null;
@@ -561,13 +596,13 @@ export function ShunDatabaseTab({ initialSearch = "", onClose, isModal = false }
                                 {showColumnMenu && (
                                     <>
                                         <div className="fixed inset-0 z-40" onClick={() => setShowColumnMenu(false)}></div>
-                                        <div className="absolute right-0 top-full mt-2 w-48 bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-xl shadow-xl z-50 p-2 glass-card">
+                                        <div className="absolute right-0 top-full mt-2 w-52 bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-xl shadow-xl z-50 p-2 glass-card">
                                             <div className="text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-wider mb-2 px-2 mt-1">Toggle Columns</div>
                                             {Object.entries({
                                                 status: "Status",
                                                 ip: "IP Address",
                                                 lifecycle: "Lifecycle",
-                                                firewall: "Firewall",
+                                                firewall: "Firewall Coverage",
                                                 network: "Network Intel",
                                                 location: "Location",
                                                 actions: "Actions"
@@ -594,7 +629,7 @@ export function ShunDatabaseTab({ initialSearch = "", onClose, isModal = false }
                                 onClick={() => handleExport(false)} 
                                 disabled={isExporting} 
                                 className="px-3 py-2.5 rounded-xl border border-[var(--border-color)] bg-[var(--bg-surface-hover)] hover:bg-[var(--bg-surface)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] text-xs font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5 whitespace-nowrap"
-                                title="Export all matching records to CSV"
+                                title="Export current filtered view (1 row per IP) to CSV"
                             >
                                 <Download className="w-3.5 h-3.5" /> {isExporting ? "Exporting..." : "Export CSV"}
                             </button>
@@ -602,41 +637,52 @@ export function ShunDatabaseTab({ initialSearch = "", onClose, isModal = false }
                     }
                 />
                 
-                {/* Secondary Sort & Quick Presets Strip */}
+                {/* Timeframe & Sort Controls Strip */}
                 <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-[var(--text-secondary)] pt-1">
-                    <div className="flex items-center gap-2 flex-wrap">
-                        <span className="text-[var(--text-muted)] font-medium">Quick Sort:</span>
-                        <button
-                            type="button"
-                            onClick={applyRecentlyShunnedPreset}
-                            className={`px-2 py-1 rounded text-[11px] font-medium border transition-colors ${
-                                sortField === "lastSeen" ? "bg-[var(--accent-primary)]/20 border-[var(--accent-primary)] text-[var(--text-primary)]" : "border-[var(--border-color)] hover:bg-[var(--bg-surface-hover)]"
-                            }`}
-                        >
-                            ⏱️ Most Recently Verified
-                        </button>
-                        <button
-                            type="button"
-                            onClick={applyNewlyAddedPreset}
-                            className={`px-2 py-1 rounded text-[11px] font-medium border transition-colors ${
-                                sortField === "firstSeen" ? "bg-[var(--accent-primary)]/20 border-[var(--accent-primary)] text-[var(--text-primary)]" : "border-[var(--border-color)] hover:bg-[var(--bg-surface-hover)]"
-                            }`}
-                        >
-                            ⚡ Newly Shunned (First Seen)
-                        </button>
-                        <button
-                            type="button"
-                            onClick={applyLongestStandingPreset}
-                            className={`px-2 py-1 rounded text-[11px] font-medium border transition-colors ${
-                                sortField === "daysShunned" ? "bg-[var(--accent-primary)]/20 border-[var(--accent-primary)] text-[var(--text-primary)]" : "border-[var(--border-color)] hover:bg-[var(--bg-surface-hover)]"
-                            }`}
-                        >
-                            ⏳ Longest Standing
-                        </button>
+                    {/* Timeframe Quick Buttons: 1h, 4h, 12h, 24h, 7d, all */}
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="text-[var(--text-muted)] font-semibold flex items-center gap-1 mr-1">
+                            <Clock className="w-3.5 h-3.5 text-indigo-400" /> Timeframe:
+                        </span>
+                        {(["1h", "4h", "12h", "24h", "7d", "all"] as TimeframeOption[]).map(tf => {
+                            const isSelected = timeframe === tf;
+                            const label = tf === "all" ? "All Time" : `Last ${tf}`;
+                            return (
+                                <button
+                                    key={tf}
+                                    type="button"
+                                    onClick={() => handleTimeframeChange(tf)}
+                                    className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all ${
+                                        isSelected
+                                            ? "bg-indigo-600 text-white shadow-sm ring-1 ring-indigo-500/50"
+                                            : "bg-[var(--bg-default)] border border-[var(--border-color)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-indigo-500/40"
+                                    }`}
+                                >
+                                    {label}
+                                </button>
+                            );
+                        })}
+
+                        {/* Time Field Filter (Verified/LastSeen vs FirstSeen) */}
+                        <div className="flex items-center gap-1 ml-2 pl-2 border-l border-[var(--border-color)]">
+                            <select
+                                value={timeField}
+                                onChange={(e) => {
+                                    setTimeField(e.target.value as "lastSeen" | "firstSeen");
+                                    setPage(1);
+                                }}
+                                className="bg-[var(--bg-default)] border border-[var(--border-color)] rounded px-2 py-1 text-[11px] text-[var(--text-secondary)] focus:outline-none focus:border-indigo-500"
+                                title="Determine whether timeframe window checks verified activity (last seen) or initial creation (first seen)"
+                            >
+                                <option value="lastSeen">Active / Verified in Window</option>
+                                <option value="firstSeen">Newly Added in Window</option>
+                            </select>
+                        </div>
                     </div>
 
+                    {/* Pagination status */}
                     <div className="flex items-center gap-4">
-                        <span>Showing <span className="font-medium text-[var(--text-primary)]">{totalRecords > 0 ? (page - 1) * limit + 1 : 0}</span> to <span className="font-medium text-[var(--text-primary)]">{Math.min(page * limit, totalRecords)}</span> of <span className="font-medium text-[var(--text-primary)]">{totalRecords.toLocaleString()}</span> entries</span>
+                        <span>Showing <span className="font-medium text-[var(--text-primary)]">{totalRecords > 0 ? (page - 1) * limit + 1 : 0}</span> to <span className="font-medium text-[var(--text-primary)]">{Math.min(page * limit, totalRecords)}</span> of <span className="font-medium text-[var(--text-primary)]">{totalRecords.toLocaleString()}</span> unique IPs</span>
                         <div className="flex items-center gap-1.5">
                             <span>Rows:</span>
                             <select 
@@ -653,7 +699,7 @@ export function ShunDatabaseTab({ initialSearch = "", onClose, isModal = false }
                 </div>
             </div>
             
-            {/* Table Area */}
+            {/* Table Area: 1 row per unique IP */}
             <div className="flex-1 overflow-auto bg-[var(--bg-default)] relative">
                 <div className="min-w-max h-full">
                     <table className="w-full text-sm text-left border-collapse">
@@ -688,14 +734,14 @@ export function ShunDatabaseTab({ initialSearch = "", onClose, isModal = false }
                                         <div className="flex items-center gap-1">IP Address <span className={sortField==='ip'?'text-[var(--accent-primary)]':'text-transparent group-hover:text-[var(--text-muted)]'}>{sortField==='ip'&&sortDir==='asc'?'▲':'▼'}</span></div>
                                     </th>
                                 )}
-                                {visibleColumns.lifecycle && (
-                                    <th className="px-4 py-3 font-semibold cursor-pointer hover:bg-[var(--bg-surface-hover)] select-none group" onClick={() => handleSort('daysShunned')}>
-                                        <div className="flex items-center gap-1">Lifecycle <span className={sortField==='daysShunned'?'text-[var(--accent-primary)]':'text-transparent group-hover:text-[var(--text-muted)]'}>{sortField==='daysShunned'&&sortDir==='asc'?'▲':'▼'}</span></div>
+                                {visibleColumns.firewall && (
+                                    <th className="px-4 py-3 font-semibold select-none">
+                                        Perimeter Coverage (Firewalls)
                                     </th>
                                 )}
-                                {visibleColumns.firewall && (
-                                    <th className="px-4 py-3 font-semibold cursor-pointer hover:bg-[var(--bg-surface-hover)] select-none group" onClick={() => handleSort('firewall')}>
-                                        <div className="flex items-center gap-1">Firewall <span className={sortField==='firewall'?'text-[var(--accent-primary)]':'text-transparent group-hover:text-[var(--text-muted)]'}>{sortField==='firewall'&&sortDir==='asc'?'▲':'▼'}</span></div>
+                                {visibleColumns.lifecycle && (
+                                    <th className="px-4 py-3 font-semibold cursor-pointer hover:bg-[var(--bg-surface-hover)] select-none group" onClick={() => handleSort('lastSeen')}>
+                                        <div className="flex items-center gap-1">Activity Lifecycle <span className={sortField==='lastSeen'?'text-[var(--accent-primary)]':'text-transparent group-hover:text-[var(--text-muted)]'}>{sortField==='lastSeen'&&sortDir==='asc'?'▲':'▼'}</span></div>
                                     </th>
                                 )}
                                 {visibleColumns.network && (
@@ -721,13 +767,13 @@ export function ShunDatabaseTab({ initialSearch = "", onClose, isModal = false }
                                         <td className="px-2 py-4 text-center"><div className="h-4 w-6 bg-[var(--border-color)] rounded mx-auto"></div></td>
                                         {visibleColumns.status && <td className="px-4 py-4"><div className="h-5 w-16 bg-[var(--border-color)] rounded-full"></div></td>}
                                         {visibleColumns.ip && <td className="px-4 py-4"><div className="h-4 w-32 bg-[var(--border-color)] rounded"></div></td>}
+                                        {visibleColumns.firewall && <td className="px-4 py-4"><div className="h-5 w-28 bg-[var(--border-color)] rounded-full"></div></td>}
                                         {visibleColumns.lifecycle && <td className="px-4 py-4">
                                             <div className="flex flex-col gap-2">
                                                 <div className="h-3 w-16 bg-[var(--border-color)] rounded"></div>
                                                 <div className="h-2 w-24 bg-[var(--border-color)] rounded"></div>
                                             </div>
                                         </td>}
-                                        {visibleColumns.firewall && <td className="px-4 py-4"><div className="h-4 w-24 bg-[var(--border-color)] rounded"></div></td>}
                                         {visibleColumns.network && <td className="px-4 py-4">
                                             <div className="flex flex-col gap-2">
                                                 <div className="h-3 w-20 bg-[var(--border-color)] rounded"></div>
@@ -735,7 +781,7 @@ export function ShunDatabaseTab({ initialSearch = "", onClose, isModal = false }
                                             </div>
                                         </td>}
                                         {visibleColumns.location && <td className="px-4 py-4"><div className="h-4 w-28 bg-[var(--border-color)] rounded"></div></td>}
-                                        {visibleColumns.actions && <td className="px-4 py-4 text-right"><div className="h-6 w-20 bg-[var(--border-color)] rounded ml-auto"></div></td>}
+                                        {visibleColumns.actions && <td className="px-4 py-4 text-right"><div className="h-6 w-24 bg-[var(--border-color)] rounded ml-auto"></div></td>}
                                     </tr>
                                 ))
                             ) : error ? (
@@ -750,7 +796,20 @@ export function ShunDatabaseTab({ initialSearch = "", onClose, isModal = false }
                                     <td colSpan={10} className="px-4 py-20 text-center">
                                         <SearchX className="w-16 h-16 mx-auto mb-4 text-[var(--text-muted)] opacity-50" />
                                         <h3 className="text-lg font-medium text-[var(--text-primary)] mb-1">No shunned IPs found</h3>
-                                        <p className="text-sm text-[var(--text-secondary)]">Try adjusting your filters, searching a different subnet or resetting presets.</p>
+                                        <p className="text-sm text-[var(--text-secondary)]">
+                                            {timeframe !== "all" 
+                                                ? `No shunned IPs matched within the ${timeframe} timeframe window. Try extending to 24h, 7d, or All Time.` 
+                                                : "Try adjusting your filters, searching a different subnet or resetting presets."}
+                                        </p>
+                                        {timeframe !== "all" && (
+                                            <button
+                                                type="button"
+                                                onClick={() => handleTimeframeChange("all")}
+                                                className="mt-3 px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold"
+                                            >
+                                                Switch to All Time
+                                            </button>
+                                        )}
                                     </td>
                                 </tr>
                             ) : (
@@ -758,7 +817,7 @@ export function ShunDatabaseTab({ initialSearch = "", onClose, isModal = false }
                                     const isSelected = selectedIps.has(record.ip);
                                     return (
                                         <tr 
-                                            key={record.id} 
+                                            key={record.ip} 
                                             className={`transition-colors ${
                                                 isSelected 
                                                     ? "bg-indigo-500/10 hover:bg-indigo-500/15" 
@@ -810,31 +869,52 @@ export function ShunDatabaseTab({ initialSearch = "", onClose, isModal = false }
                                             {visibleColumns.ip && (
                                                 <td className="px-4 py-3 font-mono font-medium text-[var(--accent-primary)] whitespace-nowrap align-top">
                                                     <div className="flex items-center gap-2">
-                                                        <span>{record.ip}</span>
+                                                        <span className="text-sm">{record.ip}</span>
                                                     </div>
+                                                </td>
+                                            )}
+                                            {visibleColumns.firewall && (
+                                                <td className="px-4 py-3 text-[var(--text-secondary)] align-top whitespace-nowrap">
+                                                    {record.isShunnedAll ? (
+                                                        <div className="flex flex-col gap-1">
+                                                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-500/15 text-emerald-300 border border-emerald-500/40 w-fit shadow-sm shadow-emerald-500/10" title="Actively shunned on all 4 perimeter firewalls">
+                                                                <Shield className="w-3.5 h-3.5 text-emerald-400" />
+                                                                All 4 Firewalls Active
+                                                            </span>
+                                                            <span className="text-[10px] text-slate-400 font-mono">
+                                                                Full perimeter protection
+                                                            </span>
+                                                        </div>
+                                                    ) : record.activeCount > 0 ? (
+                                                        <div className="flex flex-col gap-1">
+                                                            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-500/15 text-amber-300 border border-amber-500/40 w-fit">
+                                                                <Server className="w-3 h-3 text-amber-400" />
+                                                                {record.activeCount} of {record.configuredFirewallsCount || 4} Firewalls
+                                                            </span>
+                                                            <span className="text-[10px] text-slate-400 font-mono truncate max-w-[220px]" title={record.activeFirewalls?.join(", ")}>
+                                                                {record.activeFirewalls?.join(", ")}
+                                                            </span>
+                                                        </div>
+                                                    ) : (
+                                                        <span className="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full bg-[var(--bg-surface-hover)] text-[var(--text-secondary)] border border-[var(--border-color)] w-fit">
+                                                            Cleared Across Fleet
+                                                        </span>
+                                                    )}
                                                 </td>
                                             )}
                                             {visibleColumns.lifecycle && (
                                                 <td className="px-4 py-3 text-[var(--text-secondary)] align-top">
                                                     <div className="flex flex-col gap-1">
                                                         <div className="flex items-center gap-1.5 text-xs">
-                                                            <Clock className="w-3.5 h-3.5" />
+                                                            <Clock className="w-3.5 h-3.5 text-indigo-400" />
                                                             <span className="font-semibold text-[var(--text-primary)]">{record.daysShunned}</span> Days
                                                         </div>
                                                         <div className="text-[11px] mt-1">
                                                             <span className="text-[var(--text-muted)]">First:</span> {new Date(record.firstSeen).toLocaleDateString()}
                                                         </div>
                                                         <div className="text-[11px]">
-                                                            <span className="text-[var(--text-muted)]">Last:</span> {new Date(record.lastSeen).toLocaleDateString()} {new Date(record.lastSeen).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                                            <span className="text-[var(--text-muted)]">Last Verified:</span> {new Date(record.lastSeen).toLocaleDateString()} {new Date(record.lastSeen).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                                                         </div>
-                                                    </div>
-                                                </td>
-                                            )}
-                                            {visibleColumns.firewall && (
-                                                <td className="px-4 py-3 text-[var(--text-secondary)] align-top">
-                                                    <div className="flex items-center gap-1.5 font-mono text-xs">
-                                                        <Server className="h-3.5 w-3.5 text-amber-400" />
-                                                        {record.firewall}
                                                     </div>
                                                 </td>
                                             )}
@@ -889,14 +969,9 @@ export function ShunDatabaseTab({ initialSearch = "", onClose, isModal = false }
                                                         {record.isActive && (
                                                             <button
                                                                 type="button"
-                                                                onClick={() => {
-                                                                    setUnshunModal({
-                                                                        ips: [record.ip],
-                                                                        targetHost: targetFleet
-                                                                    });
-                                                                }}
+                                                                onClick={() => openUnshunModalForIps([record.ip])}
                                                                 className="px-2.5 py-1 rounded-md bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/30 text-xs font-semibold transition-all flex items-center gap-1 shadow-sm"
-                                                                title={`Remove perimeter shun for ${record.ip} across firewalls`}
+                                                                title={`Remove perimeter shun for ${record.ip} (defaults to All 4 Firewalls)`}
                                                             >
                                                                 <Unlock className="w-3 h-3" />
                                                                 Unshun
@@ -933,37 +1008,17 @@ export function ShunDatabaseTab({ initialSearch = "", onClose, isModal = false }
                                 {selectedIps.size}
                             </span>
                             <span className="text-slate-300">
-                                IP{selectedIps.size > 1 ? "s" : ""} Selected
+                                Unique IP{selectedIps.size > 1 ? "s" : ""} Selected
                             </span>
                         </div>
 
                         <div className="flex items-center gap-2 flex-wrap">
-                            {/* Target Fleet Selector */}
-                            <select
-                                value={targetFleet}
-                                onChange={(e) => setTargetFleet(e.target.value)}
-                                className="bg-slate-800 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
-                                title="Select target firewall fleet for unshun execution"
-                            >
-                                <option value="all">All 4 Perimeter Firewalls (Recommended)</option>
-                                {summary?.byFirewall?.map(fw => (
-                                    <option key={fw.firewall} value={fw.firewall}>
-                                        Node: {fw.firewall}
-                                    </option>
-                                ))}
-                            </select>
-
-                            {/* Unshun Selected Button */}
+                            {/* Unshun Selected Button: opens modal with All 4 Firewalls default */}
                             <button
                                 type="button"
-                                onClick={() => {
-                                    setUnshunModal({
-                                        ips: Array.from(selectedIps),
-                                        targetHost: targetFleet
-                                    });
-                                }}
+                                onClick={() => openUnshunModalForIps(Array.from(selectedIps))}
                                 className="px-3.5 py-1.5 rounded-lg bg-red-600 hover:bg-red-500 text-white font-semibold transition-all shadow-md shadow-red-600/30 flex items-center gap-1.5"
-                                title={`Execute 'no shun' across firewalls for all ${selectedIps.size} selected IPs`}
+                                title={`Unshun all ${selectedIps.size} selected IPs (defaults to all 4 firewalls)`}
                             >
                                 <Unlock className="w-3.5 h-3.5" />
                                 Unshun Selected ({selectedIps.size})
@@ -996,7 +1051,7 @@ export function ShunDatabaseTab({ initialSearch = "", onClose, isModal = false }
                 {/* Bottom Pagination */}
                 <div className="sticky bottom-0 bg-[var(--bg-surface)] p-3 border-t border-[var(--border-color)] flex justify-between items-center text-sm shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)]">
                     <span className="text-[var(--text-secondary)] text-xs">
-                        Showing {totalRecords > 0 ? (page - 1) * limit + 1 : 0} to {Math.min(page * limit, totalRecords)} of {totalRecords.toLocaleString()} entries
+                        Showing {totalRecords > 0 ? (page - 1) * limit + 1 : 0} to {Math.min(page * limit, totalRecords)} of {totalRecords.toLocaleString()} unique IPs
                     </span>
                     <div className="flex items-center gap-2">
                         <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1} className="px-3 py-1.5 rounded border border-[var(--border-color)] hover:bg-[var(--bg-surface-hover)] disabled:opacity-50 transition-colors bg-[var(--bg-default)] text-[var(--text-primary)] text-xs">Previous</button>
@@ -1014,7 +1069,7 @@ export function ShunDatabaseTab({ initialSearch = "", onClose, isModal = false }
                 />
             )}
 
-            {/* Unshun Confirmation & Positive Feedback Modal */}
+            {/* Unshun Confirmation Modal: Defaults to all 4 firewalls with option to select one or more */}
             {unshunModal && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
                     <div className="bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl max-w-2xl w-full max-h-[85vh] flex flex-col overflow-hidden text-slate-200">
@@ -1026,10 +1081,10 @@ export function ShunDatabaseTab({ initialSearch = "", onClose, isModal = false }
                                 </div>
                                 <div>
                                     <h3 className="text-base font-bold text-white">
-                                        {unshunResult ? "Unshun Action Positive Confirmation" : "Confirm Perimeter Unshun Operation"}
+                                        {unshunResult ? "Unshun Positive Confirmation" : "Confirm Perimeter Unshun"}
                                     </h3>
                                     <p className="text-xs text-slate-400">
-                                        {unshunResult ? "Firewall verification and execution output" : `Execute 'no shun' across perimeter firewalls`}
+                                        {unshunResult ? "Firewall verification and execution output" : `Defaults to all 4 perimeter firewalls with option to select specific nodes`}
                                     </p>
                                 </div>
                             </div>
@@ -1059,7 +1114,7 @@ export function ShunDatabaseTab({ initialSearch = "", onClose, isModal = false }
                                                     Perimeter Un-Shun Successfully Executed
                                                 </div>
                                                 <div className="text-[11px] text-emerald-300/90 mt-0.5">
-                                                    {unshunModal.ips.length} IP(s) removed from shun list across {unshunResult.target}. Guardian Blacklist cleared and logged to audit log.
+                                                    {unshunModal.ips.length} unique IP(s) un-shunned across {unshunResult.target}. Guardian Blacklist cleared and logged to audit log.
                                                 </div>
                                             </div>
                                         </div>
@@ -1113,35 +1168,110 @@ export function ShunDatabaseTab({ initialSearch = "", onClose, isModal = false }
                                     <div className="p-3.5 rounded-xl bg-amber-950/25 border border-amber-500/35 text-amber-300 flex items-start gap-2.5">
                                         <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
                                         <div className="text-xs leading-relaxed">
-                                            You are about to un-shun <span className="font-bold text-white">{unshunModal.ips.length}</span> IP address(es). This will SSH into the target perimeter firewalls and execute <code className="font-mono text-amber-200 bg-amber-950/60 px-1 py-0.5 rounded">no shun &lt;IP&gt;</code>, remove them from the Guardian Blacklist, and record positive confirmation in <code className="font-mono text-amber-200 bg-amber-950/60 px-1 py-0.5 rounded">logs/shun-actions.log</code>.
+                                            You are about to un-shun <span className="font-bold text-white">{unshunModal.ips.length}</span> unique IP address(es). This will SSH into the firewalls and execute <code className="font-mono text-amber-200 bg-amber-950/60 px-1 py-0.5 rounded">no shun &lt;IP&gt;</code>, clear Guardian Blacklist, and record positive confirmation in <code className="font-mono text-amber-200 bg-amber-950/60 px-1 py-0.5 rounded">logs/shun-actions.log</code>.
                                         </div>
                                     </div>
 
-                                    {/* Target Fleet Selection */}
-                                    <div className="space-y-1.5">
-                                        <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider">
-                                            Target Firewall Fleet:
-                                        </label>
-                                        <select
-                                            value={unshunModal.targetHost}
-                                            onChange={(e) => setUnshunModal({ ...unshunModal, targetHost: e.target.value })}
-                                            className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-indigo-500"
-                                        >
-                                            <option value="all">All 4 Perimeter Firewalls (Perimeter Fleet - Recommended)</option>
-                                            {summary?.byFirewall?.map(fw => (
-                                                <option key={fw.firewall} value={fw.firewall}>
-                                                    Node: {fw.firewall} ({fw.activeCount} active shuns)
-                                                </option>
-                                            ))}
-                                        </select>
+                                    {/* Target Fleet Selection: Default All 4 FWs, with option to select one or more */}
+                                    <div className="p-3.5 bg-slate-950 rounded-xl border border-slate-800 space-y-3">
+                                        <div className="text-xs font-semibold text-slate-300 uppercase tracking-wider flex items-center justify-between">
+                                            <span>Target Firewall Nodes:</span>
+                                            <span className="text-[11px] text-indigo-400 font-normal">
+                                                {unshunModal.isAllFirewalls ? "All 4 Firewalls (Recommended)" : `${unshunModal.selectedFirewalls.length} Firewall(s) Selected`}
+                                            </span>
+                                        </div>
+
+                                        <div className="flex flex-col gap-2">
+                                            {/* All 4 Firewalls Option (Default) */}
+                                            <label className="flex items-center gap-2.5 p-2 rounded-lg bg-indigo-950/20 border border-indigo-500/40 cursor-pointer">
+                                                <input
+                                                    type="radio"
+                                                    name="fwMode"
+                                                    checked={unshunModal.isAllFirewalls}
+                                                    onChange={() => setUnshunModal({
+                                                        ...unshunModal,
+                                                        isAllFirewalls: true,
+                                                        selectedFirewalls: configuredFwsList
+                                                    })}
+                                                    className="text-indigo-600 focus:ring-indigo-500"
+                                                />
+                                                <div>
+                                                    <div className="font-semibold text-white flex items-center gap-1.5">
+                                                        <Shield className="w-3.5 h-3.5 text-emerald-400" />
+                                                        All 4 Perimeter Firewalls (Perimeter Fleet - Recommended)
+                                                    </div>
+                                                    <div className="text-[11px] text-slate-400">
+                                                        Removes shun across the entire perimeter fleet (Wilmington & Keleman clusters)
+                                                    </div>
+                                                </div>
+                                            </label>
+
+                                            {/* Specific Firewall Nodes Option */}
+                                            <label className="flex items-center gap-2.5 p-2 rounded-lg border border-slate-800 hover:border-slate-700 cursor-pointer">
+                                                <input
+                                                    type="radio"
+                                                    name="fwMode"
+                                                    checked={!unshunModal.isAllFirewalls}
+                                                    onChange={() => setUnshunModal({
+                                                        ...unshunModal,
+                                                        isAllFirewalls: false
+                                                    })}
+                                                    className="text-indigo-600 focus:ring-indigo-500"
+                                                />
+                                                <div>
+                                                    <div className="font-semibold text-slate-200">
+                                                        Select Specific Firewall Node(s)
+                                                    </div>
+                                                    <div className="text-[11px] text-slate-400">
+                                                        Target only designated firewalls rather than all 4
+                                                    </div>
+                                                </div>
+                                            </label>
+
+                                            {/* Checkboxes if specific selected */}
+                                            {!unshunModal.isAllFirewalls && (
+                                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1 pl-6">
+                                                    {configuredFwsList.map(fwName => {
+                                                        const isChecked = unshunModal.selectedFirewalls.includes(fwName);
+                                                        return (
+                                                            <label 
+                                                                key={fwName} 
+                                                                className={`p-2 rounded-lg border text-xs flex items-center gap-2 cursor-pointer transition-colors ${
+                                                                    isChecked 
+                                                                        ? "bg-slate-900 border-indigo-500/40 text-white" 
+                                                                        : "bg-slate-950/60 border-slate-800 text-slate-400 hover:text-slate-200"
+                                                                }`}
+                                                            >
+                                                                <input
+                                                                    type="checkbox"
+                                                                    checked={isChecked}
+                                                                    onChange={(e) => {
+                                                                        const next = e.target.checked
+                                                                            ? [...unshunModal.selectedFirewalls, fwName]
+                                                                            : unshunModal.selectedFirewalls.filter(f => f !== fwName);
+                                                                        setUnshunModal({
+                                                                            ...unshunModal,
+                                                                            selectedFirewalls: next
+                                                                        });
+                                                                    }}
+                                                                    className="rounded text-indigo-600 focus:ring-indigo-500"
+                                                                />
+                                                                <Server className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                                                                <span className="font-mono truncate">{fwName}</span>
+                                                            </label>
+                                                        );
+                                                    })}
+                                                </div>
+                                            )}
+                                        </div>
                                     </div>
 
-                                    {/* IP List Chips */}
+                                    {/* IP List Preview Chips */}
                                     <div className="space-y-1.5">
                                         <div className="flex items-center justify-between text-xs text-slate-400">
-                                            <span>IP Addresses to Un-Shun ({unshunModal.ips.length}):</span>
+                                            <span>Target IP Address(es) ({unshunModal.ips.length} unique):</span>
                                         </div>
-                                        <div className="p-3 bg-slate-950 rounded-xl border border-slate-800 max-h-48 overflow-y-auto flex flex-wrap gap-1.5 font-mono text-xs">
+                                        <div className="p-3 bg-slate-950 rounded-xl border border-slate-800 max-h-40 overflow-y-auto flex flex-wrap gap-1.5 font-mono text-xs">
                                             {unshunModal.ips.map(ip => (
                                                 <span 
                                                     key={ip} 
@@ -1203,8 +1333,8 @@ export function ShunDatabaseTab({ initialSearch = "", onClose, isModal = false }
 
                                     <button
                                         type="button"
-                                        onClick={() => executeUnshun(unshunModal.ips, unshunModal.targetHost)}
-                                        disabled={unshunExecuting || unshunModal.ips.length === 0}
+                                        onClick={executeUnshun}
+                                        disabled={unshunExecuting || unshunModal.ips.length === 0 || (!unshunModal.isAllFirewalls && unshunModal.selectedFirewalls.length === 0)}
                                         className="px-4 py-2 rounded-lg bg-red-600 hover:bg-red-500 text-white font-semibold text-xs transition-all shadow-lg shadow-red-600/30 disabled:opacity-50 flex items-center gap-2"
                                     >
                                         {unshunExecuting ? (
@@ -1215,7 +1345,7 @@ export function ShunDatabaseTab({ initialSearch = "", onClose, isModal = false }
                                         ) : (
                                             <>
                                                 <Unlock className="w-3.5 h-3.5" />
-                                                Confirm Unshun ({unshunModal.ips.length} IPs)
+                                                Confirm Unshun ({unshunModal.ips.length} IPs on {unshunModal.isAllFirewalls ? "All 4 FWs" : `${unshunModal.selectedFirewalls.length} FWs`})
                                             </>
                                         )}
                                     </button>

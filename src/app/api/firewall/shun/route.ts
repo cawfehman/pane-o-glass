@@ -124,7 +124,7 @@ export async function POST(req: Request) {
         }
 
         const body = await req.json();
-        const { ipAddress, ipAddresses, action, targetHost } = body;
+        const { ipAddress, ipAddresses, action, targetHost, targetHosts } = body;
 
         // Requester IP for audit
         const forwardedFor = req.headers.get("x-forwarded-for");
@@ -137,8 +137,8 @@ export async function POST(req: Request) {
             rawList = [ipAddress];
         }
 
-        if (rawList.length === 0 || !action || !targetHost) {
-            return new NextResponse("Missing required parameters (ipAddress or ipAddresses, action, targetHost)", { status: 400 });
+        if (rawList.length === 0 || !action || (!targetHost && (!Array.isArray(targetHosts) || targetHosts.length === 0))) {
+            return new NextResponse("Missing required parameters (ipAddress or ipAddresses, action, targetHost/targetHosts)", { status: 400 });
         }
 
         // Basic IPv4 validation
@@ -181,8 +181,18 @@ export async function POST(req: Request) {
         if (targetHost === "all") {
             targetFws = firewalls;
             targetLabel = "All Firewalls (Perimeter Fleet)";
+        } else if (Array.isArray(targetHosts) && targetHosts.length > 0) {
+            targetFws = firewalls.filter((fw: any) => 
+                targetHosts.includes(fw.id) || 
+                targetHosts.includes(fw.name) || 
+                targetHosts.includes(fw.ip)
+            );
+            if (targetFws.length === 0) {
+                return new NextResponse("None of the specified targetHost IDs are in configured firewalls", { status: 403 });
+            }
+            targetLabel = targetFws.map((fw: any) => fw.name || fw.ip).join(", ");
         } else {
-            const single = firewalls.find((fw: any) => fw.id === targetHost);
+            const single = firewalls.find((fw: any) => fw.id === targetHost || fw.name === targetHost || fw.ip === targetHost);
             if (!single) {
                 return new NextResponse("Target host ID is not in the configured firewalls", { status: 403 });
             }
@@ -254,7 +264,8 @@ export async function POST(req: Request) {
                 }
 
                 try {
-                    const fwFilter = targetHost === "all" ? {} : { firewall: targetLabel };
+                    const targetFwNames = targetFws.map((fw: any) => fw.name || fw.ip);
+                    const fwFilter = targetHost === "all" ? {} : { firewall: { in: targetFwNames } };
                     await prisma.firewallShunStats.updateMany({
                         where: {
                             ip: { in: targetIps },

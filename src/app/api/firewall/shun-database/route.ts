@@ -64,10 +64,12 @@ export async function GET(req: Request) {
         const url = new URL(req.url);
         const search = url.searchParams.get("search") || "";
         const statusFilter = url.searchParams.get("status") || "all"; // "all" | "active" | "cleared"
+        const timeframe = url.searchParams.get("timeframe") || "all"; // "1h" | "4h" | "12h" | "24h" | "7d" | "30d" | "all"
+        const timeField = url.searchParams.get("timeField") || "lastSeen"; // "lastSeen" | "firstSeen"
         const page = parseInt(url.searchParams.get("page") || "1", 10);
         const limit = parseInt(url.searchParams.get("limit") || "50", 10);
 
-        const sortField = url.searchParams.get("sortField") || "isActive";
+        const sortField = url.searchParams.get("sortField") || "lastSeen";
         const sortDir = url.searchParams.get("sortDir") === "asc" ? "asc" : "desc";
 
         const where: any = {};
@@ -76,6 +78,22 @@ export async function GET(req: Request) {
             where.isActive = true;
         } else if (statusFilter === "cleared") {
             where.isActive = false;
+        }
+
+        // Timeframe filtering
+        let cutoffDate: Date | null = null;
+        if (timeframe && timeframe !== "all") {
+            const match = timeframe.match(/^(\d+)([hd])$/);
+            if (match) {
+                const num = parseInt(match[1], 10);
+                const unit = match[2];
+                const ms = unit === "h" ? num * 3600 * 1000 : num * 24 * 3600 * 1000;
+                cutoffDate = new Date(Date.now() - ms);
+            }
+        }
+        if (cutoffDate) {
+            const targetDateField = timeField === "firstSeen" ? "firstSeen" : "lastSeen";
+            where[targetDateField] = { gte: cutoffDate };
         }
 
         if (search) {
@@ -102,15 +120,18 @@ export async function GET(req: Request) {
             orderBy.push({ [sortField]: sortDir });
         }
 
-        // Ensure consistent tie-breaking
-        if (sortField !== "lastSeen") {
-            orderBy.push({ lastSeen: "desc" });
-        }
+        // Ensure consistent tie-breaking by IP
+        orderBy.push({ ip: "asc" });
 
-        const [total, stats, summary] = await Promise.all([
-            prisma.firewallShunStats.count({ where }),
+        // Query distinct IPs so analysts see exactly 1 aggregated row per IP
+        const [groupCount, distinctStats, summary] = await Promise.all([
+            prisma.firewallShunStats.groupBy({
+                by: ["ip"],
+                where
+            }),
             prisma.firewallShunStats.findMany({
                 where,
+                distinct: ["ip"],
                 include: { shunIp: true },
                 orderBy,
                 skip: (page - 1) * limit,
@@ -119,33 +140,76 @@ export async function GET(req: Request) {
             buildShunSummary()
         ]);
 
-        // Resolve blacklisted status
-        const ipList = stats.map(s => s.ip);
-        let blacklistedIps = new Set();
-        if (ipList.length > 0) {
-            const blacklisted = await prisma.guardianBlacklist.findMany({
-                where: { ip: { in: ipList } },
-                select: { ip: true }
-            });
-            blacklistedIps = new Set(blacklisted.map(b => b.ip));
-        }
+        const total = groupCount.length;
+        const pageIps = distinctStats.map(s => s.ip);
 
-        const records = stats.map(s => ({
-            id: s.id,
-            ip: s.ip,
-            firewall: s.firewall,
-            firstSeen: s.firstSeen,
-            lastSeen: s.lastSeen,
-            daysShunned: s.daysShunned,
-            isActive: s.isActive,
-            isBlacklisted: blacklistedIps.has(s.ip),
-            ipAsn: s.shunIp?.ipAsn,
-            ipOrg: s.shunIp?.org,
-            ipCountry: s.shunIp?.ipCountry,
-            ipCountryCode: s.shunIp?.ipCountryCode,
-            city: s.shunIp?.city,
-            enrichedAt: s.shunIp?.enrichedAt
-        }));
+        // Fetch all firewall nodes for these page IPs to know full perimeter coverage
+        const [allPageStats, blacklistedEntries] = await Promise.all([
+            prisma.firewallShunStats.findMany({
+                where: { ip: { in: pageIps } }
+            }),
+            prisma.guardianBlacklist.findMany({
+                where: { ip: { in: pageIps } },
+                select: { ip: true }
+            })
+        ]);
+
+        const blacklistedIps = new Set(blacklistedEntries.map(b => b.ip));
+
+        const configStr = process.env.FIREWALL_CONFIG || "[]";
+        let configuredFirewallsCount = 4;
+        try {
+            const parsed = JSON.parse(configStr);
+            if (Array.isArray(parsed) && parsed.length > 0) configuredFirewallsCount = parsed.length;
+        } catch (e) {}
+
+        const records = distinctStats.map(s => {
+            const ipStats = allPageStats.filter(st => st.ip === s.ip);
+            const activeFirewalls = ipStats.filter(st => st.isActive).map(st => st.firewall);
+            const clearedFirewalls = ipStats.filter(st => !st.isActive).map(st => st.firewall);
+            const activeCount = activeFirewalls.length;
+            const isShunnedAll = activeCount >= configuredFirewallsCount;
+            const isActive = activeCount > 0;
+
+            const firstSeenDates = ipStats.map(st => new Date(st.firstSeen).getTime());
+            const lastSeenDates = ipStats.map(st => new Date(st.lastSeen).getTime());
+            const minFirstSeen = firstSeenDates.length > 0 ? new Date(Math.min(...firstSeenDates)) : s.firstSeen;
+            const maxLastSeen = lastSeenDates.length > 0 ? new Date(Math.max(...lastSeenDates)) : s.lastSeen;
+            const maxDaysShunned = ipStats.length > 0 ? Math.max(...ipStats.map(st => st.daysShunned)) : s.daysShunned;
+
+            return {
+                id: s.id,
+                ip: s.ip,
+                firewall: isShunnedAll
+                    ? `All ${configuredFirewallsCount} Firewalls`
+                    : activeCount > 0
+                        ? `${activeCount}/${configuredFirewallsCount} FWs (${activeFirewalls.join(", ")})`
+                        : "Cleared",
+                activeFirewalls,
+                clearedFirewalls,
+                activeCount,
+                configuredFirewallsCount,
+                isShunnedAll,
+                allFirewalls: ipStats.map(st => ({
+                    firewall: st.firewall,
+                    isActive: st.isActive,
+                    firstSeen: st.firstSeen,
+                    lastSeen: st.lastSeen,
+                    daysShunned: st.daysShunned
+                })),
+                firstSeen: minFirstSeen,
+                lastSeen: maxLastSeen,
+                daysShunned: maxDaysShunned,
+                isActive,
+                isBlacklisted: blacklistedIps.has(s.ip),
+                ipAsn: s.shunIp?.ipAsn,
+                ipOrg: s.shunIp?.org,
+                ipCountry: s.shunIp?.ipCountry,
+                ipCountryCode: s.shunIp?.ipCountryCode,
+                city: s.shunIp?.city,
+                enrichedAt: s.shunIp?.enrichedAt
+            };
+        });
 
         return NextResponse.json({
             records,
