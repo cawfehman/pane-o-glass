@@ -7,7 +7,7 @@ import {
     ChevronUp, Copy, Check, Download, RefreshCw, Radio, HardDrive, 
     Info, ArrowRight, UserCheck, Layers, ExternalLink, Filter,
     ArrowUpDown, ArrowUp, ArrowDown, X, RotateCcw, KeyRound, Repeat,
-    History, BarChart3, ChevronLeft, Users
+    History, BarChart3, ChevronLeft, ChevronRight, Users, Lock
 } from "lucide-react";
 import { 
     ResponsiveContainer, AreaChart, Area, XAxis, YAxis, 
