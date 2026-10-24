@@ -32,13 +32,15 @@ interface FwNodeResult {
 }
 
 /**
- * Execute command across configured Cisco ASA / Firepower firewall node(s).
+ * Execute multiple CLI commands inside a SINGLE SSH session per firewall node
+ * to prevent VTY/SSH connection exhaustion during bulk shun operations.
  */
-export async function executeFirewallCommand(command: string, targetHost: string = "all"): Promise<{
+export async function executeFirewallBulkCommands(commands: string[], targetHost: string = "all"): Promise<{
     success: boolean;
     targetLabel: string;
     results: FwNodeResult[];
 }> {
+    const cleanCommands = commands.map(c => c.trim()).filter(Boolean);
     const configStr = process.env.FIREWALL_CONFIG || "[]";
     let firewalls: any[] = [];
     try {
@@ -47,11 +49,11 @@ export async function executeFirewallCommand(command: string, targetHost: string
         firewalls = [];
     }
 
-    if (firewalls.length === 0) {
+    if (firewalls.length === 0 || cleanCommands.length === 0) {
         return {
             success: false,
             targetLabel: "None (FIREWALL_CONFIG empty)",
-            results: [{ target: "N/A", success: false, stdout: "", stderr: "FIREWALL_CONFIG not configured" }]
+            results: [{ target: "N/A", success: false, stdout: "", stderr: "FIREWALL_CONFIG not configured or no commands provided" }]
         };
     }
 
@@ -95,17 +97,24 @@ export async function executeFirewallCommand(command: string, targetHost: string
                 return new Promise<FwNodeResult>((resolve) => {
                     ssh.requestShell().then((stream) => {
                         let output = "";
+                        let fullTranscript = "";
                         let errorOutput = "";
 
-                        stream.on("data", (data: any) => { output += data.toString(); });
-                        stream.stderr.on("data", (data: any) => { errorOutput += data.toString(); });
+                        stream.on("data", (data: any) => {
+                            const chunk = data.toString();
+                            output += chunk;
+                            fullTranscript += chunk;
+                        });
+                        stream.stderr.on("data", (data: any) => {
+                            errorOutput += data.toString();
+                        });
 
                         stream.on("close", () => {
                             ssh.dispose();
                             resolve({
                                 target: targetName,
                                 success: errorOutput.length === 0,
-                                stdout: output.trim(),
+                                stdout: fullTranscript.trim(),
                                 stderr: errorOutput.trim()
                             });
                         });
@@ -120,7 +129,7 @@ export async function executeFirewallCommand(command: string, targetHost: string
                                     } else if (Date.now() - start > timeoutMs) {
                                         res(false);
                                     } else {
-                                        setTimeout(check, 100);
+                                        setTimeout(check, 80);
                                     }
                                 };
                                 check();
@@ -129,11 +138,14 @@ export async function executeFirewallCommand(command: string, targetHost: string
 
                         const run = async () => {
                             await waitForPrompt(12000);
-                            output = "";
-                            stream.write(`${command}\n`);
-                            await waitForPrompt(5000);
+                            fullTranscript = "";
+                            for (const cmd of cleanCommands) {
+                                output = "";
+                                stream.write(`${cmd}\n`);
+                                await waitForPrompt(5000);
+                            }
                             stream.write("exit\n");
-                            await new Promise(r => setTimeout(r, 400));
+                            await new Promise(r => setTimeout(r, 350));
                         };
 
                         run();
@@ -150,6 +162,17 @@ export async function executeFirewallCommand(command: string, targetHost: string
 
     const overallSuccess = results.some(r => r.success);
     return { success: overallSuccess, targetLabel, results };
+}
+
+/**
+ * Execute a single command across configured Cisco ASA / Firepower firewall node(s).
+ */
+export async function executeFirewallCommand(command: string, targetHost: string = "all"): Promise<{
+    success: boolean;
+    targetLabel: string;
+    results: FwNodeResult[];
+}> {
+    return executeFirewallBulkCommands([command], targetHost);
 }
 
 /**
@@ -253,6 +276,8 @@ export async function runNetscalerCveAutoShunCycle(
         }
 
         const candidateIps = Array.from(threatActorsByIp.keys());
+        const toReShun: { ip: string; threat: { matched: NetscalerMatchedIp; rule: NetscalerIocRule }; cveTag: string; existingRecord: any }[] = [];
+        const toNewShun: { ip: string; threat: { matched: NetscalerMatchedIp; rule: NetscalerIocRule }; cveTag: string }[] = [];
 
         for (const ip of candidateIps) {
             const threat = threatActorsByIp.get(ip)!;
@@ -276,43 +301,55 @@ export async function runNetscalerCveAutoShunCycle(
                     });
                     result.existingActiveUpdated++;
                 } else if (existingRecord.status === "REMOVED") {
-                    // Previously un-shunned, but detected attacking again: Re-apply perimeter shun!
-                    const fwExec = await executeFirewallCommand(`shun ${ip}`, targetHost);
-                    await prisma.netscalerCveShun.update({
-                        where: { ip },
-                        data: {
-                            status: "ACTIVE",
-                            matchCount: existingRecord.matchCount + threat.matched.count,
-                            shunnedAt: new Date(),
-                            lastSeenAt: new Date(),
-                            targetFirewalls: fwExec.targetLabel,
-                            removedAt: null,
-                            removedBy: null,
-                            samplePayload: threat.matched.sampleMessage || existingRecord.samplePayload,
-                            notes: `Re-shunned automatically: detected recurrence of ${threat.rule.name}`
-                        }
-                    });
-
-                    await logAudit(
-                        "NETSCALER_CVE_AUTO_SHUN_RECURRENCE",
-                        `Re-applied perimeter shun for ${ip} on recurrence of ${threat.rule.name} (${cveTag}) across ${fwExec.targetLabel}.`
-                    ).catch(() => {});
-
-                    result.reShunnedCount++;
-                    result.newlyShunned.push({
-                        ip,
-                        cve: cveTag,
-                        ruleName: threat.rule.name,
-                        hits: threat.matched.count,
-                        countryCode: threat.matched.countryCode,
-                        cityName: threat.matched.cityName,
-                        firewalls: fwExec.targetLabel
-                    });
+                    toReShun.push({ ip, threat, cveTag, existingRecord });
                 }
             } else {
-                // New threat actor identified: execute immediate automatic perimeter firewall shun!
-                const fwExec = await executeFirewallCommand(`shun ${ip}`, targetHost);
+                toNewShun.push({ ip, threat, cveTag });
+            }
+        }
 
+        const allIpsToShun = [...toReShun.map(i => i.ip), ...toNewShun.map(i => i.ip)];
+        if (allIpsToShun.length > 0) {
+            // Execute all shuns inside a SINGLE SSH session per firewall node
+            const fwExec = await executeFirewallBulkCommands(
+                allIpsToShun.map(ip => `shun ${ip}`),
+                targetHost
+            );
+
+            for (const { ip, threat, cveTag, existingRecord } of toReShun) {
+                await prisma.netscalerCveShun.update({
+                    where: { ip },
+                    data: {
+                        status: "ACTIVE",
+                        matchCount: existingRecord.matchCount + threat.matched.count,
+                        shunnedAt: new Date(),
+                        lastSeenAt: new Date(),
+                        targetFirewalls: fwExec.targetLabel,
+                        removedAt: null,
+                        removedBy: null,
+                        samplePayload: threat.matched.sampleMessage || existingRecord.samplePayload,
+                        notes: `Re-shunned automatically: detected recurrence of ${threat.rule.name}`
+                    }
+                });
+
+                await logAudit(
+                    "NETSCALER_CVE_AUTO_SHUN_RECURRENCE",
+                    `Re-applied perimeter shun for ${ip} on recurrence of ${threat.rule.name} (${cveTag}) across ${fwExec.targetLabel}.`
+                ).catch(() => {});
+
+                result.reShunnedCount++;
+                result.newlyShunned.push({
+                    ip,
+                    cve: cveTag,
+                    ruleName: threat.rule.name,
+                    hits: threat.matched.count,
+                    countryCode: threat.matched.countryCode,
+                    cityName: threat.matched.cityName,
+                    firewalls: fwExec.targetLabel
+                });
+            }
+
+            for (const { ip, threat, cveTag } of toNewShun) {
                 await prisma.netscalerCveShun.create({
                     data: {
                         ip,
@@ -331,13 +368,11 @@ export async function runNetscalerCveAutoShunCycle(
                     }
                 });
 
-                // Audit logging
                 await logAudit(
                     "NETSCALER_CVE_AUTO_SHUN",
                     `Automated zero-day shun applied for ${ip} matching ${threat.rule.name} (${cveTag}) across ${fwExec.targetLabel}.`
                 ).catch(() => {});
 
-                // Record in dual history
                 const ipInfo = await getIpInfoLite(ip).catch(() => null);
                 await prisma.firewallQueryHistory.create({
                     data: {

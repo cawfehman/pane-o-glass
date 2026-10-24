@@ -4,7 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { getBulkUserAdStatus } from "@/lib/ldap";
 import { isPrivateIp } from "@/lib/ipinfo";
 import { NetscalerGraylogClient } from "@/lib/netscaler-graylog";
-import { executeFirewallCommand } from "@/lib/netscaler-auto-shun";
+import { executeFirewallBulkCommands } from "@/lib/netscaler-auto-shun";
 import { logAudit } from "@/lib/audit";
 import {
     fetchImprivataBatchIndex,
@@ -1262,8 +1262,21 @@ export async function blockCitrixAbusiveIps(params: {
     const firewallResults: any[] = [];
     let blacklistedCount = 0;
 
+    if (blockedIps.length === 0) {
+        return {
+            success: true,
+            blockedIps: [],
+            skippedIps,
+            firewallResults: [],
+            blacklistedCount: 0,
+        };
+    }
+
+    // Open a SINGLE SSH session per firewall and issue all `shun <ip>` commands inside that single session
+    const bulkCommands = blockedIps.map((ip) => `shun ${ip}`);
+    const fwExec = await executeFirewallBulkCommands(bulkCommands, targetHost);
+
     for (const ip of blockedIps) {
-        const fwExec = await executeFirewallCommand(`shun ${ip}`, targetHost);
         firewallResults.push({
             ip,
             success: fwExec.success,
@@ -1517,6 +1530,13 @@ export async function runCitrixLoginAutoShunCycle(options?: {
     }
     const actorUserId = options?.triggeredBy || guardianUser?.id || "Guardian";
 
+    const candidatesToShun: {
+        ipEval: CitrixIpEvaluation;
+        authFailures: number;
+        matchesBlacklistedAsnRule: boolean;
+        triggerReason: string;
+    }[] = [];
+
     for (const ipEval of triage.ipEvaluations) {
         if (ipEval.isCurrentlyShunned) {
             alreadyShunnedCount++;
@@ -1544,40 +1564,56 @@ export async function runCitrixLoginAutoShunCycle(options?: {
             ? `Blacklisted ASN ${ipEval.asn} (${ipEval.companyName}) with ${ipEval.totalFailures} failed Citrix attempt(s)`
             : `${ipEval.maxAuthFailuresIn10m} failed Citrix authentication attempts within 10m (${ipEval.verdictReason})`;
 
+        candidatesToShun.push({
+            ipEval,
+            authFailures,
+            matchesBlacklistedAsnRule,
+            triggerReason,
+        });
+    }
+
+    if (candidatesToShun.length > 0) {
+        // Execute all shuns in a SINGLE SSH connection per firewall
         const blockRes = await blockCitrixAbusiveIps({
-            ips: [ipEval.ip],
-            reason: `[Auto-Shun] ${triggerReason}`,
+            ips: candidatesToShun.map((c) => c.ipEval.ip),
+            reason:
+                candidatesToShun.length === 1
+                    ? `[Auto-Shun] ${candidatesToShun[0].triggerReason}`
+                    : `[Auto-Shun Batch] ${candidatesToShun.length} Citrix attacker IPs blocked`,
             targetHost: cfg.targetHost || "all",
             addToGuardianBlacklist: true,
             userId: actorUserId,
             clientIp: "citrix-auto-guardian",
         });
 
-        if (blockRes.blockedIps.includes(ipEval.ip)) {
-            newlyShunned.push({
-                ip: ipEval.ip,
-                asn: ipEval.asn,
-                companyName: ipEval.companyName,
-                countryCode: ipEval.countryCode,
-                authFailures,
-                maxAuthFailuresIn10m: ipEval.maxAuthFailuresIn10m,
-                isOnAsnBlacklist: ipEval.isOnAsnBlacklist,
-                reason: triggerReason,
-            });
-
-            await prisma.guardianEvent.create({
-                data: {
+        for (const item of candidatesToShun) {
+            const { ipEval, authFailures, matchesBlacklistedAsnRule, triggerReason } = item;
+            if (blockRes.blockedIps.includes(ipEval.ip)) {
+                newlyShunned.push({
                     ip: ipEval.ip,
-                    firewall: "ALL",
-                    action: "SHUNNED",
-                    reason: matchesBlacklistedAsnRule ? "BLACK_LISTED_ASN" : "CITRIX_AUTH_BURST",
-                    companyName: ipEval.companyName,
-                    companyType: ipEval.companyType,
-                    cidr: ipEval.cidr,
                     asn: ipEval.asn,
-                    details: `[Citrix Auto-Guardian] Shunned & blacklisted ${ipEval.ip}: ${triggerReason}`,
-                },
-            }).catch(() => {});
+                    companyName: ipEval.companyName,
+                    countryCode: ipEval.countryCode,
+                    authFailures,
+                    maxAuthFailuresIn10m: ipEval.maxAuthFailuresIn10m,
+                    isOnAsnBlacklist: ipEval.isOnAsnBlacklist,
+                    reason: triggerReason,
+                });
+
+                await prisma.guardianEvent.create({
+                    data: {
+                        ip: ipEval.ip,
+                        firewall: "ALL",
+                        action: "SHUNNED",
+                        reason: matchesBlacklistedAsnRule ? "BLACK_LISTED_ASN" : "CITRIX_AUTH_BURST",
+                        companyName: ipEval.companyName,
+                        companyType: ipEval.companyType,
+                        cidr: ipEval.cidr,
+                        asn: ipEval.asn,
+                        details: `[Citrix Auto-Guardian] Shunned & blacklisted ${ipEval.ip}: ${triggerReason}`,
+                    },
+                }).catch(() => {});
+            }
         }
     }
 
