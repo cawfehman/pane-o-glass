@@ -1276,6 +1276,27 @@ export async function blockCitrixAbusiveIps(params: {
     const bulkCommands = blockedIps.map((ip) => `shun ${ip}`);
     const fwExec = await executeFirewallBulkCommands(bulkCommands, targetHost);
 
+    // Pre-fetch cached IP metadata in a single query so bulk blocking 100+ IPs is instantaneous
+    const cachedEntries = await prisma.ipLookupCache
+        .findMany({ where: { ip: { in: blockedIps } } })
+        .catch(() => []);
+    const cachedMap = new Map<string, any>();
+    for (const c of cachedEntries) {
+        try {
+            const raw = JSON.parse(c.rawJson);
+            const asnRaw = typeof raw.asn === "object" ? raw.asn?.asn || "Unknown" : raw.asn || "Unknown";
+            cachedMap.set(c.ip, {
+                countryCode: c.countryCode || raw.country_code || "Unknown",
+                city: c.city || raw.city || "N/A",
+                asn: String(asnRaw),
+                companyName: raw.company?.name || raw.asn?.name || raw.as_name || raw.org || "Unknown Network",
+            });
+        } catch {}
+    }
+
+    const now = new Date();
+    const successfulFwTargets = fwExec.results.filter((r) => r.success).map((r) => r.target);
+
     for (const ip of blockedIps) {
         firewallResults.push({
             ip,
@@ -1283,59 +1304,61 @@ export async function blockCitrixAbusiveIps(params: {
             targetLabel: fwExec.targetLabel,
             results: fwExec.results,
         });
+    }
 
-        const meta = await enrichIpMetadata(ip);
+    // Process DB persistence in parallel chunks of 20 so 126+ IPs complete in ~1 second
+    const DB_CHUNK = 20;
+    for (let i = 0; i < blockedIps.length; i += DB_CHUNK) {
+        const chunk = blockedIps.slice(i, i + DB_CHUNK);
+        await Promise.all(
+            chunk.map(async (ip) => {
+                const meta =
+                    cachedMap.get(ip) ||
+                    (blockedIps.length <= 5
+                        ? await enrichIpMetadata(ip)
+                        : { countryCode: "Unknown", city: "N/A", asn: "Unknown", companyName: "Unknown Network" });
 
-        // Record in FirewallQueryHistory
-        await prisma.firewallQueryHistory.create({
-            data: {
-                userId,
-                command: "Shun IP (Citrix Abuse Triage)",
-                targetIp: ip,
-                targetName: fwExec.targetLabel,
-                ipAsn: meta.asn !== "Unknown" ? meta.asn : null,
-                ipAsName: meta.companyName !== "Unknown Network" ? meta.companyName : null,
-                ipCountry: meta.countryCode !== "Unknown" ? meta.countryCode : null,
-                ipCountryCode: meta.countryCode !== "Unknown" ? meta.countryCode : null,
-            },
-        }).catch(() => {});
+                await prisma.firewallQueryHistory.create({
+                    data: {
+                        userId,
+                        command: "Shun IP (Citrix Abuse Triage)",
+                        targetIp: ip,
+                        targetName: fwExec.targetLabel,
+                        ipAsn: meta.asn !== "Unknown" ? meta.asn : null,
+                        ipAsName: meta.companyName !== "Unknown Network" ? meta.companyName : null,
+                        ipCountry: meta.countryCode !== "Unknown" ? meta.countryCode : null,
+                        ipCountryCode: meta.countryCode !== "Unknown" ? meta.countryCode : null,
+                    },
+                }).catch(() => {});
 
-        // Also insert into FirewallShunStats & ShunDatabaseIp so the Shun Database tab reflects it immediately
-        const now = new Date();
-        await prisma.shunDatabaseIp.upsert({
-            where: { ip },
-            update: {
-                ipAsn: meta.asn !== "Unknown" ? meta.asn : undefined,
-                org: meta.companyName !== "Unknown Network" ? meta.companyName : undefined,
-                ipCountryCode: meta.countryCode !== "Unknown" ? meta.countryCode : undefined,
-                city: meta.city !== "N/A" ? meta.city : undefined,
-                enrichedAt: now,
-            },
-            create: {
-                ip,
-                ipAsn: meta.asn !== "Unknown" ? meta.asn : null,
-                org: meta.companyName !== "Unknown Network" ? meta.companyName : null,
-                ipCountryCode: meta.countryCode !== "Unknown" ? meta.countryCode : null,
-                city: meta.city !== "N/A" ? meta.city : null,
-                enrichedAt: now,
-            },
-        }).catch(() => {});
+                await prisma.shunDatabaseIp.upsert({
+                    where: { ip },
+                    update: {
+                        ipAsn: meta.asn !== "Unknown" ? meta.asn : undefined,
+                        org: meta.companyName !== "Unknown Network" ? meta.companyName : undefined,
+                        ipCountryCode: meta.countryCode !== "Unknown" ? meta.countryCode : undefined,
+                        city: meta.city !== "N/A" ? meta.city : undefined,
+                        enrichedAt: now,
+                    },
+                    create: {
+                        ip,
+                        ipAsn: meta.asn !== "Unknown" ? meta.asn : null,
+                        org: meta.companyName !== "Unknown Network" ? meta.companyName : null,
+                        ipCountryCode: meta.countryCode !== "Unknown" ? meta.countryCode : null,
+                        city: meta.city !== "N/A" ? meta.city : null,
+                        enrichedAt: now,
+                    },
+                }).catch(() => {});
 
-        for (const r of fwExec.results) {
-            if (r.success) {
-                const existingStat = await prisma.firewallShunStats.findFirst({
-                    where: { ip, firewall: r.target },
-                });
-                if (existingStat) {
-                    await prisma.firewallShunStats.update({
-                        where: { id: existingStat.id },
-                        data: { isActive: true, lastSeen: now },
-                    }).catch(() => {});
-                } else {
-                    await prisma.firewallShunStats.create({
-                        data: {
+                for (const targetFw of successfulFwTargets) {
+                    await prisma.firewallShunStats.upsert({
+                        where: {
+                            ip_firewall: { ip, firewall: targetFw },
+                        },
+                        update: { isActive: true, lastSeen: now },
+                        create: {
                             ip,
-                            firewall: r.target,
+                            firewall: targetFw,
                             firstSeen: now,
                             lastSeen: now,
                             daysShunned: 1,
@@ -1343,26 +1366,33 @@ export async function blockCitrixAbusiveIps(params: {
                         },
                     }).catch(() => {});
                 }
-            }
-        }
 
-        if (addToGuardianBlacklist) {
-            const blReason = `[Citrix Abuse Guard] ${reason}`;
-            await prisma.guardianBlacklist.upsert({
-                where: { ip },
-                update: { reason: blReason },
-                create: { ip, reason: blReason },
-            }).catch(() => {});
-            blacklistedCount++;
-        }
-
-        await logAudit(
-            "CITRIX_ABUSE_SHUN",
-            `Blocked Citrix abusive IP ${ip} on ${fwExec.targetLabel}${addToGuardianBlacklist ? " + added to Guardian Do-Not-Unshun Blacklist" : ""}. Reason: ${reason}`,
-            userId,
-            clientIp
+                if (addToGuardianBlacklist) {
+                    const blReason = `[Citrix Abuse Guard] ${reason}`;
+                    await prisma.guardianBlacklist.upsert({
+                        where: { ip },
+                        update: { reason: blReason },
+                        create: { ip, reason: blReason },
+                    }).catch(() => {});
+                    blacklistedCount++;
+                }
+            })
         );
     }
+
+    const ipSummary =
+        blockedIps.length <= 5
+            ? blockedIps.join(", ")
+            : `${blockedIps.length} IPs (${blockedIps.slice(0, 4).join(", ")}...)`;
+
+    await logAudit(
+        "CITRIX_ABUSE_SHUN",
+        `Blocked Citrix abusive IP(s) [${ipSummary}] on ${fwExec.targetLabel} via single SSH session per firewall${
+            addToGuardianBlacklist ? " + added to Guardian Do-Not-Unshun Blacklist" : ""
+        }. Reason: ${reason}`,
+        userId,
+        clientIp
+    ).catch(() => {});
 
     return {
         success: firewallResults.every((r) => r.success),

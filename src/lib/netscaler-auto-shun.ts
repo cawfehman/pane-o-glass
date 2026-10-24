@@ -139,10 +139,13 @@ export async function executeFirewallBulkCommands(commands: string[], targetHost
                         const run = async () => {
                             await waitForPrompt(12000);
                             fullTranscript = "";
-                            for (const cmd of cleanCommands) {
+                            // Send commands in chunks of 20 inside the single SSH session to avoid TTY buffer overflow while staying fast for 100+ IPs
+                            const CHUNK_SIZE = 20;
+                            for (let i = 0; i < cleanCommands.length; i += CHUNK_SIZE) {
+                                const batch = cleanCommands.slice(i, i + CHUNK_SIZE);
                                 output = "";
-                                stream.write(`${cmd}\n`);
-                                await waitForPrompt(5000);
+                                stream.write(`${batch.join("\n")}\n`);
+                                await waitForPrompt(8000);
                             }
                             stream.write("exit\n");
                             await new Promise(r => setTimeout(r, 350));
