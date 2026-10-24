@@ -4,7 +4,8 @@ import { useState, useEffect, useCallback } from "react";
 import {
     ShieldAlert, ShieldCheck, AlertTriangle, Lock, Unlock, UserCheck, UserX,
     Globe, Server, RefreshCw, Search, CheckCircle2, Flame, Eye, ExternalLink,
-    Sliders, Terminal, Laptop, FileSpreadsheet, Ban, Shield, ChevronRight, X
+    Sliders, Terminal, Laptop, FileSpreadsheet, Ban, Shield, ChevronRight, X,
+    Download, ClipboardCheck, FileText
 } from "lucide-react";
 import Link from "next/link";
 import type {
@@ -62,6 +63,41 @@ export default function CitrixLoginTriageTab({
     const [autoShunToggling, setAutoShunToggling] = useState<boolean>(false);
     const [autoShunRunningCycle, setAutoShunRunningCycle] = useState<boolean>(false);
     const [cycleFeedback, setCycleFeedback] = useState<string | null>(null);
+
+    // Positive Confirmation Shun Action Audit Log
+    const [showShunLogModal, setShowShunLogModal] = useState<boolean>(false);
+    const [shunLogsLoading, setShunLogsLoading] = useState<boolean>(false);
+    const [shunLogEntries, setShunLogEntries] = useState<any[]>([]);
+    const [shunLogRawText, setShunLogRawText] = useState<string>("");
+    const [shunLogTab, setShunLogTab] = useState<"cards" | "raw">("cards");
+
+    const fetchShunLogs = useCallback(async () => {
+        setShunLogsLoading(true);
+        try {
+            const [jsonRes, rawRes] = await Promise.all([
+                fetch("/api/firewall/shun/log?limit=50"),
+                fetch("/api/firewall/shun/log?raw=true"),
+            ]);
+            if (jsonRes.ok) {
+                const j = await jsonRes.json();
+                setShunLogEntries(j.entries || []);
+            }
+            if (rawRes.ok) {
+                const txt = await rawRes.text();
+                setShunLogRawText(txt);
+            }
+        } catch (e) {
+            console.error("Failed to load shun logs:", e);
+        } finally {
+            setShunLogsLoading(false);
+        }
+    }, []);
+
+    useEffect(() => {
+        if (showShunLogModal) {
+            fetchShunLogs();
+        }
+    }, [showShunLogModal, fetchShunLogs]);
 
     const fetchTriage = useCallback(async () => {
         setLoading(true);
@@ -373,6 +409,15 @@ export default function CitrixLoginTriageTab({
                     >
                         <FileSpreadsheet className="w-3.5 h-3.5" />
                         Export CSV
+                    </button>
+
+                    <button
+                        onClick={() => setShowShunLogModal(true)}
+                        title="Open Positive Confirmation Shun Action Audit Log to verify firewall shuns and download log files."
+                        className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium bg-slate-800/80 hover:bg-slate-700 text-slate-200 border border-slate-700"
+                    >
+                        <ClipboardCheck className="w-3.5 h-3.5 text-emerald-400" />
+                        Shun Audit Log
                     </button>
 
                     <button
@@ -1298,13 +1343,63 @@ export default function CitrixLoginTriageTab({
                             )}
 
                             {blockModal.result && (
-                                <div className="p-3 rounded-lg bg-emerald-950/40 border border-emerald-500/40 text-emerald-300 space-y-1">
-                                    <div className="font-semibold">
-                                        ✓ Executed perimeter shun on {blockModal.result.blockedIps?.length || 0} IP(s)
-                                        {blockModal.result.blacklistedCount
-                                            ? ` and locked ${blockModal.result.blacklistedCount} IP(s) in Guardian Blacklist.`
-                                            : "."}
+                                <div className="p-3.5 rounded-lg bg-emerald-950/40 border border-emerald-500/40 text-emerald-300 space-y-3">
+                                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                                        <div className="font-semibold flex items-center gap-2">
+                                            <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                                            <span>
+                                                Perimeter shun executed on {blockModal.result.blockedIps?.length || 0} IP(s)
+                                                {blockModal.result.blacklistedCount
+                                                    ? ` and locked ${blockModal.result.blacklistedCount} in Guardian Blacklist.`
+                                                    : "."}
+                                            </span>
+                                        </div>
+                                        <a
+                                            href="/api/firewall/shun/log?download=true"
+                                            download
+                                            className="px-2.5 py-1 rounded bg-emerald-600/30 hover:bg-emerald-600/50 border border-emerald-500/50 text-emerald-200 text-xs font-semibold flex items-center gap-1.5 transition-all self-start sm:self-auto"
+                                            title="Download positive confirmation audit log file (.log)"
+                                        >
+                                            <Download className="w-3.5 h-3.5" />
+                                            Download Log (.log)
+                                        </a>
                                     </div>
+
+                                    {blockModal.result.positiveConfirmation && (
+                                        <div className="pt-2.5 border-t border-emerald-500/20 text-xs space-y-2">
+                                            <div className="flex items-center justify-between">
+                                                <div className="text-emerald-200 font-medium">
+                                                    {blockModal.result.positiveConfirmation.summary}
+                                                </div>
+                                                <button
+                                                    onClick={() => setShowShunLogModal(true)}
+                                                    className="text-xs text-indigo-400 hover:text-indigo-300 underline font-medium"
+                                                >
+                                                    View Detailed Audit Log
+                                                </button>
+                                            </div>
+
+                                            {blockModal.result.positiveConfirmation.nodeVerifications && (
+                                                <div className="grid grid-cols-2 gap-1.5 mt-1.5">
+                                                    {blockModal.result.positiveConfirmation.nodeVerifications.map((n: any) => (
+                                                        <div
+                                                            key={n.target}
+                                                            className={`px-2.5 py-1.5 rounded text-[11px] font-mono border flex items-center justify-between ${
+                                                                n.success
+                                                                    ? "bg-emerald-950/80 border-emerald-500/30 text-emerald-300"
+                                                                    : "bg-red-950/80 border-red-500/30 text-red-300"
+                                                            }`}
+                                                        >
+                                                            <span className="truncate">{n.target}</span>
+                                                            <span className="font-semibold">
+                                                                {n.success ? "✓ Confirmed Active" : "✗ Warning"}
+                                                            </span>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
                                 </div>
                             )}
                         </div>
@@ -1330,6 +1425,208 @@ export default function CitrixLoginTriageTab({
                     </div>
                 </div>
             )}
+
+            {/* Positive Confirmation Shun Action Audit Log Modal */}
+            {showShunLogModal && (
+                <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+                    <div className="bg-slate-900 border border-slate-700 rounded-xl max-w-4xl w-full max-h-[85vh] flex flex-col shadow-2xl">
+                        <div className="p-4 border-b border-slate-800 flex items-center justify-between bg-slate-950/60 rounded-t-xl">
+                            <div className="flex items-center gap-2.5">
+                                <div className="p-2 rounded-lg bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                                    <ClipboardCheck className="w-5 h-5" />
+                                </div>
+                                <div>
+                                    <h3 className="text-sm font-semibold text-white flex items-center gap-2">
+                                        Perimeter Shun Audit Log & Positive Confirmation
+                                    </h3>
+                                    <p className="text-xs text-slate-400">
+                                        Audit records persisted to <code className="text-emerald-400">logs/shun-actions.log</code> confirming firewall execution status.
+                                    </p>
+                                </div>
+                            </div>
+                            <button
+                                onClick={() => setShowShunLogModal(false)}
+                                className="p-1 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white"
+                            >
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
+
+                        {/* Modal Toolbar */}
+                        <div className="px-4 py-2.5 bg-slate-950/40 border-b border-slate-800 flex items-center justify-between gap-3 text-xs">
+                            <div className="flex items-center gap-1.5 bg-slate-800/80 p-0.5 rounded-lg border border-slate-700">
+                                <button
+                                    onClick={() => setShunLogTab("cards")}
+                                    className={`px-3 py-1 rounded-md font-medium transition-all ${
+                                        shunLogTab === "cards"
+                                            ? "bg-indigo-600 text-white"
+                                            : "text-slate-400 hover:text-white"
+                                    }`}
+                                >
+                                    Parsed Events ({shunLogEntries.length})
+                                </button>
+                                <button
+                                    onClick={() => setShunLogTab("raw")}
+                                    className={`px-3 py-1 rounded-md font-medium transition-all ${
+                                        shunLogTab === "raw"
+                                            ? "bg-indigo-600 text-white"
+                                            : "text-slate-400 hover:text-white"
+                                    }`}
+                                >
+                                    Raw Log File
+                                </button>
+                            </div>
+
+                            <div className="flex items-center gap-2">
+                                <button
+                                    onClick={fetchShunLogs}
+                                    disabled={shunLogsLoading}
+                                    className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 flex items-center gap-1.5"
+                                >
+                                    <RefreshCw className={`w-3.5 h-3.5 ${shunLogsLoading ? "animate-spin text-indigo-400" : ""}`} />
+                                    Refresh
+                                </button>
+                                <a
+                                    href="/api/firewall/shun/log?download=true"
+                                    download
+                                    className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-medium flex items-center gap-1.5 shadow-sm shadow-emerald-600/30"
+                                >
+                                    <Download className="w-3.5 h-3.5" />
+                                    Download shun-actions.log
+                                </a>
+                            </div>
+                        </div>
+
+                        {/* Modal Body */}
+                        <div className="p-4 overflow-y-auto flex-1 space-y-3 font-sans text-xs">
+                            {shunLogsLoading ? (
+                                <div className="py-12 flex flex-col items-center justify-center text-slate-400 gap-2">
+                                    <RefreshCw className="w-6 h-6 animate-spin text-indigo-400" />
+                                    <span>Loading positive confirmation records...</span>
+                                </div>
+                            ) : shunLogTab === "raw" ? (
+                                <pre className="p-3.5 bg-slate-950 rounded-lg border border-slate-800 font-mono text-[11px] text-slate-300 whitespace-pre-wrap overflow-x-auto leading-relaxed">
+                                    {shunLogRawText || "No shun log records found."}
+                                </pre>
+                            ) : shunLogEntries.length === 0 ? (
+                                <div className="py-12 text-center text-slate-400">
+                                    No shun actions recorded yet in this session.
+                                </div>
+                            ) : (
+                                shunLogEntries.map((entry: any, idx: number) => {
+                                    const isConfirmedAll = entry.verdict === "CONFIRMED_ALL_NODES";
+                                    return (
+                                        <div
+                                            key={idx}
+                                            className="p-3.5 rounded-xl bg-slate-950/60 border border-slate-800 space-y-2.5"
+                                        >
+                                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800/80 pb-2">
+                                                <div className="flex items-center gap-2">
+                                                    <span
+                                                        className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
+                                                            isConfirmedAll
+                                                                ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/40"
+                                                                : "bg-amber-500/20 text-amber-300 border border-amber-500/40"
+                                                        }`}
+                                                    >
+                                                        {entry.verdict?.replace(/_/g, " ")}
+                                                    </span>
+                                                    <span className="font-semibold text-white">
+                                                        {entry.action}
+                                                    </span>
+                                                    <span className="text-slate-400">
+                                                        • {entry.ips?.length || 0} IP(s)
+                                                    </span>
+                                                </div>
+                                                <div className="text-[11px] text-slate-400">
+                                                    {entry.timestamp ? new Date(entry.timestamp).toLocaleString() : ""}
+                                                </div>
+                                            </div>
+
+                                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-[11px] text-slate-300">
+                                                <div>
+                                                    <span className="text-slate-500">Initiator:</span>{" "}
+                                                    <span className="text-slate-200 font-medium">{entry.initiator}</span>
+                                                </div>
+                                                <div>
+                                                    <span className="text-slate-500">Fleet:</span>{" "}
+                                                    <span className="text-slate-200">{entry.targetFleet}</span>
+                                                </div>
+                                                <div>
+                                                    <span className="text-slate-500">Guardian Lock:</span>{" "}
+                                                    <span className={entry.addedToGuardianBlacklist ? "text-amber-400 font-medium" : "text-slate-400"}>
+                                                        {entry.addedToGuardianBlacklist ? "Yes (Protected)" : "No"}
+                                                    </span>
+                                                </div>
+                                            </div>
+
+                                            {entry.reason && (
+                                                <div className="text-[11px] text-slate-400 bg-slate-900/60 p-2 rounded border border-slate-800">
+                                                    <span className="text-slate-500 font-medium">Reason:</span> {entry.reason}
+                                                </div>
+                                            )}
+
+                                            {/* Node Verifications */}
+                                            {entry.nodeVerifications && (
+                                                <div className="space-y-1">
+                                                    <div className="text-[10px] uppercase font-bold text-slate-500 tracking-wider">
+                                                        Firewall Nodes Positive Confirmation
+                                                    </div>
+                                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                                                        {entry.nodeVerifications.map((n: any, nIdx: number) => (
+                                                            <div
+                                                                key={nIdx}
+                                                                className={`p-2 rounded border font-mono text-[11px] flex items-center justify-between ${
+                                                                    n.success
+                                                                        ? "bg-emerald-950/30 border-emerald-500/30 text-emerald-300"
+                                                                        : "bg-red-950/30 border-red-500/30 text-red-300"
+                                                                }`}
+                                                            >
+                                                                <div>
+                                                                    <div className="font-semibold text-white">{n.target}</div>
+                                                                    <div className="text-[10px] text-slate-400">
+                                                                        {n.commandsCount} cmd(s) • {n.promptConfirmed ? "Prompt confirmed" : "Closed cleanly"}
+                                                                    </div>
+                                                                </div>
+                                                                <span className="text-xs font-bold">
+                                                                    {n.success ? "✓ Active" : "✗ Error"}
+                                                                </span>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            {/* IPs Sample */}
+                                            {entry.ips && (
+                                                <div className="text-[11px] text-slate-400 pt-1 border-t border-slate-800/60">
+                                                    <span className="text-slate-500">IPs:</span>{" "}
+                                                    {entry.ips.slice(0, 8).join(", ")}
+                                                    {entry.ips.length > 8 && ` +${entry.ips.length - 8} more`}
+                                                </div>
+                                            )}
+                                        </div>
+                                    );
+                                })
+                            )}
+                        </div>
+
+                        {/* Modal Footer */}
+                        <div className="p-3 bg-slate-950/80 border-t border-slate-800 rounded-b-xl flex items-center justify-between text-xs text-slate-400">
+                            <div>
+                                Confirmation log file: <code className="text-emerald-400 font-mono">logs/shun-actions.log</code>
+                            </div>
+                            <button
+                                onClick={() => setShowShunLogModal(false)}
+                                className="px-4 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 font-medium"
+                            >
+                                Close
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
         </div>
     );
 }

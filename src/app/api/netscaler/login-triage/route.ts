@@ -118,6 +118,7 @@ export async function POST(req: NextRequest) {
                 addToGuardianBlacklist,
                 userId,
                 clientIp,
+                initiatorEmail: session.user.email || username || userId,
             });
             return NextResponse.json(result);
         }

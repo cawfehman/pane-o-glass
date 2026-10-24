@@ -5,6 +5,7 @@ import { logAudit } from "@/lib/audit";
 import { prisma } from "@/lib/prisma";
 import { hasPermission } from "@/app/actions/permissions";
 import { isPrivateIp, getIpInfoLite } from "@/lib/ipinfo";
+import { analyzeFirewallVerification, recordShunActionLog } from "@/lib/shun-logger";
 
 interface FwExecutionResult {
     hostId: string;
@@ -279,13 +280,30 @@ export async function POST(req: Request) {
             console.error("Dual audit to FirewallQueryHistory failed:", e.message);
         }
 
+        let verificationResult = null;
+        if (action === "add" || action === "shun" || action === "remove") {
+            const verification = analyzeFirewallVerification(executionResults, targetIps.length);
+            verificationResult = verification;
+            await recordShunActionLog({
+                action: action === "remove" ? "UNSHUN" : targetIps.length > 1 ? "BULK_SHUN" : "SHUN",
+                initiator: (session.user as any)?.email || (session.user as any)?.name || session.user?.id || "Firewall Operator",
+                clientIp,
+                reason: `Perimeter firewall ${action === "remove" ? "un-shun" : "shun"} executed via Firewall Tool`,
+                targetFleet: targetLabel,
+                ips: targetIps,
+                nodeVerifications: verification.nodeVerifications,
+                verdict: verification.verdict,
+            }).catch(() => {});
+        }
+
         return NextResponse.json({
             success: overallSuccess,
             command: command,
             target: targetLabel,
             stdout: aggregatedStdout,
             stderr: aggregatedStderr,
-            results: executionResults
+            results: executionResults,
+            positiveConfirmation: verificationResult,
         });
 
     } catch (error: any) {

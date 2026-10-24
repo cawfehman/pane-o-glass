@@ -6,6 +6,7 @@ import { isPrivateIp } from "@/lib/ipinfo";
 import { NetscalerGraylogClient } from "@/lib/netscaler-graylog";
 import { executeFirewallBulkCommands } from "@/lib/netscaler-auto-shun";
 import { logAudit } from "@/lib/audit";
+import { analyzeFirewallVerification, recordShunActionLog, ShunNodeVerification } from "@/lib/shun-logger";
 import {
     fetchImprivataBatchIndex,
     matchEventToImprivataSession,
@@ -1229,12 +1230,19 @@ export async function blockCitrixAbusiveIps(params: {
     addToGuardianBlacklist?: boolean;
     userId: string;
     clientIp: string;
+    initiatorEmail?: string;
 }): Promise<{
     success: boolean;
     blockedIps: string[];
     skippedIps: string[];
     firewallResults: any[];
     blacklistedCount: number;
+    positiveConfirmation?: {
+        verdict: "CONFIRMED_ALL_NODES" | "PARTIAL_SUCCESS" | "FAILED";
+        summary: string;
+        nodeVerifications: ShunNodeVerification[];
+        logPath: string;
+    };
 }> {
     const {
         ips,
@@ -1243,6 +1251,7 @@ export async function blockCitrixAbusiveIps(params: {
         addToGuardianBlacklist = true,
         userId,
         clientIp,
+        initiatorEmail,
     } = params;
 
     const ipv4Regex = /^(25[0-5]|2[0-4]\d|[01]?\d\d?)\.(25[0-5]|2[0-4]\d|[01]?\d\d?)\.(25[0-5]|2[0-4]\d|[01]?\d\d?)\.(25[0-5]|2[0-4]\d|[01]?\d\d?)$/;
@@ -1385,9 +1394,25 @@ export async function blockCitrixAbusiveIps(params: {
             ? blockedIps.join(", ")
             : `${blockedIps.length} IPs (${blockedIps.slice(0, 4).join(", ")}...)`;
 
+    // Positive confirmation analysis across all targeted perimeter firewalls
+    const verification = analyzeFirewallVerification(fwExec.results, bulkCommands.length);
+
+    // Persist verified shun action into dedicated audit log file `logs/shun-actions.log` & `logs/shun-actions.jsonl`
+    const logResult = await recordShunActionLog({
+        action: clientIp === "citrix-auto-guardian" ? "AUTO_GUARDIAN_SHUN" : "BULK_SHUN",
+        initiator: initiatorEmail || userId || "Citrix Login Abuse Guard",
+        clientIp,
+        reason,
+        targetFleet: fwExec.targetLabel,
+        ips: blockedIps,
+        addedToGuardianBlacklist: addToGuardianBlacklist,
+        nodeVerifications: verification.nodeVerifications,
+        verdict: verification.verdict,
+    });
+
     await logAudit(
         "CITRIX_ABUSE_SHUN",
-        `Blocked Citrix abusive IP(s) [${ipSummary}] on ${fwExec.targetLabel} via single SSH session per firewall${
+        `Blocked Citrix abusive IP(s) [${ipSummary}] on ${fwExec.targetLabel} (${verification.summary})${
             addToGuardianBlacklist ? " + added to Guardian Do-Not-Unshun Blacklist" : ""
         }. Reason: ${reason}`,
         userId,
@@ -1400,6 +1425,12 @@ export async function blockCitrixAbusiveIps(params: {
         skippedIps,
         firewallResults,
         blacklistedCount,
+        positiveConfirmation: {
+            verdict: verification.verdict,
+            summary: verification.summary,
+            nodeVerifications: verification.nodeVerifications,
+            logPath: logResult.logPath,
+        },
     };
 }
 
