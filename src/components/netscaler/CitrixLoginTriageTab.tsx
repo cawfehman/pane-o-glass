@@ -6,8 +6,9 @@ import {
     ShieldAlert, ShieldCheck, AlertTriangle, Lock, Unlock, UserCheck, UserX,
     Globe, Server, RefreshCw, Search, CheckCircle2, Flame, Eye, ExternalLink,
     Sliders, Terminal, Laptop, FileSpreadsheet, Ban, Shield, ChevronRight, X,
-    Download, ClipboardCheck, FileText, Sparkles
+    Download, ClipboardCheck, FileText, Sparkles, Home
 } from "lucide-react";
+import { ToolHelp } from "@/components/ToolHelp";
 import Link from "next/link";
 import { ShunDatabaseTab } from "@/components/firewall/ShunDatabaseTab";
 import type {
@@ -42,7 +43,7 @@ export default function CitrixLoginTriageTab({
     const [subView, setSubView] = useState<"ips" | "asns" | "users" | "events">("ips");
 
     // Filters
-    const [verdictFilter, setVerdictFilter] = useState<"ALL" | GuardianAbuseVerdict>("ALL");
+    const [verdictFilter, setVerdictFilter] = useState<"ALL" | GuardianAbuseVerdict | "ABUSIVE_RESIDENTIAL">("ALL");
     const [categoryFilter, setCategoryFilter] = useState<"ALL" | CitrixIssueCategory>("ALL");
     const [searchTerm, setSearchTerm] = useState("");
 
@@ -437,7 +438,11 @@ export default function CitrixLoginTriageTab({
     };
 
     const filteredIps: CitrixIpEvaluation[] = (data?.ipEvaluations || []).filter((item) => {
-        if (verdictFilter !== "ALL" && item.verdict !== verdictFilter) return false;
+        if (verdictFilter === "ABUSIVE_RESIDENTIAL") {
+            if (!item.isResidentialAbusive || item.verdict !== "ABUSIVE_BLOCK") return false;
+        } else if (verdictFilter !== "ALL" && item.verdict !== verdictFilter) {
+            return false;
+        }
         if (!searchTerm.trim()) return true;
         const q = searchTerm.toLowerCase();
         return (
@@ -610,6 +615,7 @@ export default function CitrixLoginTriageTab({
                                 <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-indigo-500/15 text-indigo-400 border border-indigo-500/30">
                                     Smart Guardian Engine
                                 </span>
+                                <ToolHelp toolId="citrix-triage" iconSize={16} />
                             </h2>
                             <p className="text-xs text-slate-400 mt-0.5">
                                 Correlates 3rd-party NetScaler <code className="text-slate-300">AAA LOGIN_FAILED</code>, <code className="text-slate-300">Imprivata-prod</code> policy denials, and <code className="text-slate-300">STA/IDP</code> failures with Active Directory & ISP intelligence.
@@ -982,7 +988,39 @@ export default function CitrixLoginTriageTab({
                         {loading ? "..." : data?.summary.legitProtectedIpCount ?? 0}
                     </div>
                     <div className="text-[11px] text-slate-400 mt-2">
-                        Verified Cooper AD users on US ISPs (Protected from shun)
+                        Verified Cooper AD users & households on US ISPs
+                    </div>
+                </div>
+
+                {/* 5th KPI: Abusive Residential IPs & Reason Breakdown */}
+                <div
+                    onClick={() => {
+                        setSubView("ips");
+                        setVerdictFilter(verdictFilter === "ABUSIVE_RESIDENTIAL" ? "ALL" : "ABUSIVE_RESIDENTIAL");
+                    }}
+                    className={`cursor-pointer rounded-xl p-4 border transition-all ${
+                        verdictFilter === "ABUSIVE_RESIDENTIAL"
+                            ? "bg-rose-950/40 border-rose-500/70 shadow-lg shadow-rose-950/20"
+                            : "bg-slate-900/60 border-slate-800 hover:border-rose-500/40"
+                    }`}
+                >
+                    <div className="flex items-center justify-between text-xs text-rose-300 font-semibold">
+                        <span>Abusive Residential IPs</span>
+                        <Home className="w-4 h-4 text-rose-400" />
+                    </div>
+                    <div className="text-2xl font-bold text-rose-400 mt-1">
+                        {loading ? "..." : data?.summary.residentialBlockedCount ?? 0}
+                    </div>
+                    <div className="flex flex-wrap gap-1 mt-2">
+                        {(data?.summary.residentialBlockReasons || []).length > 0 ? (
+                            data?.summary.residentialBlockReasons.slice(0, 2).map((r) => (
+                                <span key={r.reason} className="px-1.5 py-0.5 rounded bg-rose-500/15 text-rose-300 border border-rose-500/30 text-[10px] font-medium truncate max-w-full" title={r.reason}>
+                                    {r.reason}: {r.count}
+                                </span>
+                            ))
+                        ) : (
+                            <span className="text-[11px] text-slate-400">0 residential spray or brute-force hits</span>
+                        )}
                     </div>
                 </div>
             </div>
@@ -1046,6 +1084,7 @@ export default function CitrixLoginTriageTab({
                         >
                             <option value="ALL">All Verdicts</option>
                             <option value="ABUSIVE_BLOCK">Abusive — Block Only</option>
+                            <option value="ABUSIVE_RESIDENTIAL">Abusive Residential IPs ({(data?.summary.residentialBlockedCount ?? 0)})</option>
                             <option value="SUSPICIOUS_WATCH">Suspicious — Watch Only</option>
                             <option value="LEGIT_USER_ISSUE">Guardian Protected Only</option>
                         </select>
@@ -1163,7 +1202,17 @@ export default function CitrixLoginTriageTab({
                                                     <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700">
                                                         {item.asn}
                                                     </span>
-                                                    {item.isResidentialIsp ? (
+                                                    {item.isResidentialAbusive ? (
+                                                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-rose-500/20 text-rose-300 border border-rose-500/40 font-semibold flex items-center gap-1">
+                                                            <Home className="w-3 h-3 text-rose-400" />
+                                                            Abusive Residential
+                                                        </span>
+                                                    ) : item.isProtectedHousehold ? (
+                                                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 font-semibold flex items-center gap-1">
+                                                            <Home className="w-3 h-3 text-emerald-400" />
+                                                            Household (2 AD Users)
+                                                        </span>
+                                                    ) : item.isResidentialIsp ? (
                                                         <span className="text-[10px] px-1.5 py-0.5 rounded bg-sky-500/15 text-sky-300 border border-sky-500/30">
                                                             ISP / Residential
                                                         </span>
@@ -1184,6 +1233,12 @@ export default function CitrixLoginTriageTab({
                                                 <p className="text-slate-300 text-[11px] mt-1.5 leading-relaxed">
                                                     {item.verdictReason}
                                                 </p>
+                                                {item.residentialBlockReason && item.verdict === "ABUSIVE_BLOCK" && (
+                                                    <div className="mt-1 text-[10px] text-rose-300 bg-rose-950/40 border border-rose-500/30 rounded px-2 py-0.5 font-semibold flex items-center gap-1.5 w-fit">
+                                                        <Home className="w-3 h-3 text-rose-400" />
+                                                        <span>Block Reason: <strong>{item.residentialBlockReason}</strong></span>
+                                                    </div>
+                                                )}
                                                 {item.protectionNote && (
                                                     <div className="mt-1.5 text-[11px] text-emerald-400 bg-emerald-950/30 border border-emerald-500/20 rounded px-2 py-1">
                                                         {item.protectionNote}

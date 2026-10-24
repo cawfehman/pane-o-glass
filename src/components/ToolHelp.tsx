@@ -27,6 +27,66 @@ export interface TooltipDetails {
 }
 
 export const helpData: Record<string, TooltipDetails> = {
+    "citrix-triage": {
+        title: "Citrix NetScaler Login & Abuse Triage (Guardian)",
+        version: "2.1.0",
+        category: "Perimeter Threat Detection & Autoshun",
+        description: "Real-time correlation of Citrix NetScaler AAA authentication failures, Imprivata RADIUS push timeouts/password errors, and origin network intelligence to protect corporate accounts and block credential attacks.",
+        capabilities: [
+            {
+                title: "Residential Threat Lens & Multi-Employee Household Exemption",
+                detail: "Applies enhanced scrutiny to residential ISPs (Comcast, Verizon, Charter, etc.) to detect compromised routers and proxyware. Protects legitimate multi-employee households (up to 2 active corporate AD accounts with prior authentication history) while strictly blocking IPs targeting ≥3 accounts or probing non-existent users.",
+                tag: "Residential Lens"
+            },
+            {
+                title: "Individual IP vs. ASN Blacklisting",
+                detail: "Guarantees that residential ASNs (e.g. AS7922 Comcast, AS701 Verizon) are never blacklisted to prevent collateral damage to remote employees. Abusive residential attackers have their specific /32 IP shunned and locked on the Guardian Do-Not-Unshun Blacklist.",
+                tag: "Precision Enforcement"
+            },
+            {
+                title: "Credential Stuffing & Password Spray Detection",
+                detail: "Identifies horizontal password spray attacks (multiple distinct usernames from a single external IP) and vertical brute-force bursts (≥5 failures in ≤10 minutes).",
+                tag: "Spray Detection"
+            },
+            {
+                title: "Imprivata RADIUS & AD Verification",
+                detail: "Correlates Imprivata ssoradius events to distinguish real password failures from benign smartphone Confirm ID push timeouts (MFA prompt expired while AD password was correct).",
+                tag: "Imprivata Correlation"
+            },
+            {
+                title: "Automated 5-Minute Auto-Shun Cycle",
+                detail: "Runs a background cycle to inspect recent failures, evaluate Guardian rules, execute SSH perimeter shuns across all 4 Cisco ASA/FTD firewalls in a single batch, and register positive audit log entries.",
+                tag: "Automated Defense"
+            }
+        ],
+        colors: [
+            {
+                name: "Abusive — Block",
+                rgb: "239, 68, 68",
+                meaning: "High-confidence attacker or credential spray. Recommended for immediate perimeter shun and Guardian Do-Not-Unshun blacklist."
+            },
+            {
+                name: "Suspicious — Watch",
+                rgb: "245, 158, 11",
+                meaning: "Anomalous STA ticket probe or non-critical authentication spike. Monitored for repeat abuse."
+            },
+            {
+                name: "Guardian Protected",
+                rgb: "16, 185, 129",
+                meaning: "Verified corporate user or legitimate 2-employee household with valid AD accounts on a US ISP."
+            },
+            {
+                name: "Blacklisted ASN",
+                rgb: "168, 85, 247",
+                meaning: "Zero-tolerance cloud/hosting ASN where a single failure triggers immediate autoshun."
+            }
+        ],
+        shortcuts: [
+            "Click any KPI card to quick-filter the external IP matrix",
+            "Click 'Re-Evaluate & Reasoning' to view live step-by-step scoring rules",
+            "Click 'Citrix Timeline' on a user to trace full session forensics"
+        ]
+    },
     crawler: {
         title: "Cisco Network Crawler & Topology Visualizer",
         version: "2.0.0",

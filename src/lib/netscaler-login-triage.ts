@@ -65,7 +65,10 @@ export interface CitrixGuardianRuleFlag {
         | "HOSTING_DATACENTER_ASN"
         | "BLACKLISTED_ASN"
         | "DISABLED_OR_LOCKED_AD"
-        | "REPEATED_STA_TICKET_ABUSE";
+        | "REPEATED_STA_TICKET_ABUSE"
+        | "RESIDENTIAL_SPRAY_ATTACK"
+        | "RESIDENTIAL_DICTIONARY_PROBE"
+        | "RESIDENTIAL_AUTH_BURST";
     label: string;
     severity: "CRITICAL" | "HIGH" | "MEDIUM";
     points: number;
@@ -114,6 +117,9 @@ export interface CitrixIpEvaluation {
     isOnGuardianBlacklist: boolean;
     guardianBlacklistReason?: string;
     isOnWatchlist: boolean;
+    isResidentialAbusive?: boolean;
+    residentialBlockReason?: string;
+    isProtectedHousehold?: boolean;
     sampleMessages: string[];
 }
 
@@ -228,6 +234,8 @@ export interface CitrixLoginTriageResponse {
         uniqueUsersImpacted: number;
         uniqueAsnsCount: number;
         blacklistedAsnsCount: number;
+        residentialBlockedCount: number;
+        residentialBlockReasons: { reason: string; count: number }[];
     };
     ipEvaluations: CitrixIpEvaluation[];
     asnMetrics: CitrixAsnMetric[];
@@ -987,13 +995,81 @@ export async function analyzeCitrixLoginTriage(
             riskScore += 35;
         }
 
-        // Guardian Safety Shield Evaluation (Protects legitimate Cooper users on US ISPs)
+        // Guardian Safety Shield & Residential Threat Lens Evaluation
         const allUsersValidAd =
             nonAnonUsers.length > 0 &&
             nonAnonUsers.every((u) => u.adStatus === "ACTIVE" || u.adStatus === "ENABLED" || u.adStatus === "LOCKED");
         const isSingleUser = nonAnonUsers.length === 1;
+        const notFoundAdUsers = nonAnonUsers.filter((u) => u.adStatus === "NOT_FOUND");
+        const invalidFormatUsers = nonAnonUsers.filter((u) => !u.isCorporateFormat);
         const isOnWatchlist = watchSet.has(ip);
         const isOnGuardianBlacklist = blacklistMap.has(ip);
+
+        // Multi-employee household detection (e.g. employee spouses sharing home residential ISP)
+        let isProtectedHousehold = false;
+        let isResidentialAbusive = false;
+        let residentialBlockReason: string | undefined;
+
+        if (meta.isResidentialIsp) {
+            if (
+                countryCode === "US" &&
+                nonAnonUsers.length >= 1 &&
+                nonAnonUsers.length <= 2 &&
+                allUsersValidAd &&
+                notFoundAdUsers.length === 0 &&
+                invalidFormatUsers.length === 0 &&
+                (citrixSucc > 0 ||
+                    hasVpnSuccessHistory ||
+                    (ipImpMfaTimeoutCount > 0 && ipImpBadPwdCount === 0) ||
+                    maxAuthFailuresIn10m < config.minFailuresForBlock)
+            ) {
+                isProtectedHousehold = nonAnonUsers.length === 2;
+            } else {
+                // Threat Lens: Residential IP with credential spray, dictionary probe, or high-velocity brute force
+                if (nonAnonUsers.length >= 3) {
+                    isResidentialAbusive = true;
+                    residentialBlockReason = "Credential Spray (≥3 Accounts)";
+                    triggeredRules.push({
+                        code: "RESIDENTIAL_SPRAY_ATTACK",
+                        label: `Residential Spray (${nonAnonUsers.length} Users)`,
+                        severity: "CRITICAL",
+                        points: 70,
+                        detail: `Residential IP targeted ${nonAnonUsers.length} distinct usernames (${nonAnonUsers.map((u) => u.username).slice(0, 4).join(", ")}). Revoked residential safety shield.`,
+                    });
+                    riskScore += 70;
+                } else if (notFoundAdUsers.length > 0 || invalidFormatUsers.length > 0) {
+                    isResidentialAbusive = true;
+                    residentialBlockReason = "Probing Non-Existent AD Accounts";
+                    triggeredRules.push({
+                        code: "RESIDENTIAL_DICTIONARY_PROBE",
+                        label: "Residential Dictionary Probe",
+                        severity: "CRITICAL",
+                        points: 65,
+                        detail: `Residential IP attempted non-existent/non-corporate username(s): ${[...notFoundAdUsers, ...invalidFormatUsers].map((u) => u.username).slice(0, 4).join(", ")}.`,
+                    });
+                    riskScore += 65;
+                } else if (maxAuthFailuresIn10m >= config.minFailuresForBlock && citrixSucc === 0 && !hasVpnSuccessHistory) {
+                    isResidentialAbusive = true;
+                    residentialBlockReason = "Rapid Auth Burst (≥5 Failures / 10m)";
+                    triggeredRules.push({
+                        code: "RESIDENTIAL_AUTH_BURST",
+                        label: `Residential Brute Force (${maxAuthFailuresIn10m}x / 10m)`,
+                        severity: "CRITICAL",
+                        points: 60,
+                        detail: `Residential IP executed ${maxAuthFailuresIn10m} authentication failures in ≤10 minutes with 0 successful logins.`,
+                    });
+                    riskScore += 60;
+                } else if (totalFailures >= config.minFailuresForBlock && citrixSucc === 0 && !hasVpnSuccessHistory) {
+                    isResidentialAbusive = true;
+                    residentialBlockReason = "High Failure Volume (0 Success)";
+                }
+
+                if (isOnGuardianBlacklist) {
+                    isResidentialAbusive = true;
+                    residentialBlockReason = residentialBlockReason || "Guardian Do-Not-Unshun Blacklist";
+                }
+            }
+        }
 
         let verdict: GuardianAbuseVerdict = "SUSPICIOUS_WATCH";
         let verdictReason = "";
@@ -1003,6 +1079,10 @@ export async function analyzeCitrixLoginTriage(
             verdict = "ABUSIVE_BLOCK";
             riskScore = Math.max(riskScore, 85);
             verdictReason = `On Guardian Do-Not-Unshun Blacklist: ${blacklistMap.get(ip)}`;
+            if (meta.isResidentialIsp) {
+                isResidentialAbusive = true;
+                residentialBlockReason = residentialBlockReason || "Guardian Do-Not-Unshun Blacklist";
+            }
         } else if (isOnWatchlist) {
             verdict = "LEGIT_USER_ISSUE";
             riskScore = Math.min(riskScore, 10);
@@ -1012,11 +1092,17 @@ export async function analyzeCitrixLoginTriage(
             verdict = "ABUSIVE_BLOCK";
             riskScore = Math.max(riskScore, 85);
             verdictReason = `Blacklisted ASN ${meta.asn} (${meta.companyName}) with ${totalFailures} failed attempt(s) — zero-tolerance ASN block.`;
+        } else if (isResidentialAbusive) {
+            verdict = "ABUSIVE_BLOCK";
+            riskScore = Math.max(riskScore, 85);
+            verdictReason = `Abusive Residential IP (${meta.companyName}): ${residentialBlockReason}`;
         } else if (
             config.protectIspWithValidAdUser &&
             countryCode === "US" &&
             allUsersValidAd &&
-            isSingleUser &&
+            notFoundAdUsers.length === 0 &&
+            invalidFormatUsers.length === 0 &&
+            (isSingleUser || isProtectedHousehold) &&
             (citrixSucc > 0 ||
                 hasVpnSuccessHistory ||
                 (ipImpMfaTimeoutCount > 0 && ipImpBadPwdCount === 0) ||
@@ -1024,30 +1110,35 @@ export async function analyzeCitrixLoginTriage(
         ) {
             verdict = "LEGIT_USER_ISSUE";
             riskScore = Math.min(riskScore, 15);
-            const u = nonAnonUsers[0];
-            const userLabel = u.adDisplayName ? `${u.adDisplayName} (${u.username})` : u.username;
-            if (ipImpMfaTimeoutCount > 0 && ipImpBadPwdCount === 0 && citrixSucc === 0) {
-                verdictReason = `Imprivata Confirmed AD Password OK for ${userLabel}, but user did not accept the smartphone Confirm ID MFA Push in time (${ipImpMfaTimeoutCount}x MFA timeout).`;
-                protectionNote = "Guardian Protected: Imprivata RADIUS verified user's AD password succeeded (only 2FA push timed out).";
-            } else if (citrixSucc > 0 || u.succeededLater) {
-                verdictReason = `Legitimate AD user ${userLabel} had ${totalFailures} failure(s)${
-                    ipImpBadPwdCount > 0
-                        ? ` (${ipImpBadPwdCount}x Imprivata AD password/policy retry)`
-                        : ipImpMfaTimeoutCount > 0
-                        ? ` (${ipImpMfaTimeoutCount}x Imprivata MFA push timeout)`
-                        : " (e.g., Imprivata/LDAP retry)"
-                } and logged into Citrix successfully (${citrixSucc} session events).`;
-                protectionNote = "Guardian Protected: Verified AD user with successful Citrix login from this US IP.";
-            } else if (hasVpnSuccessHistory) {
-                verdictReason = `Legitimate AD user ${userLabel} with prior successful AnyConnect VPN history from this IP.`;
-                protectionNote = "Guardian Protected: IP has verified Cooper VPN success history and valid AD user.";
+            if (isProtectedHousehold) {
+                verdictReason = `Verified multi-employee household (${nonAnonUsers.map((u) => u.username).join(" & ")}) connecting from US residential ISP (${meta.companyName}) with active AD accounts.`;
+                protectionNote = "Guardian Protected Household: Up to 2 verified active AD corporate users sharing residential connection.";
             } else {
-                verdictReason = `Valid AD user ${userLabel} connecting from US ISP (${meta.companyName}). ${
-                    ipImpBadPwdCount > 0
-                        ? `Imprivata RADIUS logged ${ipImpBadPwdCount}x Bad AD Password / Policy failure.`
-                        : "Likely password typo or Imprivata MFA prompt timeout."
-                }`;
-                protectionNote = "Guardian Protected: US ISP with verified Active Directory corporate user.";
+                const u = nonAnonUsers[0];
+                const userLabel = u.adDisplayName ? `${u.adDisplayName} (${u.username})` : u.username;
+                if (ipImpMfaTimeoutCount > 0 && ipImpBadPwdCount === 0 && citrixSucc === 0) {
+                    verdictReason = `Imprivata Confirmed AD Password OK for ${userLabel}, but user did not accept the smartphone Confirm ID MFA Push in time (${ipImpMfaTimeoutCount}x MFA timeout).`;
+                    protectionNote = "Guardian Protected: Imprivata RADIUS verified user's AD password succeeded (only 2FA push timed out).";
+                } else if (citrixSucc > 0 || u.succeededLater) {
+                    verdictReason = `Legitimate AD user ${userLabel} had ${totalFailures} failure(s)${
+                        ipImpBadPwdCount > 0
+                            ? ` (${ipImpBadPwdCount}x Imprivata AD password/policy retry)`
+                            : ipImpMfaTimeoutCount > 0
+                            ? ` (${ipImpMfaTimeoutCount}x Imprivata MFA push timeout)`
+                            : " (e.g., Imprivata/LDAP retry)"
+                    } and logged into Citrix successfully (${citrixSucc} session events).`;
+                    protectionNote = "Guardian Protected: Verified AD user with successful Citrix login from this US IP.";
+                } else if (hasVpnSuccessHistory) {
+                    verdictReason = `Legitimate AD user ${userLabel} with prior successful AnyConnect VPN history from this IP.`;
+                    protectionNote = "Guardian Protected: IP has verified Cooper VPN success history and valid AD user.";
+                } else {
+                    verdictReason = `Valid AD user ${userLabel} connecting from US ISP (${meta.companyName}). ${
+                        ipImpBadPwdCount > 0
+                            ? `Imprivata RADIUS logged ${ipImpBadPwdCount}x Bad AD Password / Policy failure.`
+                            : "Likely password typo or Imprivata MFA prompt timeout."
+                    }`;
+                    protectionNote = "Guardian Protected: US ISP with verified Active Directory corporate user.";
+                }
             }
         } else if (
             loginFailedCount === 0 &&
@@ -1113,6 +1204,9 @@ export async function analyzeCitrixLoginTriage(
             isOnGuardianBlacklist,
             guardianBlacklistReason: blacklistMap.get(ip),
             isOnWatchlist,
+            isResidentialAbusive,
+            residentialBlockReason,
+            isProtectedHousehold,
             sampleMessages: ipEvents.slice(0, 3).map((e) => e.rawMessage),
         });
     }
@@ -1353,6 +1447,18 @@ export async function analyzeCitrixLoginTriage(
             uniqueUsersImpacted: userSummaries.length,
             uniqueAsnsCount: asnMetrics.length,
             blacklistedAsnsCount: asnMetrics.filter((a) => a.isBlacklisted).length,
+            residentialBlockedCount: ipEvaluations.filter((i) => i.isResidentialAbusive && i.verdict === "ABUSIVE_BLOCK").length,
+            residentialBlockReasons: (() => {
+                const map = new Map<string, number>();
+                for (const i of ipEvaluations) {
+                    if (i.isResidentialAbusive && i.verdict === "ABUSIVE_BLOCK" && i.residentialBlockReason) {
+                        map.set(i.residentialBlockReason, (map.get(i.residentialBlockReason) || 0) + 1);
+                    }
+                }
+                return Array.from(map.entries())
+                    .map(([reason, count]) => ({ reason, count }))
+                    .sort((a, b) => b.count - a.count);
+            })(),
         },
         ipEvaluations,
         asnMetrics,
@@ -1759,12 +1865,31 @@ export async function runCitrixLoginAutoShunCycle(options?: {
         const matches10mAuthBurstRule =
             ipEval.maxAuthFailuresIn10m >= cfg.minAuthFailuresIn10m;
 
-        if (!matchesBlacklistedAsnRule && !matches10mAuthBurstRule) {
+        const matchesResidentialAbuseRule =
+            Boolean(ipEval.isResidentialAbusive && ipEval.verdict === "ABUSIVE_BLOCK");
+
+        const matchesCredentialStuffingRule =
+            ipEval.triggeredRules.some(
+                (r) =>
+                    r.code === "PASSWORD_SPRAY" ||
+                    r.code === "RESIDENTIAL_SPRAY_ATTACK" ||
+                    r.code === "RESIDENTIAL_DICTIONARY_PROBE"
+            );
+
+        const isAbusiveBlockCandidate =
+            ipEval.verdict === "ABUSIVE_BLOCK" &&
+            (matchesBlacklistedAsnRule || matches10mAuthBurstRule || matchesResidentialAbuseRule || matchesCredentialStuffingRule);
+
+        if (!isAbusiveBlockCandidate) {
             continue;
         }
 
         const triggerReason = matchesBlacklistedAsnRule
             ? `Blacklisted ASN ${ipEval.asn} (${ipEval.companyName}) with ${ipEval.totalFailures} failed Citrix attempt(s)`
+            : ipEval.residentialBlockReason
+            ? `[Residential Abuse: ${ipEval.residentialBlockReason}] ${ipEval.ip} (${ipEval.companyName}) - ${ipEval.verdictReason}`
+            : matchesCredentialStuffingRule
+            ? `[Credential Stuffing / Spray] ${ipEval.targetedUsers.length} users targeted from ${ipEval.ip} (${ipEval.companyName})`
             : `${ipEval.maxAuthFailuresIn10m} failed Citrix authentication attempts within 10m (${ipEval.verdictReason})`;
 
         candidatesToShun.push({
@@ -2336,6 +2461,8 @@ export async function reevaluateSingleCitrixIp(
         nonAnonUsers.length > 0 &&
         nonAnonUsers.every((u) => u.adStatus === "ACTIVE" || u.adStatus === "ENABLED" || u.adStatus === "LOCKED");
     const isSingleUser = nonAnonUsers.length === 1;
+    const notFoundAdUsers = nonAnonUsers.filter((u) => u.adStatus === "NOT_FOUND");
+    const invalidFormatUsers = nonAnonUsers.filter((u) => !u.isCorporateFormat);
     const isOnWatchlist = Boolean(watchEntry);
     const isOnGuardianBlacklist = Boolean(blEntry);
 
@@ -2361,10 +2488,24 @@ export async function reevaluateSingleCitrixIp(
         riskScore = Math.max(riskScore, 85);
         verdictReason = `Blacklisted ASN ${ipMeta.asn} (${ipMeta.companyName}) with ${totalFailures} attempt(s).`;
     } else if (
+        ipMeta.isResidentialIsp &&
+        (nonAnonUsers.length >= 3 || notFoundAdUsers.length > 0 || invalidFormatUsers.length > 0 || (maxAuthFailuresIn10m >= config.minFailuresForBlock && citrixSucc === 0))
+    ) {
+        verdict = "ABUSIVE_BLOCK";
+        riskScore = Math.max(riskScore, 85);
+        const reason = nonAnonUsers.length >= 3
+            ? "Credential Spray (≥3 Accounts)"
+            : notFoundAdUsers.length > 0 || invalidFormatUsers.length > 0
+            ? "Probing Non-Existent AD Accounts"
+            : "Rapid Auth Burst (≥5 Failures / 10m)";
+        verdictReason = `Abusive Residential IP (${ipMeta.companyName}): ${reason}`;
+    } else if (
         config.protectIspWithValidAdUser &&
         ipMeta.countryCode === "US" &&
         allUsersValidAd &&
-        isSingleUser &&
+        notFoundAdUsers.length === 0 &&
+        invalidFormatUsers.length === 0 &&
+        (isSingleUser || (ipMeta.isResidentialIsp && nonAnonUsers.length === 2)) &&
         (citrixSucc > 0 ||
             hasVpnSuccessHistory ||
             (ipImpMfaTimeoutCount > 0 && ipImpBadPwdCount === 0) ||
@@ -2373,25 +2514,33 @@ export async function reevaluateSingleCitrixIp(
         verdict = "LEGIT_USER_ISSUE";
         riskScore = Math.min(riskScore, 15);
         safetyShieldApplied = true;
-        const u = nonAnonUsers[0];
-        const userLabel = u.adDisplayName ? `${u.adDisplayName} (${u.username})` : u.username;
+        const isHousehold = ipMeta.isResidentialIsp && nonAnonUsers.length === 2;
 
-        if (ipImpMfaTimeoutCount > 0 && ipImpBadPwdCount === 0 && citrixSucc === 0) {
-            verdictReason = `Imprivata Confirmed AD Password OK for ${userLabel}, but user did not accept the MFA Push in time (${ipImpMfaTimeoutCount}x MFA timeout).`;
-            protectionNote = "Guardian Protected: Imprivata RADIUS verified AD password succeeded (only MFA push timed out).";
-            safetyShieldReason = "Imprivata RADIUS: AD password was correct; only 2FA smartphone push timed out.";
-        } else if (citrixSucc > 0 || u.succeededLater) {
-            verdictReason = `Legitimate AD user ${userLabel} had ${totalFailures} failure(s) and logged in successfully (${citrixSucc} sessions).`;
-            protectionNote = "Guardian Protected: Verified AD user with successful Citrix sessions from this IP.";
-            safetyShieldReason = "Verified corporate employee with successful authenticated Citrix sessions.";
-        } else if (hasVpnSuccessHistory) {
-            verdictReason = `Legitimate AD user ${userLabel} with prior AnyConnect VPN history from this IP.`;
-            protectionNote = "Guardian Protected: Verified corporate VPN history on this IP.";
-            safetyShieldReason = "Prior AnyConnect VPN authentication history from this IP.";
+        if (isHousehold) {
+            verdictReason = `Verified multi-employee household (${nonAnonUsers.map((u) => u.username).join(" & ")}) connecting from US residential ISP (${ipMeta.companyName}) with active AD accounts.`;
+            protectionNote = "Guardian Protected Household: Up to 2 verified active AD corporate users sharing residential connection.";
+            safetyShieldReason = "Verified multi-employee residential household sharing connection.";
         } else {
-            verdictReason = `Valid AD user ${userLabel} connecting from US ISP (${ipMeta.companyName}).`;
-            protectionNote = "Guardian Protected: US ISP with verified Active Directory corporate user.";
-            safetyShieldReason = `US Residential ISP (${ipMeta.companyName}) with valid Active Directory account.`;
+            const u = nonAnonUsers[0];
+            const userLabel = u.adDisplayName ? `${u.adDisplayName} (${u.username})` : u.username;
+
+            if (ipImpMfaTimeoutCount > 0 && ipImpBadPwdCount === 0 && citrixSucc === 0) {
+                verdictReason = `Imprivata Confirmed AD Password OK for ${userLabel}, but user did not accept the MFA Push in time (${ipImpMfaTimeoutCount}x MFA timeout).`;
+                protectionNote = "Guardian Protected: Imprivata RADIUS verified AD password succeeded (only MFA push timed out).";
+                safetyShieldReason = "Imprivata RADIUS: AD password was correct; only 2FA smartphone push timed out.";
+            } else if (citrixSucc > 0 || u.succeededLater) {
+                verdictReason = `Legitimate AD user ${userLabel} had ${totalFailures} failure(s) and logged in successfully (${citrixSucc} sessions).`;
+                protectionNote = "Guardian Protected: Verified AD user with successful Citrix sessions from this IP.";
+                safetyShieldReason = "Verified corporate employee with successful authenticated Citrix sessions.";
+            } else if (hasVpnSuccessHistory) {
+                verdictReason = `Legitimate AD user ${userLabel} with prior AnyConnect VPN history from this IP.`;
+                protectionNote = "Guardian Protected: Verified corporate VPN history on this IP.";
+                safetyShieldReason = "Prior AnyConnect VPN authentication history from this IP.";
+            } else {
+                verdictReason = `Valid AD user ${userLabel} connecting from US ISP (${ipMeta.companyName}).`;
+                protectionNote = "Guardian Protected: US ISP with verified Active Directory corporate user.";
+                safetyShieldReason = `US Residential ISP (${ipMeta.companyName}) with valid Active Directory account.`;
+            }
         }
     } else if (riskScore >= 50) {
         verdict = "ABUSIVE_BLOCK";
