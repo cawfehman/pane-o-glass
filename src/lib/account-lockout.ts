@@ -68,6 +68,30 @@ export interface AccountLifecycleHistoryItem {
     rawMessage?: string | null;
 }
 
+export interface RecentLockoutEvent {
+    id: string;
+    timestamp: string;
+    username: string;
+    displayName?: string;
+    callerDevice: string;
+    isIsePsn: boolean;
+    domainController: string;
+    sourceIp?: string;
+    logonId?: string;
+    userLockoutCountInWindow: number;
+    rawMessage?: string;
+}
+
+export interface RecentLockoutsOverview {
+    rangeHours: number;
+    totalCount: number;
+    uniqueUsersCount: number;
+    wirelessCount: number;
+    workstationCount: number;
+    latestLockoutTimestamp: string | null;
+    lockouts: RecentLockoutEvent[];
+}
+
 export interface PasswordChangeActivity {
     detected: boolean;
     type: "USER_CHANGE" | "ADMIN_RESET" | null;
@@ -1245,3 +1269,144 @@ function buildTimelineBuckets(events: AdSecurityEvent[], rangeHours: number): Fa
 
     return Array.from(bucketsMap.values()).sort((a, b) => a.timestamp - b.timestamp);
 }
+
+/**
+ * Fetches recent Event 4740 account lockouts across Active Directory in descending order.
+ */
+export async function fetchRecentAccountLockouts(
+    rangeHours: number = 24,
+    limit: number = 500
+): Promise<RecentLockoutsOverview> {
+    const ogUrl = (process.env.OG_GRAYLOG_URL || "https://graylog.cooperhealth.edu:9000").replace(/\/$/, "");
+    const ogToken = process.env.OG_GRAYLOG_API_TOKEN || "";
+    const rangeSeconds = Math.max(300, rangeHours * 3600);
+
+    const rawList: Array<{
+        id: string;
+        timestamp: string;
+        username: string;
+        callerDevice: string;
+        isIsePsn: boolean;
+        domainController: string;
+        sourceIp?: string;
+        rawMessage?: string;
+    }> = [];
+
+    let totalReported = 0;
+
+    if (ogToken) {
+        const authHeader = "Basic " + Buffer.from(`${ogToken}:token`).toString("base64");
+        const params = new URLSearchParams({
+            query: "winlog_event_id:4740",
+            range: rangeSeconds.toString(),
+            filter: `streams:${OG_GRAYLOG_AD_STREAM_ID}`,
+            limit: Math.min(limit, 1000).toString(),
+            sort: "timestamp:desc"
+        });
+
+        try {
+            const res = await axios.get(`${ogUrl}/api/search/universal/relative?${params.toString()}`, {
+                httpsAgent,
+                headers: {
+                    Authorization: authHeader,
+                    Accept: "application/json",
+                    "X-Requested-By": "pane-o-glass"
+                },
+                timeout: 15000
+            });
+
+            totalReported = res.data.total_results || 0;
+            const messages = res.data.messages || [];
+
+            for (const item of messages) {
+                const m = item.message;
+                if (!m) continue;
+
+                const username = String(m.winlog_event_data_TargetUserName || "").trim();
+                if (!username) continue;
+
+                const caller = extractCallerName(m);
+                const callerPsn = isIsePsn(caller);
+                const dc = String(m.winlog_computer_name || m.source || "Unknown DC").trim();
+                const srcIp = extractSourceIp(m);
+                const ts = m.timestamp || new Date().toISOString();
+                const id = String(m.gl2_message_id || m._id || `${ts}-${username}-${caller}`);
+
+                rawList.push({
+                    id,
+                    timestamp: ts,
+                    username,
+                    callerDevice: caller,
+                    isIsePsn: callerPsn,
+                    domainController: dc,
+                    sourceIp: srcIp !== "-" ? srcIp : undefined,
+                    rawMessage: typeof m.message === "string" ? m.message.slice(0, 1000) : undefined
+                });
+            }
+        } catch (graylogErr: any) {
+            console.warn("[Account-Lockout] Graylog 4740 stream fetch failed, falling back to DB:", graylogErr.message);
+        }
+    }
+
+    // If Graylog returned nothing or failed, fallback to PostgreSQL Prisma cache
+    if (rawList.length === 0) {
+        const since = new Date(Date.now() - rangeSeconds * 1000);
+        try {
+            const dbEvents = await prisma.accountLifecycleEvent.findMany({
+                where: {
+                    timestamp: { gte: since },
+                    eventId: "4740"
+                },
+                orderBy: { timestamp: "desc" },
+                take: limit
+            });
+
+            totalReported = dbEvents.length;
+            for (const e of dbEvents) {
+                const caller = e.callerComputer && e.callerComputer !== "-" ? e.callerComputer : "Unknown Caller";
+                rawList.push({
+                    id: e.id,
+                    timestamp: e.timestamp.toISOString(),
+                    username: e.targetUsername,
+                    callerDevice: caller,
+                    isIsePsn: isIsePsn(caller),
+                    domainController: e.domainController || "Unknown DC",
+                    sourceIp: undefined,
+                    rawMessage: e.rawMessage || undefined
+                });
+            }
+        } catch (dbErr: any) {
+            console.error("[Account-Lockout] Fallback DB query failed:", dbErr);
+        }
+    }
+
+    // Sort strictly descending by timestamp
+    rawList.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+
+    // Calculate per-user frequencies in this timeframe
+    const userCountMap = new Map<string, number>();
+    for (const item of rawList) {
+        const k = item.username.toLowerCase();
+        userCountMap.set(k, (userCountMap.get(k) || 0) + 1);
+    }
+
+    const lockouts: RecentLockoutEvent[] = rawList.map(item => ({
+        ...item,
+        userLockoutCountInWindow: userCountMap.get(item.username.toLowerCase()) || 1
+    }));
+
+    const uniqueUsers = new Set(lockouts.map(l => l.username.toLowerCase()));
+    const wirelessCount = lockouts.filter(l => l.isIsePsn).length;
+    const workstationCount = lockouts.length - wirelessCount;
+
+    return {
+        rangeHours,
+        totalCount: Math.max(totalReported, lockouts.length),
+        uniqueUsersCount: uniqueUsers.size,
+        wirelessCount,
+        workstationCount,
+        latestLockoutTimestamp: lockouts[0]?.timestamp || null,
+        lockouts
+    };
+}
+

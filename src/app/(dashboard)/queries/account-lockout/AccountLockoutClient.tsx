@@ -1,13 +1,13 @@
 "use client";
 
-import React, { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo, useEffect, useCallback } from "react";
 import { 
     Search, UserX, AlertCircle, Shield, Wifi, Laptop, Clock, 
     Calendar, CheckCircle2, AlertTriangle, Terminal, ChevronDown, 
     ChevronUp, Copy, Check, Download, RefreshCw, Radio, HardDrive, 
     Info, ArrowRight, UserCheck, Layers, ExternalLink, Filter,
     ArrowUpDown, ArrowUp, ArrowDown, X, RotateCcw, KeyRound, Repeat,
-    History, BarChart3
+    History, BarChart3, ChevronLeft, Users
 } from "lucide-react";
 import { 
     ResponsiveContainer, AreaChart, Area, XAxis, YAxis, 
@@ -18,6 +18,7 @@ import { SmartSearchBar } from "@/components/common/SmartSearchBar";
 import { ToolHelp } from "@/components/ToolHelp";
 import { sendClientAuditLog } from "@/lib/audit-client";
 import { AccountLockoutMetricsTab } from "@/components/account-lockout/AccountLockoutMetricsTab";
+import type { RecentLockoutsOverview, RecentLockoutEvent } from "@/lib/account-lockout";
 
 interface AdSecurityEvent {
     id: string;
@@ -221,7 +222,7 @@ interface LockoutInvestigationResult {
 }
 
 export default function AccountLockoutClient() {
-    const [activeView, setActiveView] = useState<"metrics" | "investigate">("metrics");
+    const [activeView, setActiveView] = useState<"metrics" | "investigate">("investigate");
     const [usernameInput, setUsernameInput] = useState("");
     const [rangeHours, setRangeHours] = useState<number>(24);
     const [loading, setLoading] = useState(false);
@@ -243,6 +244,46 @@ export default function AccountLockoutClient() {
     const [showAllLifecycle, setShowAllLifecycle] = useState<boolean>(false);
     const [showImprivataSessions, setShowImprivataSessions] = useState<boolean>(false);
     const [copiedId, setCopiedId] = useState<string | null>(null);
+
+    // Live Account Lockouts Stream (All Users) State
+    const [recentLockoutsData, setRecentLockoutsData] = useState<RecentLockoutsOverview | null>(null);
+    const [recentLockoutsLoading, setRecentLockoutsLoading] = useState<boolean>(false);
+    const [recentFilterType, setRecentFilterType] = useState<"ALL" | "WIRELESS" | "WORKSTATION" | "REPEAT">("ALL");
+    const [recentTableSearch, setRecentTableSearch] = useState<string>("");
+    const [recentPage, setRecentPage] = useState<number>(1);
+    const [recentLimit, setRecentLimit] = useState<number>(25);
+    const [recentSortField, setRecentSortField] = useState<"timestamp" | "username" | "callerDevice" | "domainController">("timestamp");
+    const [recentSortAsc, setRecentSortAsc] = useState<boolean>(false); // Descending (newest first) by default
+
+        const fetchRecentLockouts = useCallback(async (overrideRange?: number) => {
+        const effectiveRange = overrideRange !== undefined ? overrideRange : rangeHours;
+        setRecentLockoutsLoading(true);
+        setError(null);
+        try {
+            const res = await fetch(`/api/account-lockout/investigate?rangeHours=${effectiveRange}`);
+            const json = await res.json();
+            if (res.ok && json.data) {
+                setRecentLockoutsData(json.data);
+            }
+        } catch (err: any) {
+            console.error("Failed to load recent lockouts:", err);
+        } finally {
+            setRecentLockoutsLoading(false);
+        }
+    }, [rangeHours]);
+
+    // Initial mount: inspect URL parameters for ?user= or ?username=, otherwise fetch all lockouts
+    useEffect(() => {
+        if (typeof window === "undefined") return;
+        const sp = new URLSearchParams(window.location.search);
+        const targetUser = (sp.get("username") || sp.get("user") || "").trim();
+        if (targetUser) {
+            setUsernameInput(targetUser);
+            handleSearch(undefined, rangeHours, targetUser);
+        } else {
+            fetchRecentLockouts(rangeHours);
+        }
+    }, []);
 
     const handleSearch = async (e?: React.FormEvent, overrideRange?: number, overrideUser?: string) => {
         if (e) e.preventDefault();
@@ -442,6 +483,85 @@ export default function AccountLockoutClient() {
         setPage(1);
     };
 
+    // Filtered and sorted recent lockouts for all-users table
+    const filteredRecentLockouts = useMemo(() => {
+        if (!recentLockoutsData?.lockouts) return [];
+        return recentLockoutsData.lockouts.filter(item => {
+            if (recentFilterType === "WIRELESS" && !item.isIsePsn) return false;
+            if (recentFilterType === "WORKSTATION" && item.isIsePsn) return false;
+            if (recentFilterType === "REPEAT" && item.userLockoutCountInWindow < 2) return false;
+            if (recentTableSearch.trim()) {
+                const q = recentTableSearch.toLowerCase();
+                return (
+                    item.username.toLowerCase().includes(q) ||
+                    item.callerDevice.toLowerCase().includes(q) ||
+                    item.domainController.toLowerCase().includes(q) ||
+                    (item.sourceIp && item.sourceIp.toLowerCase().includes(q))
+                );
+            }
+            return true;
+        }).sort((a, b) => {
+            let valA: string | number = "";
+            let valB: string | number = "";
+
+            if (recentSortField === "timestamp") {
+                valA = new Date(a.timestamp).getTime();
+                valB = new Date(b.timestamp).getTime();
+            } else if (recentSortField === "username") {
+                valA = a.username.toLowerCase();
+                valB = b.username.toLowerCase();
+            } else if (recentSortField === "callerDevice") {
+                valA = a.callerDevice.toLowerCase();
+                valB = b.callerDevice.toLowerCase();
+            } else if (recentSortField === "domainController") {
+                valA = a.domainController.toLowerCase();
+                valB = b.domainController.toLowerCase();
+            }
+
+            if (valA < valB) return recentSortAsc ? -1 : 1;
+            if (valA > valB) return recentSortAsc ? 1 : -1;
+            return 0;
+        });
+    }, [recentLockoutsData, recentFilterType, recentTableSearch, recentSortField, recentSortAsc]);
+
+    const totalRecentPages = Math.max(1, Math.ceil(filteredRecentLockouts.length / recentLimit));
+
+    const paginatedRecentLockouts = useMemo(() => {
+        const start = (recentPage - 1) * recentLimit;
+        return filteredRecentLockouts.slice(start, start + recentLimit);
+    }, [filteredRecentLockouts, recentPage, recentLimit]);
+
+    const handleRecentSort = (field: "timestamp" | "username" | "callerDevice" | "domainController") => {
+        if (recentSortField === field) {
+            setRecentSortAsc(!recentSortAsc);
+        } else {
+            setRecentSortField(field);
+            setRecentSortAsc(field === "timestamp" ? false : true);
+        }
+        setRecentPage(1);
+    };
+
+    const exportRecentLockoutsCsv = () => {
+        if (!filteredRecentLockouts.length) return;
+        const headers = "Timestamp,TargetUsername,CallerComputer,SourceType,DomainController,SourceIP,LockoutsInWindow\n";
+        const rows = filteredRecentLockouts.map(e => [
+            `"${e.timestamp}"`,
+            `"${e.username}"`,
+            `"${e.callerDevice}"`,
+            `"${e.isIsePsn ? "Wireless ISE-PSN (802.1X)" : "Workstation / Server"}"`,
+            `"${e.domainController}"`,
+            `"${e.sourceIp || "-"}"`,
+            e.userLockoutCountInWindow
+        ].join(",")).join("\n");
+        const blob = new Blob([headers + rows], { type: "text/csv;charset=utf-8;" });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = `ad-account-lockouts-${recentLockoutsData?.rangeHours || 24}h-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-")}.csv`;
+        link.click();
+        URL.revokeObjectURL(url);
+    };
+
     const handleExportCsv = (onlyFiltered: boolean = false) => {
         if (!data || data.events.length === 0) return;
 
@@ -564,6 +684,7 @@ export default function AccountLockoutClient() {
                             setUsernameInput("");
                             setData(null);
                             setError(null);
+                            fetchRecentLockouts();
                         }}
                         placeholder="Search Active Directory username or UPN (e.g. jdoe or jdoe@cooperhealth.edu)..."
                         buttonLabel="Investigate Account"
@@ -596,7 +717,11 @@ export default function AccountLockoutClient() {
                                         type="button"
                                         onClick={() => {
                                             setRangeHours(btn.hours);
-                                            if (data) handleSearch(undefined, btn.hours);
+                                            if (data?.searchedUser) {
+                                                handleSearch(undefined, btn.hours);
+                                            } else {
+                                                fetchRecentLockouts(btn.hours);
+                                            }
                                         }}
                                         className={`px-2.5 py-1 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
                                             rangeHours === btn.hours
@@ -712,6 +837,33 @@ export default function AccountLockoutClient() {
             {/* Investigation Results */}
             {!loading && data && (
                 <div className="space-y-6 animate-in fade-in duration-150">
+                    {/* Back to All Lockouts Navigation Bar */}
+                    <div className="flex flex-wrap items-center justify-between gap-3 p-3.5 rounded-xl border border-border-color bg-[var(--bg-surface)] shadow-sm">
+                        <div className="flex items-center gap-3">
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setData(null);
+                                    setUsernameInput("");
+                                    fetchRecentLockouts();
+                                }}
+                                className="px-3.5 py-1.5 rounded-lg bg-[var(--bg-background)] hover:bg-[var(--bg-surface-hover)] text-xs font-semibold text-text-primary border border-border-color flex items-center gap-1.5 transition-all cursor-pointer shadow-sm"
+                            >
+                                <ChevronLeft size={14} className="text-accent-primary" />
+                                <span>← Back to All Account Lockouts</span>
+                            </button>
+                            <div className="text-xs text-text-secondary">
+                                Root-cause investigation for <span className="font-mono font-bold text-accent-primary">{data.searchedUser}</span>
+                            </div>
+                        </div>
+                        <div className="text-xs text-text-muted flex items-center gap-2">
+                            <span>Window: <strong className="text-text-secondary">{data.rangeHours}h</strong></span>
+                            <span>•</span>
+                            <span className="text-rose-400 font-bold">{data.lockoutCount} Lockout(s)</span>
+                            <span>•</span>
+                            <span>{data.totalFailureEvents} Failures</span>
+                        </div>
+                    </div>
                     {/* Metrics Ribbon */}
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                         {/* Metric 1: Lockout Status */}

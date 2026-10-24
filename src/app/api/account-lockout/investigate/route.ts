@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { hasPermission } from "@/app/actions/permissions";
 import { logAudit } from "@/lib/audit";
-import { investigateAccountLockout } from "@/lib/account-lockout";
+import { investigateAccountLockout, fetchRecentAccountLockouts } from "@/lib/account-lockout";
 
 export async function GET(req: NextRequest) {
     try {
@@ -31,7 +31,12 @@ export async function GET(req: NextRequest) {
         const rangeHours = isNaN(rawRangeHours) || rawRangeHours <= 0 ? 24 : Math.min(rawRangeHours, 168); // Max 7 days
 
         if (!user) {
-            return NextResponse.json({ error: "Missing required query parameter: user" }, { status: 400 });
+            const overview = await fetchRecentAccountLockouts(rangeHours, 500);
+            return NextResponse.json({
+                success: true,
+                mode: "recent_lockouts",
+                data: overview
+            });
         }
 
         const result = await investigateAccountLockout(user, rangeHours);
@@ -49,6 +54,7 @@ export async function GET(req: NextRequest) {
 
         return NextResponse.json({
             success: true,
+            mode: "single_user",
             data: result
         });
     } catch (err: any) {
