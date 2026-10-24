@@ -6,7 +6,14 @@ import { parseBooleanSearchQuery } from "@/lib/booleanQueryParser";
 import { syncShunDatabase } from "@/lib/shun-sync";
 
 async function buildShunSummary() {
-    const [activeTotal, clearedTotal, latestRecord, fwGroups, activeIpGroups] = await Promise.all([
+    const configStr = process.env.FIREWALL_CONFIG || "[]";
+    let configuredCount = 4;
+    try {
+        const parsed = JSON.parse(configStr);
+        if (Array.isArray(parsed) && parsed.length > 0) configuredCount = parsed.length;
+    } catch {}
+
+    const [activeTotal, clearedTotal, latestRecord, fwGroups, activeIpGroups, ipActiveCounts] = await Promise.all([
         prisma.firewallShunStats.count({ where: { isActive: true } }),
         prisma.firewallShunStats.count({ where: { isActive: false } }),
         prisma.firewallShunStats.findFirst({
@@ -20,8 +27,23 @@ async function buildShunSummary() {
         prisma.firewallShunStats.groupBy({
             by: ["ip"],
             where: { isActive: true }
+        }),
+        prisma.firewallShunStats.groupBy({
+            by: ["ip"],
+            where: { isActive: true },
+            _count: { firewall: true }
         })
     ]);
+
+    let fullyProtectedCount = 0;
+    let partialProtectedCount = 0;
+    for (const c of ipActiveCounts) {
+        if (c._count.firewall >= configuredCount) {
+            fullyProtectedCount++;
+        } else {
+            partialProtectedCount++;
+        }
+    }
 
     const fwMap = new Map<string, { firewall: string; activeCount: number; clearedCount: number; totalCount: number }>();
     for (const row of fwGroups) {
@@ -45,6 +67,9 @@ async function buildShunSummary() {
     return {
         activeTotal,
         uniqueActiveIps: activeIpGroups.length,
+        fullyProtectedCount,
+        partialProtectedCount,
+        configuredFirewallsCount: configuredCount,
         clearedTotal,
         totalTracked: activeTotal + clearedTotal,
         lastSyncedAt: latestRecord?.lastSeen?.toISOString() || null,
@@ -78,6 +103,50 @@ export async function GET(req: Request) {
             where.isActive = true;
         } else if (statusFilter === "cleared") {
             where.isActive = false;
+        } else if (statusFilter === "partial") {
+            const configStr = process.env.FIREWALL_CONFIG || "[]";
+            let configuredFirewallsCount = 4;
+            try {
+                const parsed = JSON.parse(configStr);
+                if (Array.isArray(parsed) && parsed.length > 0) configuredFirewallsCount = parsed.length;
+            } catch (e) {}
+
+            const partialGroups = await prisma.firewallShunStats.groupBy({
+                by: ["ip"],
+                where: { isActive: true },
+                _count: { firewall: true },
+                having: {
+                    firewall: {
+                        _count: {
+                            lt: configuredFirewallsCount
+                        }
+                    }
+                }
+            });
+            where.ip = { in: partialGroups.map(g => g.ip) };
+            where.isActive = true;
+        } else if (statusFilter === "full") {
+            const configStr = process.env.FIREWALL_CONFIG || "[]";
+            let configuredFirewallsCount = 4;
+            try {
+                const parsed = JSON.parse(configStr);
+                if (Array.isArray(parsed) && parsed.length > 0) configuredFirewallsCount = parsed.length;
+            } catch (e) {}
+
+            const fullGroups = await prisma.firewallShunStats.groupBy({
+                by: ["ip"],
+                where: { isActive: true },
+                _count: { firewall: true },
+                having: {
+                    firewall: {
+                        _count: {
+                            gte: configuredFirewallsCount
+                        }
+                    }
+                }
+            });
+            where.ip = { in: fullGroups.map(g => g.ip) };
+            where.isActive = true;
         }
 
         // Timeframe filtering

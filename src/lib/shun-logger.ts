@@ -13,7 +13,7 @@ export interface ShunNodeVerification {
 
 export interface ShunLogEntry {
     timestamp?: string; // ISO 8601
-    action: "SHUN" | "BULK_SHUN" | "UNSHUN" | "AUTO_GUARDIAN_SHUN" | "CVE_AUTO_SHUN";
+    action: "SHUN" | "BULK_SHUN" | "UNSHUN" | "AUTO_GUARDIAN_SHUN" | "CVE_AUTO_SHUN" | "UNIVERSAL_REPLICATE";
     initiator: string; // e.g. analyst email or daemon name
     clientIp?: string;
     reason?: string;

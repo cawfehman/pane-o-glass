@@ -9,6 +9,24 @@ import dotenv from 'dotenv';
 dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 import { runCitrixLoginAutoShunCycle } from '../../src/lib/netscaler-login-triage';
 import { getAdaptiveSearchWindow } from '../../src/lib/graylog-backlog-guardian';
+import { replicateShunToFleet } from '../../src/lib/universal-shun-sync';
+
+
+async function crossReplicateShun(ip: string, reason: string) {
+    try {
+        console.log(`[GUARDIAN][UNIVERSAL-SYNC] Cross-replicating retained shun for ${ip} across fleet...`);
+        const result = await replicateShunToFleet(ip, {
+            reason: `[Guardian Universal Fleet Replicate] ${reason}`,
+            userId: 'Guardian',
+            clientIp: 'guardian-cron'
+        });
+        if (result.successfulNodes.length > 0) {
+            console.log(`[GUARDIAN][UNIVERSAL-SYNC] Successfully replicated ${ip} to ${result.successfulNodes.length} firewalls: ${result.successfulNodes.join(', ')}`);
+        }
+    } catch (e: any) {
+        console.error(`[GUARDIAN][UNIVERSAL-SYNC] Cross-replication error for ${ip}:`, e.message);
+    }
+}
 
 async function isAdUserValid(username: any) {
     const url = process.env.AD_URL!;
@@ -532,6 +550,7 @@ async function runAutoUnshun() {
                                 details: `Retained shun because ASN ${asnBlacklistEntry.asn} is blacklisted (${asnBlacklistEntry.reason})`
                             }
                         });
+                        await crossReplicateShun(ip, `Blacklisted ASN ${asnBlacklistEntry.asn}`);
                         continue;
                     }
                 }
@@ -656,6 +675,7 @@ async function runAutoUnshun() {
                             details: blacklistReason
                         }
                     }).catch(() => {});
+                    await crossReplicateShun(ip, blacklistReason);
                 } else if (matchesUnshunCriteria) {
                     const reason = matchReason;
                     console.log(`[GUARDIAN] AUTO-UNSHUN MATCH: IP ${ip} matches due to ${reason}. Clearing shuns...`);
@@ -806,6 +826,7 @@ async function runAutoUnshun() {
                             details: `Retained shun for IP: ${ip}. No successful VPN history and no valid Active Directory username attempts from ISP.`
                         }
                     });
+                    await crossReplicateShun(ip, "Retained threat shun (no legitimate VPN/AD activity)");
                 }
             } catch (err: any) {
                 console.error(`[GUARDIAN] Error evaluating IP ${ip}:`, err.message);

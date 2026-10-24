@@ -279,6 +279,36 @@ export async function POST(req: Request) {
                     console.error("Failed to update firewallShunStats isActive:", e.message);
                 }
             }
+
+            if (action === "add" || action === "shun") {
+                try {
+                    const now = new Date();
+                    const successfulFws = executionResults.filter(r => r.success).map(r => r.target);
+                    for (const ip of targetIps) {
+                        await prisma.shunDatabaseIp.upsert({
+                            where: { ip },
+                            create: { ip },
+                            update: {}
+                        });
+                        for (const fwName of successfulFws) {
+                            await prisma.firewallShunStats.upsert({
+                                where: { ip_firewall: { ip, firewall: fwName } },
+                                update: { isActive: true, lastSeen: now },
+                                create: {
+                                    ip,
+                                    firewall: fwName,
+                                    isActive: true,
+                                    firstSeen: now,
+                                    lastSeen: now,
+                                    daysShunned: 1
+                                }
+                            });
+                        }
+                    }
+                } catch (e: any) {
+                    console.error("Failed to update firewallShunStats for added shun:", e.message);
+                }
+            }
         }
 
         // Dual audit to FirewallQueryHistory

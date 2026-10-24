@@ -172,6 +172,11 @@ export const helpData: Record<string, TooltipDetails> = {
         description: "Real-time perimeter ASA firewall shun management, on-demand live firewall shun table synchronization, automated threat detection, and Active Directory LDAP auto-unshun intelligence.",
         capabilities: [
             {
+                title: "Universal Fleet Shun Synchronizer (Failover Hardening)",
+                detail: "Cross-replicates active shuns across all 4 Cisco ASA/FTD perimeter firewalls (Wilmington Primary/Secondary & Keleman Primary/Secondary). Cisco hardware does not sync in-memory shuns across stateful HA failover links; Universal Sync eliminates this critical gap so standby units and secondary DCs never drop perimeter blocks.",
+                tag: "Failover Defense"
+            },
+            {
                 title: "Perimeter ASA Shun Lookup",
                 detail: "Query active IP shuns across all 4 perimeter firewalls simultaneously (Wilmington Primary/Secondary & Keleman Primary/Secondary). Verifies live connection state and blocking policies.",
                 tag: "Live Query"
@@ -208,14 +213,15 @@ export const helpData: Record<string, TooltipDetails> = {
             }
         ],
         colors: [
-            { name: "Green (Active / Heartbeat)", meaning: "Guardian defense service is active and scanning, or firewall SSH connection is healthy.", rgb: "#22c55e" },
-            { name: "Amber (Warning / Scan Issue)", meaning: "Guardian encountered a temporary scan timeout or non-critical firewall warning.", rgb: "#f59e0b" },
+            { name: "Emerald (Full 4/4 Protection)", meaning: "IP address is actively shunned across all 4 perimeter firewalls. Immune to HA failover vulnerabilities.", rgb: "#10b981" },
+            { name: "Amber (At Risk on Failover)", meaning: "IP is shunned on only 1–3 firewalls. Will bypass security if active firewall fails over or traffic routes to secondary DC.", rgb: "#f59e0b" },
             { name: "Red (Active Perimeter Shun)", meaning: "IP address is actively shunned on Cisco ASA perimeter firewalls.", rgb: "#ef4444" },
             { name: "Purple (Enriched Metadata)", meaning: "Shun record has been enriched with ASN, Geolocation, and Organization details.", rgb: "#a855f7" }
         ],
         shortcuts: [
-            "Click [Sync Live Firewalls Now] in the Shun Database tab to immediately pull current active shuns from all 4 firewalls.",
-            "Click [Shun IP] on any external threat log to launch instant firewall shun workflow.",
+            "Click [⚡ Universalize Fleet] in the Shun Database tab to reconcile partially shunned IPs across all 4 firewalls in safe batches.",
+            "Click [Sync All 4] on any partially-shunned IP table row to instantly protect against appliance failover.",
+            "Click [Update Shun DB Now] to SSH into all firewalls and refresh the live active shun count.",
             "Click [Unshun] to remove an active perimeter block with mandatory audit logging.",
             "Press Esc or click backdrop to close the Help modal."
         ],

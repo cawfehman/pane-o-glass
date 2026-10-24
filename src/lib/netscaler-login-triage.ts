@@ -5,6 +5,7 @@ import { getBulkUserAdStatus } from "@/lib/ldap";
 import { isPrivateIp } from "@/lib/ipinfo";
 import { NetscalerGraylogClient } from "@/lib/netscaler-graylog";
 import { executeFirewallBulkCommands } from "@/lib/netscaler-auto-shun";
+import { getFleetFirewalls } from "@/lib/universal-shun-sync";
 import { logAudit } from "@/lib/audit";
 import { analyzeFirewallVerification, recordShunActionLog, ShunNodeVerification } from "@/lib/shun-logger";
 import {
@@ -113,6 +114,9 @@ export interface CitrixIpEvaluation {
     protectionNote?: string;
     triggeredRules: CitrixGuardianRuleFlag[];
     isCurrentlyShunned: boolean;
+    isFullyShunned: boolean;
+    isPartiallyShunned: boolean;
+    missingFirewalls: string[];
     shunnedFirewalls: string[];
     isOnGuardianBlacklist: boolean;
     guardianBlacklistReason?: string;
@@ -1169,6 +1173,12 @@ export async function analyzeCitrixLoginTriage(
 
         riskScore = Math.min(100, riskScore);
         const fwSet = shunMap.get(ip);
+        const configuredFleet = getFleetFirewalls();
+        const configuredFwNames = configuredFleet.map((f) => f.name);
+        const fwList = fwSet ? Array.from(fwSet) : [];
+        const isFullyShunned = configuredFwNames.length > 0 && fwList.length >= configuredFwNames.length;
+        const isPartiallyShunned = fwList.length > 0 && !isFullyShunned;
+        const missingFirewalls = configuredFwNames.filter((f) => !fwSet?.has(f));
 
         ipEvaluations.push({
             ip,
@@ -1200,7 +1210,10 @@ export async function analyzeCitrixLoginTriage(
             protectionNote,
             triggeredRules,
             isCurrentlyShunned: Boolean(fwSet && fwSet.size > 0),
-            shunnedFirewalls: fwSet ? Array.from(fwSet) : [],
+            isFullyShunned,
+            isPartiallyShunned,
+            missingFirewalls,
+            shunnedFirewalls: fwList,
             isOnGuardianBlacklist,
             guardianBlacklistReason: blacklistMap.get(ip),
             isOnWatchlist,
@@ -1847,7 +1860,9 @@ export async function runCitrixLoginAutoShunCycle(options?: {
     }[] = [];
 
     for (const ipEval of triage.ipEvaluations) {
-        if (ipEval.isCurrentlyShunned) {
+        // Only skip if the IP is ALREADY fully protected across all perimeter firewalls.
+        // If it is only partially shunned (e.g. 1/4), it MUST be reconciled to prevent failover vulnerability!
+        if (ipEval.isFullyShunned) {
             alreadyShunnedCount++;
             continue;
         }
@@ -2555,8 +2570,13 @@ export async function reevaluateSingleCitrixIp(
 
     riskScore = Math.min(100, Math.max(0, riskScore));
 
+    const configuredFleet = getFleetFirewalls();
+    const configuredFwNames = configuredFleet.map((f) => f.name);
     const shunnedFirewalls = shunStats.map((s) => s.firewall);
     const isCurrentlyShunned = shunnedFirewalls.length > 0 || Boolean(shunDbRecord);
+    const isFullyShunned = configuredFwNames.length > 0 && shunnedFirewalls.length >= configuredFwNames.length;
+    const isPartiallyShunned = shunnedFirewalls.length > 0 && !isFullyShunned;
+    const missingFirewalls = configuredFwNames.filter((f) => !shunnedFirewalls.includes(f));
 
     const evaluation: CitrixIpEvaluation = {
         ip: cleanIp,
@@ -2588,6 +2608,9 @@ export async function reevaluateSingleCitrixIp(
         protectionNote,
         triggeredRules,
         isCurrentlyShunned,
+        isFullyShunned,
+        isPartiallyShunned,
+        missingFirewalls,
         shunnedFirewalls,
         isOnGuardianBlacklist,
         guardianBlacklistReason: blEntry?.reason || undefined,

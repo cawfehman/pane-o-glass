@@ -3,7 +3,7 @@ import {
     Server, ShieldAlert, Clock, SearchX, LayoutTemplate, Check, Download, 
     Info, RefreshCw, CheckCircle2, AlertTriangle, X, Unlock, Flame, 
     CheckSquare, Square, MinusSquare, FileSpreadsheet, Shield, ExternalLink,
-    ClipboardCheck, Sparkles, Filter, Calendar
+    ClipboardCheck, Sparkles, Filter, Calendar, Zap
 } from "lucide-react";
 import { EnrichmentDetailsModal } from "./EnrichmentDetailsModal";
 import { SmartSearchBar } from "@/components/common/SmartSearchBar";
@@ -11,6 +11,9 @@ import { SmartSearchBar } from "@/components/common/SmartSearchBar";
 interface ShunSummary {
     activeTotal: number;
     uniqueActiveIps: number;
+    fullyProtectedCount?: number;
+    partialProtectedCount?: number;
+    configuredFirewallsCount?: number;
     clearedTotal: number;
     totalTracked: number;
     lastSyncedAt: string | null;
@@ -38,7 +41,7 @@ export function ShunDatabaseTab({ initialSearch = "", onClose, isModal = false }
     
     const [search, setSearch] = useState(initialSearch);
     const [activeSearch, setActiveSearch] = useState(initialSearch);
-    const [statusFilter, setStatusFilter] = useState<"all" | "active" | "cleared">("active");
+    const [statusFilter, setStatusFilter] = useState<"all" | "active" | "cleared" | "partial" | "full">("active");
     
     // Timeframe filters: 1h, 4h, 12h, 24h, 7d, 30d, all
     const [timeframe, setTimeframe] = useState<TimeframeOption>("all");
@@ -70,6 +73,14 @@ export function ShunDatabaseTab({ initialSearch = "", onClose, isModal = false }
     const [unshunExecuting, setUnshunExecuting] = useState(false);
     const [unshunResult, setUnshunResult] = useState<any | null>(null);
     const [unshunError, setUnshunError] = useState<string | null>(null);
+
+    // Universal Fleet Shun Synchronizer State
+    const [replicatingIps, setReplicatingIps] = useState<Set<string>>(new Set());
+    const [showUniversalModal, setShowUniversalModal] = useState(false);
+    const [universalMode, setUniversalMode] = useState<"all_partial" | "blacklist">("all_partial");
+    const [universalExecuting, setUniversalExecuting] = useState(false);
+    const [universalResult, setUniversalResult] = useState<any | null>(null);
+    const [universalError, setUniversalError] = useState<string | null>(null);
 
     const [isSyncing, setIsSyncing] = useState(false);
     const [syncBanner, setSyncBanner] = useState<{
@@ -149,7 +160,7 @@ export function ShunDatabaseTab({ initialSearch = "", onClose, isModal = false }
 
     const fetchRecords = useCallback(async (
         searchOverride?: string, 
-        statusOverride?: "all" | "active" | "cleared",
+        statusOverride?: "all" | "active" | "cleared" | "partial" | "full",
         timeframeOverride?: TimeframeOption
     ) => {
         setLoading(true);
@@ -367,6 +378,73 @@ export function ShunDatabaseTab({ initialSearch = "", onClose, isModal = false }
         }
     };
 
+    const handleReplicateSingle = async (ip: string) => {
+        try {
+            setReplicatingIps(prev => new Set(prev).add(ip));
+            const res = await fetch("/api/firewall/shun/universalize", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ mode: "single", ip })
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || "Failed to replicate shun");
+
+            setRecords(prev => prev.map(rec => {
+                if (rec.ip === ip) {
+                    return {
+                        ...rec,
+                        isShunnedAll: data.isNowFullyProtected,
+                        activeCount: data.isNowFullyProtected ? (rec.configuredFirewallsCount || 4) : rec.activeCount + (data.successfulNodes?.length || 0),
+                        activeFirewalls: Array.from(new Set([...(rec.activeFirewalls || []), ...(data.successfulNodes || [])]))
+                    };
+                }
+                return rec;
+            }));
+
+            setSyncBanner({
+                type: "success",
+                message: `Universal Perimeter Protection Applied for ${ip}`,
+                details: `Pushed shun to ${data.successfulNodes?.length || 0} missing firewall nodes (${data.successfulNodes?.join(", ") || "All nodes synchronized"}). Perimeter failover protected.`
+            });
+            fetchRecords();
+        } catch (err: any) {
+            setSyncBanner({
+                type: "error",
+                message: `Failed to universalize shun for ${ip}`,
+                details: err.message
+            });
+        } finally {
+            setReplicatingIps(prev => {
+                const next = new Set(prev);
+                next.delete(ip);
+                return next;
+            });
+        }
+    };
+
+    const handleExecuteUniversalize = async () => {
+        try {
+            setUniversalExecuting(true);
+            setUniversalError(null);
+            setUniversalResult(null);
+
+            const res = await fetch("/api/firewall/shun/universalize", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ mode: universalMode, limit: 500 })
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || "Failed to universalize fleet shuns");
+
+            setUniversalResult(data);
+            fetchRecords();
+        } catch (err: any) {
+            setUniversalError(err.message || "Universal fleet synchronization failed");
+        } finally {
+            setUniversalExecuting(false);
+        }
+    };
+
     const configuredFwsList = useMemo(() => {
         return summary?.byFirewall?.map(f => f.firewall) || [
             "Wilmington (Connect Primary)",
@@ -459,6 +537,54 @@ export function ShunDatabaseTab({ initialSearch = "", onClose, isModal = false }
                             </span>
                         </button>
 
+                        {/* Status Filter: Full 4/4 Fleet Protection */}
+                        {summary?.fullyProtectedCount !== undefined && (
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    const next = statusFilter === "full" ? "all" : "full";
+                                    setStatusFilter(next);
+                                    setPage(1);
+                                }}
+                                className={`px-2.5 py-1.5 rounded-lg border text-xs font-medium transition-all flex items-center gap-1.5 ${
+                                    statusFilter === "full"
+                                        ? "bg-emerald-500/20 border-emerald-500/50 text-emerald-300"
+                                        : "bg-[var(--bg-default)] border-[var(--border-color)] text-emerald-400/90 hover:text-emerald-300"
+                                }`}
+                                title="Click to filter IPs with full 4/4 perimeter firewall protection"
+                            >
+                                <Shield className="w-3.5 h-3.5 text-emerald-400" />
+                                <span>Full Protection:</span>
+                                <span className="font-bold text-[var(--text-primary)]">
+                                    {summary.fullyProtectedCount.toLocaleString()}
+                                </span>
+                            </button>
+                        )}
+
+                        {/* Status Filter: At Risk on Failover (Partial) */}
+                        {summary?.partialProtectedCount !== undefined && summary.partialProtectedCount > 0 && (
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    const next = statusFilter === "partial" ? "all" : "partial";
+                                    setStatusFilter(next);
+                                    setPage(1);
+                                }}
+                                className={`px-2.5 py-1.5 rounded-lg border text-xs font-medium transition-all flex items-center gap-1.5 ${
+                                    statusFilter === "partial"
+                                        ? "bg-amber-500/25 border-amber-500/60 text-amber-200 shadow-sm"
+                                        : "bg-amber-500/10 border-amber-500/30 text-amber-300 hover:bg-amber-500/15"
+                                }`}
+                                title="Click to filter IPs missing from one or more firewalls (vulnerable on failover)"
+                            >
+                                <AlertTriangle className="w-3.5 h-3.5 text-amber-400" />
+                                <span>At Risk on Failover:</span>
+                                <span className="font-bold text-amber-300">
+                                    {summary.partialProtectedCount.toLocaleString()}
+                                </span>
+                            </button>
+                        )}
+
                         {/* Status Filter: All Records */}
                         <button
                             type="button"
@@ -503,13 +629,27 @@ export function ShunDatabaseTab({ initialSearch = "", onClose, isModal = false }
                         )}
                     </div>
 
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-2.5">
                         {summary?.lastSyncedAt && (
                             <span className="text-xs text-[var(--text-muted)] hidden md:flex items-center gap-1.5" title={new Date(summary.lastSyncedAt).toLocaleString()}>
                                 <Clock className="w-3.5 h-3.5" />
                                 Synced: <span className="text-[var(--text-secondary)] font-medium">{new Date(summary.lastSyncedAt).toLocaleTimeString()}</span>
                             </span>
                         )}
+                        <button
+                            type="button"
+                            onClick={() => setShowUniversalModal(true)}
+                            className="px-3 py-1.5 rounded-lg bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white text-xs font-semibold transition-all shadow-md shadow-purple-600/20 flex items-center gap-1.5 whitespace-nowrap"
+                            title="Synchronize shuns across all 4 firewalls so failover never leaves the network exposed"
+                        >
+                            <Zap className="w-3.5 h-3.5 text-amber-300" />
+                            Universalize Fleet
+                            {summary?.partialProtectedCount ? (
+                                <span className="px-1.5 py-0.2 rounded-full text-[10px] font-bold bg-amber-400 text-slate-950 ml-0.5">
+                                    {summary.partialProtectedCount.toLocaleString()} partial
+                                </span>
+                            ) : null}
+                        </button>
                         <button
                             type="button"
                             onClick={handleManualSync}
@@ -886,13 +1026,28 @@ export function ShunDatabaseTab({ initialSearch = "", onClose, isModal = false }
                                                             </span>
                                                         </div>
                                                     ) : record.activeCount > 0 ? (
-                                                        <div className="flex flex-col gap-1">
-                                                            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-500/15 text-amber-300 border border-amber-500/40 w-fit">
-                                                                <Server className="w-3 h-3 text-amber-400" />
-                                                                {record.activeCount} of {record.configuredFirewallsCount || 4} Firewalls
-                                                            </span>
-                                                            <span className="text-[10px] text-slate-400 font-mono truncate max-w-[220px]" title={record.activeFirewalls?.join(", ")}>
-                                                                {record.activeFirewalls?.join(", ")}
+                                                        <div className="flex flex-col gap-1.5">
+                                                            <div className="flex items-center gap-1.5">
+                                                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-500/15 text-amber-300 border border-amber-500/40 w-fit" title="At risk during active/standby failover! Not active across all fleet firewalls.">
+                                                                    <AlertTriangle className="w-3 h-3 text-amber-400" />
+                                                                    {record.activeCount} of {record.configuredFirewallsCount || 4} FWs
+                                                                </span>
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        handleReplicateSingle(record.ip);
+                                                                    }}
+                                                                    disabled={replicatingIps.has(record.ip)}
+                                                                    className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/20 hover:bg-amber-500/35 text-amber-300 border border-amber-500/40 transition-all flex items-center gap-1 shadow-sm disabled:opacity-50"
+                                                                    title="Push shun command to missing firewalls immediately to harden against failover"
+                                                                >
+                                                                    <Zap className={`w-3 h-3 text-amber-400 ${replicatingIps.has(record.ip) ? "animate-spin" : ""}`} />
+                                                                    {replicatingIps.has(record.ip) ? "Syncing..." : "Sync All 4"}
+                                                                </button>
+                                                            </div>
+                                                            <span className="text-[10px] text-slate-400 font-mono truncate max-w-[220px]" title={`Active on: ${record.activeFirewalls?.join(", ")}`}>
+                                                                Active: {record.activeFirewalls?.join(", ")}
                                                             </span>
                                                         </div>
                                                     ) : (
@@ -1381,6 +1536,219 @@ export function ShunDatabaseTab({ initialSearch = "", onClose, isModal = false }
                                             <>
                                                 <Unlock className="w-3.5 h-3.5" />
                                                 Confirm Unshun ({unshunModal.ips.length} IPs on {unshunModal.isAllFirewalls ? "All 4 FWs" : `${unshunModal.selectedFirewalls.length} FWs`})
+                                            </>
+                                        )}
+                                    </button>
+                                </>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Universal Fleet Shun Synchronizer Modal */}
+            {showUniversalModal && (
+                <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
+                    <div className="bg-slate-900 border border-purple-500/40 rounded-2xl w-full max-w-xl shadow-2xl overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-150">
+                        {/* Modal Header */}
+                        <div className="px-6 py-4 bg-slate-950/80 border-b border-slate-800 flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                                <div className="p-2.5 rounded-xl bg-purple-500/20 border border-purple-500/40 text-purple-300">
+                                    <Zap className="w-5 h-5 text-purple-400" />
+                                </div>
+                                <div>
+                                    <h3 className="text-base font-bold text-white flex items-center gap-2">
+                                        Universal Fleet Shun Synchronizer
+                                    </h3>
+                                    <p className="text-xs text-slate-400">
+                                        Active/Standby failover resilience & multi-DC perimeter hardening
+                                    </p>
+                                </div>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setShowUniversalModal(false);
+                                    setUniversalResult(null);
+                                    setUniversalError(null);
+                                }}
+                                className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+                            >
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
+
+                        {/* Modal Body */}
+                        <div className="p-6 flex flex-col gap-5 max-h-[80vh] overflow-y-auto">
+                            {/* Failover Risk Advisory Banner */}
+                            <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-200 text-xs flex flex-col gap-1.5 leading-relaxed">
+                                <div className="flex items-center gap-2 font-bold text-amber-300">
+                                    <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
+                                    Why Fleet Universalization is Critical:
+                                </div>
+                                <p className="text-slate-300">
+                                    Cisco ASA and Firepower appliances do <strong className="text-amber-200">not</strong> synchronize in-memory <code className="bg-black/30 px-1 py-0.5 rounded text-amber-300">shun</code> commands over stateful HA links. If an active firewall fails over to its standby unit, or traffic routes to the secondary data center, any IP not shunned on all 4 firewalls can bypass the perimeter.
+                                </p>
+                            </div>
+
+                            {/* Live Fleet Health Matrix */}
+                            <div className="grid grid-cols-2 gap-3">
+                                <div className="p-3 rounded-xl bg-slate-950/60 border border-slate-800 flex flex-col">
+                                    <span className="text-[11px] text-slate-400">Full Fleet Protection (4/4)</span>
+                                    <span className="text-lg font-bold text-emerald-400">
+                                        {summary?.fullyProtectedCount?.toLocaleString() || "0"}
+                                    </span>
+                                    <span className="text-[10px] text-emerald-500/80">Protected on failover</span>
+                                </div>
+                                <div className="p-3 rounded-xl bg-slate-950/60 border border-amber-500/30 flex flex-col">
+                                    <span className="text-[11px] text-amber-300">At Risk on Failover (&lt;4 FWs)</span>
+                                    <span className="text-lg font-bold text-amber-400">
+                                        {summary?.partialProtectedCount?.toLocaleString() || "0"}
+                                    </span>
+                                    <span className="text-[10px] text-amber-500/80">Missing on 1–3 appliances</span>
+                                </div>
+                            </div>
+
+                            {/* Mode Selection if not executed */}
+                            {!universalResult && (
+                                <div className="flex flex-col gap-2">
+                                    <label className="text-xs font-semibold text-slate-300">
+                                        Select Synchronization Mode:
+                                    </label>
+                                    <div className="grid grid-cols-1 gap-2.5">
+                                        <button
+                                            type="button"
+                                            onClick={() => setUniversalMode("all_partial")}
+                                            className={`p-3 rounded-xl border text-left transition-all flex items-start gap-3 ${
+                                                universalMode === "all_partial"
+                                                    ? "bg-purple-500/15 border-purple-500/60 text-white shadow-sm shadow-purple-500/10"
+                                                    : "bg-slate-950/50 border-slate-800 text-slate-400 hover:border-slate-700 hover:text-slate-200"
+                                            }`}
+                                        >
+                                            <div className="mt-0.5">
+                                                <Zap className={`w-4 h-4 ${universalMode === "all_partial" ? "text-purple-400" : "text-slate-500"}`} />
+                                            </div>
+                                            <div className="flex flex-col gap-0.5">
+                                                <div className="text-xs font-bold text-white flex items-center gap-2">
+                                                    Reconcile Partially Shunned IPs (Recommended)
+                                                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300 font-semibold border border-purple-500/40">
+                                                        Up to 500 IPs
+                                                    </span>
+                                                </div>
+                                                <p className="text-[11px] text-slate-400 leading-normal">
+                                                    Scans for all IPs that are active on 1, 2, or 3 firewalls and pushes safe throttled batches to the remaining firewalls.
+                                                </p>
+                                            </div>
+                                        </button>
+
+                                        <button
+                                            type="button"
+                                            onClick={() => setUniversalMode("blacklist")}
+                                            className={`p-3 rounded-xl border text-left transition-all flex items-start gap-3 ${
+                                                universalMode === "blacklist"
+                                                    ? "bg-purple-500/15 border-purple-500/60 text-white shadow-sm shadow-purple-500/10"
+                                                    : "bg-slate-950/50 border-slate-800 text-slate-400 hover:border-slate-700 hover:text-slate-200"
+                                            }`}
+                                        >
+                                            <div className="mt-0.5">
+                                                <Shield className={`w-4 h-4 ${universalMode === "blacklist" ? "text-purple-400" : "text-slate-500"}`} />
+                                            </div>
+                                            <div className="flex flex-col gap-0.5">
+                                                <div className="text-xs font-bold text-white flex items-center gap-2">
+                                                    Guardian Blacklist Priority Sync
+                                                </div>
+                                                <p className="text-[11px] text-slate-400 leading-normal">
+                                                    Pushes perimeter shuns to all 4 firewalls for every confirmed attacker on the Guardian Do-Not-Unshun Blacklist and CVE registry.
+                                                </p>
+                                            </div>
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Execution Results View */}
+                            {universalResult && (
+                                <div className="p-4 rounded-xl bg-slate-950/80 border border-emerald-500/40 flex flex-col gap-3">
+                                    <div className="flex items-center gap-2 text-emerald-400 font-bold text-sm">
+                                        <CheckCircle2 className="w-5 h-5 text-emerald-400" />
+                                        Universal Fleet Synchronization Completed!
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-2 text-xs text-slate-300">
+                                        <div>
+                                            IPs Processed: <strong className="text-white">{universalResult.totalIpsProcessed}</strong>
+                                        </div>
+                                        <div>
+                                            Total Shuns Dispatched: <strong className="text-emerald-300">{universalResult.totalShunCommandsSent}</strong>
+                                        </div>
+                                    </div>
+                                    {universalResult.replicatedByFirewall && (
+                                        <div className="flex flex-col gap-1.5 pt-2 border-t border-slate-800">
+                                            <span className="text-[11px] font-semibold text-slate-400">Reconciled Nodes:</span>
+                                            <div className="grid grid-cols-2 gap-2">
+                                                {Object.entries(universalResult.replicatedByFirewall).map(([fw, count]: [string, any]) => (
+                                                    <div key={fw} className="p-2 rounded-lg bg-slate-900 border border-slate-800 flex items-center justify-between text-xs">
+                                                        <span className="text-slate-300 truncate max-w-[170px]" title={fw}>{fw}</span>
+                                                        <span className="font-mono font-bold text-purple-300">+{count}</span>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
+                            {/* Error View */}
+                            {universalError && (
+                                <div className="p-3.5 rounded-xl bg-red-500/15 border border-red-500/40 text-red-200 text-xs flex items-center gap-2">
+                                    <AlertTriangle className="w-4 h-4 text-red-400 shrink-0" />
+                                    <span>{universalError}</span>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Modal Footer */}
+                        <div className="px-6 py-4 bg-slate-950/80 border-t border-slate-800 flex items-center justify-between">
+                            {universalResult ? (
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setShowUniversalModal(false);
+                                        setUniversalResult(null);
+                                        setUniversalError(null);
+                                    }}
+                                    className="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs transition-colors ml-auto shadow-md shadow-indigo-600/30"
+                                >
+                                    Close & Refresh Database
+                                </button>
+                            ) : (
+                                <>
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setShowUniversalModal(false);
+                                            setUniversalError(null);
+                                        }}
+                                        disabled={universalExecuting}
+                                        className="px-3.5 py-1.5 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white text-xs transition-colors disabled:opacity-50"
+                                    >
+                                        Cancel
+                                    </button>
+
+                                    <button
+                                        type="button"
+                                        onClick={handleExecuteUniversalize}
+                                        disabled={universalExecuting}
+                                        className="px-4 py-2 rounded-lg bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-semibold text-xs transition-all shadow-lg shadow-purple-600/30 disabled:opacity-50 flex items-center gap-2"
+                                    >
+                                        {universalExecuting ? (
+                                            <>
+                                                <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                                                Pushing Replicated Shuns to Fleet...
+                                            </>
+                                        ) : (
+                                            <>
+                                                <Zap className="w-3.5 h-3.5 text-amber-300" />
+                                                Execute Fleet Synchronization
                                             </>
                                         )}
                                     </button>
