@@ -8,6 +8,7 @@ import {
     Download, ClipboardCheck, FileText, Sparkles
 } from "lucide-react";
 import Link from "next/link";
+import { ShunDatabaseTab } from "@/components/firewall/ShunDatabaseTab";
 import type {
     CitrixLoginTriageResponse,
     CitrixIpEvaluation,
@@ -71,6 +72,10 @@ export default function CitrixLoginTriageTab({
     const [shunLogEntries, setShunLogEntries] = useState<any[]>([]);
     const [shunLogRawText, setShunLogRawText] = useState<string>("");
     const [shunLogTab, setShunLogTab] = useState<"cards" | "raw">("cards");
+
+    // Perimeter Shun Database Modal
+    const [showShunDbModal, setShowShunDbModal] = useState<boolean>(false);
+    const [shunDbInitialSearch, setShunDbInitialSearch] = useState<string>("");
 
     const fetchShunLogs = useCallback(async () => {
         setShunLogsLoading(true);
@@ -485,6 +490,18 @@ export default function CitrixLoginTriageTab({
                     >
                         <FileSpreadsheet className="w-3.5 h-3.5" />
                         Export CSV
+                    </button>
+
+                    <button
+                        onClick={() => {
+                            setShunDbInitialSearch("");
+                            setShowShunDbModal(true);
+                        }}
+                        title="Search all perimeter shunned IPs, browse recently shunned addresses, and un-shun across firewalls."
+                        className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold bg-indigo-600/30 hover:bg-indigo-600/50 text-indigo-200 border border-indigo-500/40 shadow-sm transition-all"
+                    >
+                        <Shield className="w-3.5 h-3.5 text-indigo-400" />
+                        Search Shunned IPs
                     </button>
 
                     <button
@@ -2161,6 +2178,19 @@ export default function CitrixLoginTriageTab({
                                 </button>
                             </div>
                         </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Perimeter Firewall Shunned IPs Database Modal */}
+            {showShunDbModal && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
+                    <div className="bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl w-full max-w-7xl h-[92vh] flex flex-col overflow-hidden">
+                        <ShunDatabaseTab
+                            initialSearch={shunDbInitialSearch}
+                            onClose={() => setShowShunDbModal(false)}
+                            isModal={true}
+                        />
                     </div>
                 </div>
             )}

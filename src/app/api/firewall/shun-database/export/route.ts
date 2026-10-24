@@ -19,8 +19,16 @@ export async function GET(req: Request) {
         const statusFilter = url.searchParams.get("status") || "all";
         const sortField = url.searchParams.get("sortField") || "isActive";
         const sortDir = url.searchParams.get("sortDir") === "asc" ? "asc" : "desc";
+        const ipsParam = url.searchParams.get("ips") || "";
 
         const where: any = {};
+
+        if (ipsParam) {
+            const list = ipsParam.split(",").map(i => i.trim()).filter(Boolean);
+            if (list.length > 0) {
+                where.ip = { in: list };
+            }
+        }
 
         if (statusFilter === "active") {
             where.isActive = true;

@@ -1,5 +1,10 @@
-import { useState, useEffect, useCallback } from "react";
-import { Server, ShieldAlert, Clock, SearchX, LayoutTemplate, Check, Download, Info, RefreshCw, CheckCircle2, AlertTriangle, X } from "lucide-react";
+import { useState, useEffect, useCallback, useMemo } from "react";
+import { 
+    Server, ShieldAlert, Clock, SearchX, LayoutTemplate, Check, Download, 
+    Info, RefreshCw, CheckCircle2, AlertTriangle, X, Unlock, Flame, 
+    CheckSquare, Square, MinusSquare, FileSpreadsheet, Shield, ExternalLink,
+    ClipboardCheck, Sparkles
+} from "lucide-react";
 import { EnrichmentDetailsModal } from "./EnrichmentDetailsModal";
 import { SmartSearchBar } from "@/components/common/SmartSearchBar";
 
@@ -17,26 +22,44 @@ interface ShunSummary {
     }>;
 }
 
-export function ShunDatabaseTab() {
+export interface ShunDatabaseTabProps {
+    initialSearch?: string;
+    onClose?: () => void;
+    isModal?: boolean;
+}
+
+export function ShunDatabaseTab({ initialSearch = "", onClose, isModal = false }: ShunDatabaseTabProps) {
     const [records, setRecords] = useState<any[]>([]);
     const [summary, setSummary] = useState<ShunSummary | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
     
-    const [search, setSearch] = useState("");
-    const [activeSearch, setActiveSearch] = useState("");
-    const [statusFilter, setStatusFilter] = useState<"all" | "active" | "cleared">("all");
+    const [search, setSearch] = useState(initialSearch);
+    const [activeSearch, setActiveSearch] = useState(initialSearch);
+    const [statusFilter, setStatusFilter] = useState<"all" | "active" | "cleared">("active");
     
     const [page, setPage] = useState(1);
     const [limit, setLimit] = useState(50);
     const [totalPages, setTotalPages] = useState(1);
     const [totalRecords, setTotalRecords] = useState(0);
 
-    const [sortField, setSortField] = useState("isActive");
+    // Default to lastSeen desc to immediately generate/show recently shunned IPs
+    const [sortField, setSortField] = useState("lastSeen");
     const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
 
     const [selectedIp, setSelectedIp] = useState<string | null>(null);
     const [isExporting, setIsExporting] = useState(false);
+
+    // Multi-select & Unshun State
+    const [selectedIps, setSelectedIps] = useState<Set<string>>(new Set());
+    const [targetFleet, setTargetFleet] = useState<string>("all");
+    const [unshunModal, setUnshunModal] = useState<{
+        ips: string[];
+        targetHost: string;
+    } | null>(null);
+    const [unshunExecuting, setUnshunExecuting] = useState(false);
+    const [unshunResult, setUnshunResult] = useState<any | null>(null);
+    const [unshunError, setUnshunError] = useState<string | null>(null);
 
     const [isSyncing, setIsSyncing] = useState(false);
     const [syncBanner, setSyncBanner] = useState<{
@@ -51,14 +74,15 @@ export function ShunDatabaseTab() {
         lifecycle: true,
         firewall: true,
         network: true,
-        location: true
+        location: true,
+        actions: true
     });
     const [showColumnMenu, setShowColumnMenu] = useState(false);
 
     useEffect(() => {
         const savedCols = localStorage.getItem("pane-o-glass.shun-columns");
         if (savedCols) {
-            try { setVisibleColumns(JSON.parse(savedCols)); } catch (e) {}
+            try { setVisibleColumns(prev => ({ ...prev, ...JSON.parse(savedCols) })); } catch (e) {}
         }
         const savedLimit = localStorage.getItem("pane-o-glass.shun-limit");
         if (savedLimit) {
@@ -88,20 +112,21 @@ export function ShunDatabaseTab() {
         localStorage.setItem("pane-o-glass.shun-columns", JSON.stringify(updated));
     };
 
-    const handleExport = async () => {
+    const handleExport = async (onlySelected = false) => {
         try {
             setIsExporting(true);
             const query = new URLSearchParams();
-            const term = (activeSearch || search).trim();
-            if (term) query.append("search", term);
-            if (statusFilter !== "all") query.append("status", statusFilter);
-            query.append("sortField", sortField);
-            query.append("sortDir", sortDir);
+            if (onlySelected && selectedIps.size > 0) {
+                query.append("ips", Array.from(selectedIps).join(","));
+            } else {
+                const term = (activeSearch || search).trim();
+                if (term) query.append("search", term);
+                if (statusFilter !== "all") query.append("status", statusFilter);
+                query.append("sortField", sortField);
+                query.append("sortDir", sortDir);
+            }
             
-            // Trigger browser download by setting location href
             window.location.href = `/api/firewall/shun-database/export?${query.toString()}`;
-            
-            // Allow time for navigation to initiate before re-enabling button
             await new Promise(resolve => setTimeout(resolve, 1000));
         } catch (err) {
             console.error("Export failed", err);
@@ -117,7 +142,7 @@ export function ShunDatabaseTab() {
             const currentSearch = searchOverride !== undefined ? searchOverride : activeSearch;
             const currentStatus = statusOverride !== undefined ? statusOverride : statusFilter;
             const query = new URLSearchParams({ 
-                page: page.toString(), 
+                page: page.toString(),
                 limit: limit.toString(),
                 sortField,
                 sortDir,
@@ -189,11 +214,11 @@ export function ShunDatabaseTab() {
     const clearFilters = () => {
         setSearch("");
         setActiveSearch("");
-        setStatusFilter("all");
+        setStatusFilter("active");
         setPage(1);
-        setSortField("isActive");
+        setSortField("lastSeen");
         setSortDir("desc");
-        fetchRecords("", "all");
+        fetchRecords("", "active");
     };
 
     const handleFirewallChipClick = (fwName: string) => {
@@ -204,22 +229,160 @@ export function ShunDatabaseTab() {
         fetchRecords(nextTerm);
     };
 
+    // Preset Buttons Handlers
+    const applyRecentlyShunnedPreset = () => {
+        setStatusFilter("active");
+        setSortField("lastSeen");
+        setSortDir("desc");
+        setPage(1);
+    };
+
+    const applyNewlyAddedPreset = () => {
+        setStatusFilter("active");
+        setSortField("firstSeen");
+        setSortDir("desc");
+        setPage(1);
+    };
+
+    const applyLongestStandingPreset = () => {
+        setStatusFilter("active");
+        setSortField("daysShunned");
+        setSortDir("desc");
+        setPage(1);
+    };
+
+    // Selection Calculations
+    const pageIps = useMemo(() => Array.from(new Set(records.map(r => r.ip))), [records]);
+    const isAllPageSelected = pageIps.length > 0 && pageIps.every(ip => selectedIps.has(ip));
+    const isSomePageSelected = pageIps.some(ip => selectedIps.has(ip)) && !isAllPageSelected;
+
+    const toggleSelectAllPage = () => {
+        setSelectedIps(prev => {
+            const next = new Set(prev);
+            if (isAllPageSelected) {
+                pageIps.forEach(ip => next.delete(ip));
+            } else {
+                pageIps.forEach(ip => next.add(ip));
+            }
+            return next;
+        });
+    };
+
+    const toggleSelectIp = (ip: string) => {
+        setSelectedIps(prev => {
+            const next = new Set(prev);
+            if (next.has(ip)) {
+                next.delete(ip);
+            } else {
+                next.add(ip);
+            }
+            return next;
+        });
+    };
+
+    const clearSelection = () => {
+        setSelectedIps(new Set());
+    };
+
+    // Execute Unshun Operation
+    const executeUnshun = async (ips: string[], host: string) => {
+        setUnshunExecuting(true);
+        setUnshunError(null);
+        setUnshunResult(null);
+
+        try {
+            const res = await fetch("/api/firewall/shun", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    ipAddresses: ips,
+                    action: "remove",
+                    targetHost: host
+                })
+            });
+
+            const data = await res.json();
+            if (res.ok && data.success) {
+                setUnshunResult(data);
+                // Optimistically mark these IPs as inactive in local state
+                setRecords(prev => prev.map(rec => ips.includes(rec.ip) ? { ...rec, isActive: false } : rec));
+                // Remove from selection
+                setSelectedIps(prev => {
+                    const next = new Set(prev);
+                    ips.forEach(ip => next.delete(ip));
+                    return next;
+                });
+                // Refresh summary count in background
+                fetchRecords();
+            } else {
+                setUnshunError(data.error || data.stderr || "Failed to remove shun(s) on firewalls.");
+            }
+        } catch (err: any) {
+            setUnshunError(err?.message || "Network error while connecting to firewalls.");
+        } finally {
+            setUnshunExecuting(false);
+        }
+    };
+
     return (
-        <div className="flex flex-col gap-0 h-full overflow-hidden">
+        <div className={`flex flex-col gap-0 h-full overflow-hidden ${isModal ? "bg-[var(--bg-surface)] text-[var(--text-primary)]" : ""}`}>
+            {/* Modal Header Bar if rendered in modal dialog */}
+            {isModal && (
+                <div className="bg-slate-900 border-b border-slate-800 px-5 py-3.5 flex items-center justify-between shrink-0">
+                    <div className="flex items-center gap-2.5">
+                        <div className="p-2 rounded-lg bg-red-500/15 border border-red-500/30 text-red-400">
+                            <Shield className="w-5 h-5" />
+                        </div>
+                        <div>
+                            <h2 className="text-base font-bold text-white flex items-center gap-2">
+                                Perimeter Firewall Shunned IPs Database
+                            </h2>
+                            <p className="text-xs text-slate-400">
+                                Search, browse recently shunned addresses, and un-shun across all perimeter firewalls.
+                            </p>
+                        </div>
+                    </div>
+                    {onClose && (
+                        <button
+                            type="button"
+                            onClick={onClose}
+                            className="p-1.5 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white transition-colors"
+                        >
+                            <X className="w-5 h-5" />
+                        </button>
+                    )}
+                </div>
+            )}
+
             <div className="bg-[var(--bg-surface)] p-4 border-b border-[var(--border-color)] shadow-sm shrink-0 flex flex-col gap-3">
-                {/* Current Numbers & Manual Sync Bar */}
+                {/* Metric Pills & Status Selector */}
                 <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-[var(--border-color)]">
-                    <div className="flex flex-wrap items-center gap-2.5">
-                        {/* Status Filter / Metric Pills */}
+                    <div className="flex flex-wrap items-center gap-2">
+                        {/* Preset: Recently Shunned */}
+                        <button
+                            type="button"
+                            onClick={applyRecentlyShunnedPreset}
+                            className={`px-3 py-1.5 rounded-lg border text-xs font-semibold transition-all flex items-center gap-1.5 ${
+                                statusFilter === "active" && sortField === "lastSeen" && sortDir === "desc"
+                                    ? "bg-rose-500/25 border-rose-500/60 text-rose-200 shadow-sm ring-1 ring-rose-500/30"
+                                    : "bg-rose-500/10 border-rose-500/25 text-rose-300 hover:bg-rose-500/20"
+                            }`}
+                            title="Generate list of active shuns sorted by most recently verified (last seen)"
+                        >
+                            <Sparkles className="w-3.5 h-3.5 text-rose-400" />
+                            <span>Recently Shunned</span>
+                        </button>
+
+                        {/* Status Filter: Active Shuns */}
                         <button
                             type="button"
                             onClick={() => {
-                                const next = statusFilter === "active" ? "all" : "active";
+                                const next = statusFilter === "active" && sortField !== "lastSeen" ? "all" : "active";
                                 setStatusFilter(next);
                                 setPage(1);
                             }}
                             className={`px-3 py-1.5 rounded-lg border text-xs font-medium transition-all flex items-center gap-2 ${
-                                statusFilter === "active"
+                                statusFilter === "active" && sortField !== "lastSeen"
                                     ? "bg-red-500/20 border-red-500/50 text-red-300 shadow-sm"
                                     : "bg-red-500/10 border-red-500/25 text-red-400 hover:bg-red-500/15"
                             }`}
@@ -229,17 +392,18 @@ export function ShunDatabaseTab() {
                                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
                                 <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
                             </span>
-                            <span>Active Shuns:</span>
+                            <span>Active:</span>
                             <span className="font-bold text-sm text-[var(--text-primary)]">
                                 {summary ? summary.activeTotal.toLocaleString() : "—"}
                             </span>
                             {summary && (
-                                <span className="text-[11px] text-[var(--text-secondary)] border-l border-red-500/30 pl-2">
-                                    {summary.uniqueActiveIps.toLocaleString()} unique IPs
+                                <span className="text-[11px] text-[var(--text-secondary)] border-l border-red-500/30 pl-1.5">
+                                    {summary.uniqueActiveIps.toLocaleString()} IPs
                                 </span>
                             )}
                         </button>
 
+                        {/* Status Filter: Cleared */}
                         <button
                             type="button"
                             onClick={() => {
@@ -260,9 +424,26 @@ export function ShunDatabaseTab() {
                             </span>
                         </button>
 
+                        {/* Status Filter: All Records */}
+                        <button
+                            type="button"
+                            onClick={() => {
+                                setStatusFilter("all");
+                                setPage(1);
+                            }}
+                            className={`px-2.5 py-1.5 rounded-lg border text-xs font-medium transition-all ${
+                                statusFilter === "all"
+                                    ? "bg-slate-700/50 border-slate-600 text-white"
+                                    : "bg-[var(--bg-default)] border-[var(--border-color)] text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+                            }`}
+                            title="Show all active and historical cleared shuns"
+                        >
+                            All ({summary ? summary.totalTracked.toLocaleString() : "—"})
+                        </button>
+
                         {/* Per-Firewall Live Counts */}
                         {summary?.byFirewall && summary.byFirewall.length > 0 && (
-                            <div className="flex flex-wrap items-center gap-1.5 pl-1 border-l border-[var(--border-color)]">
+                            <div className="flex flex-wrap items-center gap-1.5 pl-1.5 border-l border-[var(--border-color)]">
                                 {summary.byFirewall.map(fw => {
                                     const isSelected = activeSearch.trim().toLowerCase() === fw.firewall.toLowerCase();
                                     return (
@@ -270,7 +451,7 @@ export function ShunDatabaseTab() {
                                             key={fw.firewall}
                                             type="button"
                                             onClick={() => handleFirewallChipClick(fw.firewall)}
-                                            className={`px-2.5 py-1 rounded-md border text-[11px] font-mono transition-all flex items-center gap-1.5 ${
+                                            className={`px-2 py-1 rounded-md border text-[11px] font-mono transition-all flex items-center gap-1.5 ${
                                                 isSelected
                                                     ? "bg-amber-500/20 border-amber-500/50 text-amber-300"
                                                     : "bg-[var(--bg-default)] border-[var(--border-color)] text-[var(--text-secondary)] hover:border-amber-500/40 hover:text-[var(--text-primary)]"
@@ -289,20 +470,20 @@ export function ShunDatabaseTab() {
 
                     <div className="flex items-center gap-3">
                         {summary?.lastSyncedAt && (
-                            <span className="text-xs text-[var(--text-muted)] flex items-center gap-1.5" title={new Date(summary.lastSyncedAt).toLocaleString()}>
+                            <span className="text-xs text-[var(--text-muted)] hidden md:flex items-center gap-1.5" title={new Date(summary.lastSyncedAt).toLocaleString()}>
                                 <Clock className="w-3.5 h-3.5" />
-                                Last Synced: <span className="text-[var(--text-secondary)] font-medium">{new Date(summary.lastSyncedAt).toLocaleString()}</span>
+                                Synced: <span className="text-[var(--text-secondary)] font-medium">{new Date(summary.lastSyncedAt).toLocaleTimeString()}</span>
                             </span>
                         )}
                         <button
                             type="button"
                             onClick={handleManualSync}
                             disabled={isSyncing}
-                            className="px-3.5 py-2 rounded-xl bg-[var(--accent-primary)] hover:bg-[var(--accent-primary)]/90 text-white text-xs font-semibold transition-all disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-1.5 shadow-sm whitespace-nowrap"
+                            className="px-3 py-1.5 rounded-lg bg-[var(--accent-primary)] hover:bg-[var(--accent-primary)]/90 text-white text-xs font-semibold transition-all disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-1.5 shadow-sm whitespace-nowrap"
                             title="SSH into all configured firewalls now and refresh active shun counts"
                         >
                             <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? "animate-spin" : ""}`} />
-                            {isSyncing ? "Querying Firewalls..." : "Update Shun DB Now"}
+                            {isSyncing ? "Syncing..." : "Update Shun DB"}
                         </button>
                     </div>
                 </div>
@@ -339,6 +520,7 @@ export function ShunDatabaseTab() {
                     </div>
                 )}
 
+                {/* Smart Search Bar */}
                 <SmartSearchBar
                     value={search}
                     onChange={setSearch}
@@ -349,7 +531,7 @@ export function ShunDatabaseTab() {
                         fetchRecords(cleanTerm);
                     }}
                     onReset={clearFilters}
-                    placeholder="Omnisearch: IP, ASN, Org, or Firewall (e.g. cuh-fw1 AND NOT US)..."
+                    placeholder="Search shunned IPs: IP, Subnet, ASN, Org, or Firewall (e.g. 198.51.100.1, cuh-fw1, AS15169)..."
                     buttonLabel="Search"
                     loading={loading}
                     supportedFields={["IP Address", "Firewall Host", "ASN", "Organization", "Country"]}
@@ -372,30 +554,31 @@ export function ShunDatabaseTab() {
                                 <button 
                                     type="button" 
                                     onClick={() => setShowColumnMenu(!showColumnMenu)} 
-                                    className="px-3.5 py-3 rounded-xl border border-border-color bg-bg-surface-hover hover:bg-bg-surface text-text-secondary hover:text-text-primary text-xs font-medium transition-all flex items-center gap-1.5 whitespace-nowrap"
+                                    className="px-3 py-2.5 rounded-xl border border-[var(--border-color)] bg-[var(--bg-surface-hover)] hover:bg-[var(--bg-surface)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] text-xs font-medium transition-all flex items-center gap-1.5 whitespace-nowrap"
                                 >
                                     <LayoutTemplate className="w-3.5 h-3.5" /> Columns
                                 </button>
                                 {showColumnMenu && (
                                     <>
                                         <div className="fixed inset-0 z-40" onClick={() => setShowColumnMenu(false)}></div>
-                                        <div className="absolute right-0 top-full mt-2 w-48 bg-bg-surface border border-border-color rounded-xl shadow-xl z-50 p-2 glass-card">
-                                            <div className="text-[10px] font-bold text-text-muted uppercase tracking-wider mb-2 px-2 mt-1">Toggle Columns</div>
+                                        <div className="absolute right-0 top-full mt-2 w-48 bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-xl shadow-xl z-50 p-2 glass-card">
+                                            <div className="text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-wider mb-2 px-2 mt-1">Toggle Columns</div>
                                             {Object.entries({
                                                 status: "Status",
                                                 ip: "IP Address",
                                                 lifecycle: "Lifecycle",
                                                 firewall: "Firewall",
                                                 network: "Network Intel",
-                                                location: "Location"
+                                                location: "Location",
+                                                actions: "Actions"
                                             }).map(([key, label]) => (
                                                 <button 
                                                     key={key} 
                                                     type="button" 
                                                     onClick={() => toggleColumn(key as any)}
-                                                    className="w-full flex items-center gap-2 px-2 py-1.5 text-xs text-text-primary hover:bg-bg-surface-hover rounded-lg transition-colors text-left"
+                                                    className="w-full flex items-center gap-2 px-2 py-1.5 text-xs text-[var(--text-primary)] hover:bg-[var(--bg-surface-hover)] rounded-lg transition-colors text-left"
                                                 >
-                                                    <div className={`w-3.5 h-3.5 rounded border flex items-center justify-center ${visibleColumns[key as keyof typeof visibleColumns] ? 'bg-accent-primary border-accent-primary text-white' : 'border-border-color text-transparent'}`}>
+                                                    <div className={`w-3.5 h-3.5 rounded border flex items-center justify-center ${visibleColumns[key as keyof typeof visibleColumns] ? 'bg-[var(--accent-primary)] border-[var(--accent-primary)] text-white' : 'border-[var(--border-color)] text-transparent'}`}>
                                                         <Check className="w-3 h-3" />
                                                     </div>
                                                     {label}
@@ -408,20 +591,53 @@ export function ShunDatabaseTab() {
 
                             <button 
                                 type="button" 
-                                onClick={handleExport} 
+                                onClick={() => handleExport(false)} 
                                 disabled={isExporting} 
-                                className="px-3.5 py-3 rounded-xl border border-border-color bg-bg-surface-hover hover:bg-bg-surface text-text-secondary hover:text-text-primary text-xs font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5 whitespace-nowrap"
+                                className="px-3 py-2.5 rounded-xl border border-[var(--border-color)] bg-[var(--bg-surface-hover)] hover:bg-[var(--bg-surface)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] text-xs font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5 whitespace-nowrap"
+                                title="Export all matching records to CSV"
                             >
-                                <Download className="w-3.5 h-3.5" /> {isExporting ? "Exporting..." : "Export"}
+                                <Download className="w-3.5 h-3.5" /> {isExporting ? "Exporting..." : "Export CSV"}
                             </button>
                         </div>
                     }
                 />
                 
-                <div className="flex justify-between items-center text-sm text-[var(--text-secondary)] pt-2 border-t border-[var(--border-color)]">
+                {/* Secondary Sort & Quick Presets Strip */}
+                <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-[var(--text-secondary)] pt-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-[var(--text-muted)] font-medium">Quick Sort:</span>
+                        <button
+                            type="button"
+                            onClick={applyRecentlyShunnedPreset}
+                            className={`px-2 py-1 rounded text-[11px] font-medium border transition-colors ${
+                                sortField === "lastSeen" ? "bg-[var(--accent-primary)]/20 border-[var(--accent-primary)] text-[var(--text-primary)]" : "border-[var(--border-color)] hover:bg-[var(--bg-surface-hover)]"
+                            }`}
+                        >
+                            ⏱️ Most Recently Verified
+                        </button>
+                        <button
+                            type="button"
+                            onClick={applyNewlyAddedPreset}
+                            className={`px-2 py-1 rounded text-[11px] font-medium border transition-colors ${
+                                sortField === "firstSeen" ? "bg-[var(--accent-primary)]/20 border-[var(--accent-primary)] text-[var(--text-primary)]" : "border-[var(--border-color)] hover:bg-[var(--bg-surface-hover)]"
+                            }`}
+                        >
+                            ⚡ Newly Shunned (First Seen)
+                        </button>
+                        <button
+                            type="button"
+                            onClick={applyLongestStandingPreset}
+                            className={`px-2 py-1 rounded text-[11px] font-medium border transition-colors ${
+                                sortField === "daysShunned" ? "bg-[var(--accent-primary)]/20 border-[var(--accent-primary)] text-[var(--text-primary)]" : "border-[var(--border-color)] hover:bg-[var(--bg-surface-hover)]"
+                            }`}
+                        >
+                            ⏳ Longest Standing
+                        </button>
+                    </div>
+
                     <div className="flex items-center gap-4">
                         <span>Showing <span className="font-medium text-[var(--text-primary)]">{totalRecords > 0 ? (page - 1) * limit + 1 : 0}</span> to <span className="font-medium text-[var(--text-primary)]">{Math.min(page * limit, totalRecords)}</span> of <span className="font-medium text-[var(--text-primary)]">{totalRecords.toLocaleString()}</span> entries</span>
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-1.5">
                             <span>Rows:</span>
                             <select 
                                 value={limit} 
@@ -434,20 +650,34 @@ export function ShunDatabaseTab() {
                             </select>
                         </div>
                     </div>
-                    <div className="flex items-center gap-1">
-                        <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1} className="px-2 py-1 rounded hover:bg-[var(--bg-default)] disabled:opacity-50">Prev</button>
-                        <span className="px-2 font-medium">Page {page} of {totalPages || 1}</span>
-                        <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages || totalPages === 0} className="px-2 py-1 rounded hover:bg-[var(--bg-default)] disabled:opacity-50">Next</button>
-                    </div>
                 </div>
             </div>
             
+            {/* Table Area */}
             <div className="flex-1 overflow-auto bg-[var(--bg-default)] relative">
                 <div className="min-w-max h-full">
                     <table className="w-full text-sm text-left border-collapse">
                         <thead className="bg-[var(--bg-surface)] text-[var(--text-secondary)] text-xs uppercase sticky top-0 z-10 shadow-sm border-b border-[var(--border-color)]">
                             <tr>
-                                <th className="px-3 py-3 font-semibold text-[var(--text-muted)] w-12 text-center select-none">#</th>
+                                {/* Multi-select Checkbox Header */}
+                                <th className="px-3 py-3 w-12 text-center select-none">
+                                    <button
+                                        type="button"
+                                        onClick={toggleSelectAllPage}
+                                        disabled={loading || records.length === 0}
+                                        className="text-[var(--text-muted)] hover:text-[var(--accent-primary)] focus:outline-none transition-colors"
+                                        title={isAllPageSelected ? "Deselect all on this page" : "Select all on this page"}
+                                    >
+                                        {isAllPageSelected ? (
+                                            <CheckSquare className="w-4 h-4 text-[var(--accent-primary)]" />
+                                        ) : isSomePageSelected ? (
+                                            <MinusSquare className="w-4 h-4 text-[var(--accent-primary)]" />
+                                        ) : (
+                                            <Square className="w-4 h-4" />
+                                        )}
+                                    </button>
+                                </th>
+                                <th className="px-2 py-3 font-semibold text-[var(--text-muted)] w-10 text-center select-none">#</th>
                                 {visibleColumns.status && (
                                     <th className="px-4 py-3 font-semibold cursor-pointer hover:bg-[var(--bg-surface-hover)] select-none group" onClick={() => handleSort('isActive')}>
                                         <div className="flex items-center gap-1">Status <span className={sortField==='isActive'?'text-[var(--accent-primary)]':'text-transparent group-hover:text-[var(--text-muted)]'}>{sortField==='isActive'&&sortDir==='asc'?'▲':'▼'}</span></div>
@@ -478,13 +708,17 @@ export function ShunDatabaseTab() {
                                         <div className="flex items-center gap-1">Location <span className={sortField==='ipCountry'?'text-[var(--accent-primary)]':'text-transparent group-hover:text-[var(--text-muted)]'}>{sortField==='ipCountry'&&sortDir==='asc'?'▲':'▼'}</span></div>
                                     </th>
                                 )}
+                                {visibleColumns.actions && (
+                                    <th className="px-4 py-3 font-semibold text-right select-none">Actions</th>
+                                )}
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-[var(--border-color)]">
                             {loading ? (
                                 Array.from({ length: 5 }).map((_, i) => (
                                     <tr key={i} className="animate-pulse">
-                                        <td className="px-3 py-4 text-center"><div className="h-4 w-6 bg-[var(--border-color)] rounded mx-auto"></div></td>
+                                        <td className="px-3 py-4 text-center"><div className="h-4 w-4 bg-[var(--border-color)] rounded mx-auto"></div></td>
+                                        <td className="px-2 py-4 text-center"><div className="h-4 w-6 bg-[var(--border-color)] rounded mx-auto"></div></td>
                                         {visibleColumns.status && <td className="px-4 py-4"><div className="h-5 w-16 bg-[var(--border-color)] rounded-full"></div></td>}
                                         {visibleColumns.ip && <td className="px-4 py-4"><div className="h-4 w-32 bg-[var(--border-color)] rounded"></div></td>}
                                         {visibleColumns.lifecycle && <td className="px-4 py-4">
@@ -501,158 +735,495 @@ export function ShunDatabaseTab() {
                                             </div>
                                         </td>}
                                         {visibleColumns.location && <td className="px-4 py-4"><div className="h-4 w-28 bg-[var(--border-color)] rounded"></div></td>}
+                                        {visibleColumns.actions && <td className="px-4 py-4 text-right"><div className="h-6 w-20 bg-[var(--border-color)] rounded ml-auto"></div></td>}
                                     </tr>
                                 ))
                             ) : error ? (
                                 <tr>
-                                    <td colSpan={(Object.values(visibleColumns).filter(Boolean).length || 1) + 1} className="px-4 py-16 text-center text-red-400">
+                                    <td colSpan={10} className="px-4 py-16 text-center text-red-400">
                                         <ShieldAlert className="w-12 h-12 mx-auto mb-4 opacity-50" />
                                         <p>{error}</p>
                                     </td>
                                 </tr>
                             ) : records.length === 0 ? (
                                 <tr>
-                                    <td colSpan={(Object.values(visibleColumns).filter(Boolean).length || 1) + 1} className="px-4 py-20 text-center">
+                                    <td colSpan={10} className="px-4 py-20 text-center">
                                         <SearchX className="w-16 h-16 mx-auto mb-4 text-[var(--text-muted)] opacity-50" />
-                                        <h3 className="text-lg font-medium text-[var(--text-primary)] mb-1">No IPs found</h3>
-                                        <p className="text-sm text-[var(--text-secondary)]">Try adjusting your filters or wildcard patterns.</p>
+                                        <h3 className="text-lg font-medium text-[var(--text-primary)] mb-1">No shunned IPs found</h3>
+                                        <p className="text-sm text-[var(--text-secondary)]">Try adjusting your filters, searching a different subnet or resetting presets.</p>
                                     </td>
                                 </tr>
                             ) : (
-                                records.map((record, idx) => (
-                                    <tr key={record.id} className="odd:bg-transparent even:bg-[var(--bg-surface)]/30 hover:bg-[var(--bg-surface-hover)] transition-colors">
-                                        <td className="px-3 py-3 text-center text-xs font-mono text-[var(--text-muted)] select-none">
-                                            {(page - 1) * limit + idx + 1}
-                                        </td>
-                                        {visibleColumns.status && (
-                                            <td className="px-4 py-3 whitespace-nowrap">
-                                                <div className="flex flex-col gap-1.5">
-                                                    {record.isActive ? (
-                                                        <span className="inline-flex items-center gap-1.5 text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-red-500/15 text-red-400 border border-red-500/30 w-fit shadow-[0_0_10px_rgba(239,68,68,0.2)]">
-                                                            <span className="relative flex h-2 w-2">
-                                                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-                                                                <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
-                                                            </span>
-                                                            Active
-                                                        </span>
+                                records.map((record, idx) => {
+                                    const isSelected = selectedIps.has(record.ip);
+                                    return (
+                                        <tr 
+                                            key={record.id} 
+                                            className={`transition-colors ${
+                                                isSelected 
+                                                    ? "bg-indigo-500/10 hover:bg-indigo-500/15" 
+                                                    : "odd:bg-transparent even:bg-[var(--bg-surface)]/30 hover:bg-[var(--bg-surface-hover)]"
+                                            }`}
+                                        >
+                                            {/* Row Checkbox */}
+                                            <td className="px-3 py-3 text-center">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => toggleSelectIp(record.ip)}
+                                                    className="text-[var(--text-muted)] hover:text-[var(--accent-primary)] focus:outline-none transition-colors"
+                                                    title={`Select ${record.ip} for bulk unshun`}
+                                                >
+                                                    {isSelected ? (
+                                                        <CheckSquare className="w-4 h-4 text-indigo-400" />
                                                     ) : (
-                                                        <span className="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full bg-[var(--bg-surface-hover)] text-[var(--text-secondary)] border border-[var(--border-color)] w-fit">
-                                                            Cleared
-                                                        </span>
+                                                        <Square className="w-4 h-4" />
                                                     )}
-                                                    {record.isBlacklisted && (
-                                                        <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-purple-500/15 text-purple-400 border border-purple-500/30 w-fit shadow-[0_0_10px_rgba(168,85,247,0.2)]">
-                                                            <ShieldAlert className="w-3 h-3" /> Blacklisted
-                                                        </span>
-                                                    )}
-                                                </div>
+                                                </button>
                                             </td>
-                                        )}
-                                        {visibleColumns.ip && (
-                                            <td className="px-4 py-3 font-mono text-[var(--accent-primary)] whitespace-nowrap align-top">
-                                                <div className="flex items-center gap-2">
-                                                    {record.ip}
-                                                    <button 
-                                                        onClick={() => setSelectedIp(record.ip)}
-                                                        className="p-1 rounded bg-[var(--bg-default)] border border-[var(--border-color)] hover:bg-[var(--accent-primary)] hover:text-white hover:border-[var(--accent-primary)] text-[var(--text-secondary)] transition-colors shadow-sm"
-                                                        title="View Raw Enrichment JSON"
-                                                    >
-                                                        <Info className="w-3.5 h-3.5" />
-                                                    </button>
-                                                </div>
+                                            <td className="px-2 py-3 text-center text-xs font-mono text-[var(--text-muted)] select-none">
+                                                {(page - 1) * limit + idx + 1}
                                             </td>
-                                        )}
-                                        {visibleColumns.lifecycle && (
-                                            <td className="px-4 py-3 text-[var(--text-secondary)] align-top">
-                                                <div className="flex flex-col gap-1">
-                                                    <div className="flex items-center gap-1.5 text-xs">
-                                                        <Clock className="w-3.5 h-3.5" />
-                                                        <span className="font-semibold text-[var(--text-primary)]">{record.daysShunned}</span> Days
-                                                    </div>
-                                                    <div className="text-[11px] mt-1">
-                                                        <span className="text-[var(--text-muted)]">First:</span> {new Date(record.firstSeen).toLocaleDateString()}
-                                                    </div>
-                                                    <div className="text-[11px]">
-                                                        <span className="text-[var(--text-muted)]">Last:</span> {new Date(record.lastSeen).toLocaleDateString()}
-                                                    </div>
-                                                </div>
-                                            </td>
-                                        )}
-                                        {visibleColumns.firewall && (
-                                            <td className="px-4 py-3 text-[var(--text-secondary)] align-top">
-                                                <div className="flex items-center gap-1.5">
-                                                    <Server className="h-3.5 w-3.5" />
-                                                    {record.firewall}
-                                                </div>
-                                            </td>
-                                        )}
-                                        {visibleColumns.network && (
-                                            <td className="px-4 py-3 text-[var(--text-secondary)] align-top">
-                                                {record.enrichedAt ? (
-                                                    record.ipAsn ? (
-                                                        <div className="flex flex-col gap-1">
-                                                            <span className="font-semibold text-[var(--text-primary)]">{record.ipAsn}</span>
-                                                            <span className="text-xs max-w-[200px] truncate" title={record.ipOrg}>
-                                                                {record.ipOrg || '-'}
+                                            {visibleColumns.status && (
+                                                <td className="px-4 py-3 whitespace-nowrap">
+                                                    <div className="flex flex-col gap-1.5">
+                                                        {record.isActive ? (
+                                                            <span className="inline-flex items-center gap-1.5 text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-red-500/15 text-red-400 border border-red-500/30 w-fit shadow-[0_0_10px_rgba(239,68,68,0.2)]">
+                                                                <span className="relative flex h-2 w-2">
+                                                                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                                                                    <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
+                                                                </span>
+                                                                Active Shun
                                                             </span>
+                                                        ) : (
+                                                            <span className="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full bg-[var(--bg-surface-hover)] text-[var(--text-secondary)] border border-[var(--border-color)] w-fit">
+                                                                Cleared
+                                                            </span>
+                                                        )}
+                                                        {record.isBlacklisted && (
+                                                            <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-purple-500/15 text-purple-400 border border-purple-500/30 w-fit shadow-[0_0_10px_rgba(168,85,247,0.2)]">
+                                                                <ShieldAlert className="w-3 h-3" /> Blacklisted
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                </td>
+                                            )}
+                                            {visibleColumns.ip && (
+                                                <td className="px-4 py-3 font-mono font-medium text-[var(--accent-primary)] whitespace-nowrap align-top">
+                                                    <div className="flex items-center gap-2">
+                                                        <span>{record.ip}</span>
+                                                    </div>
+                                                </td>
+                                            )}
+                                            {visibleColumns.lifecycle && (
+                                                <td className="px-4 py-3 text-[var(--text-secondary)] align-top">
+                                                    <div className="flex flex-col gap-1">
+                                                        <div className="flex items-center gap-1.5 text-xs">
+                                                            <Clock className="w-3.5 h-3.5" />
+                                                            <span className="font-semibold text-[var(--text-primary)]">{record.daysShunned}</span> Days
                                                         </div>
-                                                    ) : (
-                                                        <span className="text-[var(--text-muted)]">No ASN Data</span>
-                                                    )
-                                                ) : (
-                                                    <span className="inline-flex items-center gap-1 text-[11px] font-medium text-amber-500/80 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">
-                                                        Pending Quota
-                                                    </span>
-                                                )}
-                                            </td>
-                                        )}
-                                        {visibleColumns.location && (
-                                            <td className="px-4 py-3 text-[var(--text-secondary)] align-top">
-                                                {record.enrichedAt ? (
-                                                    record.ipCountry ? (
-                                                        <div className="flex flex-col gap-1">
-                                                            <div className="flex items-center gap-1.5">
-                                                                {record.ipCountryCode && (
-                                                                    <img 
-                                                                        src={`https://flagcdn.com/16x12/${record.ipCountryCode.toLowerCase()}.png`}
-                                                                        alt={record.ipCountryCode}
-                                                                        className="rounded-[1px]"
-                                                                    />
-                                                                )}
-                                                                <span className="text-[var(--text-primary)]">{record.ipCountry}</span>
+                                                        <div className="text-[11px] mt-1">
+                                                            <span className="text-[var(--text-muted)]">First:</span> {new Date(record.firstSeen).toLocaleDateString()}
+                                                        </div>
+                                                        <div className="text-[11px]">
+                                                            <span className="text-[var(--text-muted)]">Last:</span> {new Date(record.lastSeen).toLocaleDateString()} {new Date(record.lastSeen).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                                        </div>
+                                                    </div>
+                                                </td>
+                                            )}
+                                            {visibleColumns.firewall && (
+                                                <td className="px-4 py-3 text-[var(--text-secondary)] align-top">
+                                                    <div className="flex items-center gap-1.5 font-mono text-xs">
+                                                        <Server className="h-3.5 w-3.5 text-amber-400" />
+                                                        {record.firewall}
+                                                    </div>
+                                                </td>
+                                            )}
+                                            {visibleColumns.network && (
+                                                <td className="px-4 py-3 text-[var(--text-secondary)] align-top">
+                                                    {record.enrichedAt ? (
+                                                        record.ipAsn ? (
+                                                            <div className="flex flex-col gap-1">
+                                                                <span className="font-semibold text-[var(--text-primary)]">{record.ipAsn}</span>
+                                                                <span className="text-xs max-w-[200px] truncate" title={record.ipOrg}>
+                                                                    {record.ipOrg || '-'}
+                                                                </span>
                                                             </div>
-                                                            {record.city && <span className="text-xs text-[var(--text-muted)]">{record.city}</span>}
-                                                        </div>
+                                                        ) : (
+                                                            <span className="text-[var(--text-muted)]">No ASN Data</span>
+                                                        )
                                                     ) : (
-                                                        <span className="text-[var(--text-muted)]">-</span>
-                                                    )
-                                                ) : (
-                                                    <span className="text-[var(--text-muted)]">...</span>
-                                                )}
-                                            </td>
-                                        )}
-                                    </tr>
-                                ))
+                                                        <span className="inline-flex items-center gap-1 text-[11px] font-medium text-amber-500/80 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">
+                                                            Pending Quota
+                                                        </span>
+                                                    )}
+                                                </td>
+                                            )}
+                                            {visibleColumns.location && (
+                                                <td className="px-4 py-3 text-[var(--text-secondary)] align-top">
+                                                    {record.enrichedAt ? (
+                                                        record.ipCountry ? (
+                                                            <div className="flex flex-col gap-1">
+                                                                <div className="flex items-center gap-1.5">
+                                                                    {record.ipCountryCode && (
+                                                                        <img 
+                                                                            src={`https://flagcdn.com/16x12/${record.ipCountryCode.toLowerCase()}.png`}
+                                                                            alt={record.ipCountryCode}
+                                                                            className="rounded-[1px]"
+                                                                        />
+                                                                    )}
+                                                                    <span className="text-[var(--text-primary)]">{record.ipCountry}</span>
+                                                                </div>
+                                                                {record.city && <span className="text-xs text-[var(--text-muted)]">{record.city}</span>}
+                                                            </div>
+                                                        ) : (
+                                                            <span className="text-[var(--text-muted)]">-</span>
+                                                        )
+                                                    ) : (
+                                                        <span className="text-[var(--text-muted)]">...</span>
+                                                    )}
+                                                </td>
+                                            )}
+                                            {visibleColumns.actions && (
+                                                <td className="px-4 py-3 text-right align-top whitespace-nowrap">
+                                                    <div className="flex items-center justify-end gap-1.5">
+                                                        {record.isActive && (
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => {
+                                                                    setUnshunModal({
+                                                                        ips: [record.ip],
+                                                                        targetHost: targetFleet
+                                                                    });
+                                                                }}
+                                                                className="px-2.5 py-1 rounded-md bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/30 text-xs font-semibold transition-all flex items-center gap-1 shadow-sm"
+                                                                title={`Remove perimeter shun for ${record.ip} across firewalls`}
+                                                            >
+                                                                <Unlock className="w-3 h-3" />
+                                                                Unshun
+                                                            </button>
+                                                        )}
+                                                        <button 
+                                                            type="button"
+                                                            onClick={() => setSelectedIp(record.ip)}
+                                                            className="p-1 rounded bg-[var(--bg-default)] border border-[var(--border-color)] hover:bg-[var(--accent-primary)] hover:text-white hover:border-[var(--accent-primary)] text-[var(--text-secondary)] transition-colors shadow-sm"
+                                                            title="View Raw Enrichment JSON"
+                                                        >
+                                                            <Info className="w-3.5 h-3.5" />
+                                                        </button>
+                                                    </div>
+                                                </td>
+                                            )}
+                                        </tr>
+                                    );
+                                })
                             )}
                         </tbody>
                     </table>
                 </div>
+
+                {/* Floating Multi-Select Action Bar */}
+                {selectedIps.size > 0 && (
+                    <div className="sticky bottom-16 inset-x-0 mx-auto max-w-2xl z-30 px-4 py-2.5 bg-slate-900/95 border border-indigo-500/50 rounded-2xl shadow-2xl backdrop-blur-md flex flex-wrap items-center justify-between gap-3 text-xs text-white animate-in slide-in-from-bottom-3 duration-200">
+                        <div className="flex items-center gap-2.5">
+                            <span className="flex h-2.5 w-2.5 relative">
+                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75"></span>
+                                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-indigo-500"></span>
+                            </span>
+                            <span className="font-bold text-sm text-indigo-300">
+                                {selectedIps.size}
+                            </span>
+                            <span className="text-slate-300">
+                                IP{selectedIps.size > 1 ? "s" : ""} Selected
+                            </span>
+                        </div>
+
+                        <div className="flex items-center gap-2 flex-wrap">
+                            {/* Target Fleet Selector */}
+                            <select
+                                value={targetFleet}
+                                onChange={(e) => setTargetFleet(e.target.value)}
+                                className="bg-slate-800 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
+                                title="Select target firewall fleet for unshun execution"
+                            >
+                                <option value="all">All 4 Perimeter Firewalls (Recommended)</option>
+                                {summary?.byFirewall?.map(fw => (
+                                    <option key={fw.firewall} value={fw.firewall}>
+                                        Node: {fw.firewall}
+                                    </option>
+                                ))}
+                            </select>
+
+                            {/* Unshun Selected Button */}
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setUnshunModal({
+                                        ips: Array.from(selectedIps),
+                                        targetHost: targetFleet
+                                    });
+                                }}
+                                className="px-3.5 py-1.5 rounded-lg bg-red-600 hover:bg-red-500 text-white font-semibold transition-all shadow-md shadow-red-600/30 flex items-center gap-1.5"
+                                title={`Execute 'no shun' across firewalls for all ${selectedIps.size} selected IPs`}
+                            >
+                                <Unlock className="w-3.5 h-3.5" />
+                                Unshun Selected ({selectedIps.size})
+                            </button>
+
+                            {/* Export Selected Button */}
+                            <button
+                                type="button"
+                                onClick={() => handleExport(true)}
+                                className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition-colors flex items-center gap-1"
+                                title="Export selected IPs to CSV report"
+                            >
+                                <Download className="w-3 h-3" />
+                                Export
+                            </button>
+
+                            {/* Clear Selection */}
+                            <button
+                                type="button"
+                                onClick={clearSelection}
+                                className="px-2 py-1.5 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white transition-colors"
+                                title="Clear selection"
+                            >
+                                <X className="w-3.5 h-3.5" />
+                            </button>
+                        </div>
+                    </div>
+                )}
+
                 {/* Bottom Pagination */}
                 <div className="sticky bottom-0 bg-[var(--bg-surface)] p-3 border-t border-[var(--border-color)] flex justify-between items-center text-sm shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)]">
-                    <span className="text-[var(--text-secondary)]">Showing {totalRecords > 0 ? (page - 1) * limit + 1 : 0} to {Math.min(page * limit, totalRecords)} of {totalRecords.toLocaleString()} entries</span>
+                    <span className="text-[var(--text-secondary)] text-xs">
+                        Showing {totalRecords > 0 ? (page - 1) * limit + 1 : 0} to {Math.min(page * limit, totalRecords)} of {totalRecords.toLocaleString()} entries
+                    </span>
                     <div className="flex items-center gap-2">
-                        <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1} className="px-3 py-1.5 rounded border border-[var(--border-color)] hover:bg-[var(--bg-surface-hover)] disabled:opacity-50 transition-colors bg-[var(--bg-default)] text-[var(--text-primary)]">Previous</button>
-                        <span className="px-3 font-medium text-[var(--accent-primary)]">Page {page} of {totalPages || 1}</span>
-                        <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages || totalPages === 0} className="px-3 py-1.5 rounded border border-[var(--border-color)] hover:bg-[var(--bg-surface-hover)] disabled:opacity-50 transition-colors bg-[var(--bg-default)] text-[var(--text-primary)]">Next</button>
+                        <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1} className="px-3 py-1.5 rounded border border-[var(--border-color)] hover:bg-[var(--bg-surface-hover)] disabled:opacity-50 transition-colors bg-[var(--bg-default)] text-[var(--text-primary)] text-xs">Previous</button>
+                        <span className="px-3 font-medium text-[var(--accent-primary)] text-xs">Page {page} of {totalPages || 1}</span>
+                        <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages || totalPages === 0} className="px-3 py-1.5 rounded border border-[var(--border-color)] hover:bg-[var(--bg-surface-hover)] disabled:opacity-50 transition-colors bg-[var(--bg-default)] text-[var(--text-primary)] text-xs">Next</button>
                     </div>
                 </div>
             </div>
 
+            {/* Raw JSON Enrichment Modal */}
             {selectedIp && (
                 <EnrichmentDetailsModal 
                     ip={selectedIp} 
                     onClose={() => setSelectedIp(null)} 
                 />
+            )}
+
+            {/* Unshun Confirmation & Positive Feedback Modal */}
+            {unshunModal && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
+                    <div className="bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl max-w-2xl w-full max-h-[85vh] flex flex-col overflow-hidden text-slate-200">
+                        {/* Header */}
+                        <div className="px-5 py-4 border-b border-slate-800 flex items-center justify-between bg-slate-950/60">
+                            <div className="flex items-center gap-3">
+                                <div className="p-2 rounded-xl bg-amber-500/15 border border-amber-500/30 text-amber-400">
+                                    <Unlock className="w-5 h-5" />
+                                </div>
+                                <div>
+                                    <h3 className="text-base font-bold text-white">
+                                        {unshunResult ? "Unshun Action Positive Confirmation" : "Confirm Perimeter Unshun Operation"}
+                                    </h3>
+                                    <p className="text-xs text-slate-400">
+                                        {unshunResult ? "Firewall verification and execution output" : `Execute 'no shun' across perimeter firewalls`}
+                                    </p>
+                                </div>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setUnshunModal(null);
+                                    setUnshunResult(null);
+                                    setUnshunError(null);
+                                }}
+                                className="p-1.5 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white"
+                            >
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
+
+                        {/* Modal Body */}
+                        <div className="p-5 overflow-y-auto space-y-4 text-xs">
+                            {unshunResult ? (
+                                <div className="space-y-4">
+                                    {/* Verdict Banner */}
+                                    <div className="p-3.5 rounded-xl bg-emerald-950/30 border border-emerald-500/40 text-emerald-300 flex items-center justify-between">
+                                        <div className="flex items-center gap-2.5">
+                                            <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
+                                            <div>
+                                                <div className="font-bold text-sm text-white">
+                                                    Perimeter Un-Shun Successfully Executed
+                                                </div>
+                                                <div className="text-[11px] text-emerald-300/90 mt-0.5">
+                                                    {unshunModal.ips.length} IP(s) removed from shun list across {unshunResult.target}. Guardian Blacklist cleared and logged to audit log.
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Per-Node Verification Breakdown */}
+                                    {unshunResult.positiveConfirmation?.nodeVerifications && (
+                                        <div className="space-y-2">
+                                            <div className="text-xs font-semibold text-slate-300 uppercase tracking-wider">
+                                                Node-by-Node Verification:
+                                            </div>
+                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                                {unshunResult.positiveConfirmation.nodeVerifications.map((node: any, idx: number) => (
+                                                    <div 
+                                                        key={idx}
+                                                        className={`p-2.5 rounded-lg border text-xs flex items-center justify-between ${
+                                                            node.success 
+                                                                ? "bg-slate-950 border-emerald-500/30 text-slate-200" 
+                                                                : "bg-red-950/20 border-red-500/30 text-red-300"
+                                                        }`}
+                                                    >
+                                                        <div className="flex items-center gap-2">
+                                                            <Server className={`w-3.5 h-3.5 ${node.success ? "text-emerald-400" : "text-red-400"}`} />
+                                                            <span className="font-mono font-medium">{node.node}</span>
+                                                        </div>
+                                                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                                                            node.success ? "bg-emerald-500/15 text-emerald-300" : "bg-red-500/15 text-red-300"
+                                                        }`}>
+                                                            {node.status}
+                                                        </span>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* Raw Output Preview */}
+                                    {unshunResult.stdout && (
+                                        <div className="space-y-1.5">
+                                            <div className="text-[11px] font-semibold text-slate-400">
+                                                Firewall Console Output:
+                                            </div>
+                                            <pre className="p-3 bg-slate-950 rounded-lg border border-slate-800 font-mono text-[11px] text-slate-300 max-h-40 overflow-y-auto whitespace-pre-wrap leading-relaxed">
+                                                {unshunResult.stdout}
+                                            </pre>
+                                        </div>
+                                    )}
+                                </div>
+                            ) : (
+                                <div className="space-y-4">
+                                    <div className="p-3.5 rounded-xl bg-amber-950/25 border border-amber-500/35 text-amber-300 flex items-start gap-2.5">
+                                        <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                                        <div className="text-xs leading-relaxed">
+                                            You are about to un-shun <span className="font-bold text-white">{unshunModal.ips.length}</span> IP address(es). This will SSH into the target perimeter firewalls and execute <code className="font-mono text-amber-200 bg-amber-950/60 px-1 py-0.5 rounded">no shun &lt;IP&gt;</code>, remove them from the Guardian Blacklist, and record positive confirmation in <code className="font-mono text-amber-200 bg-amber-950/60 px-1 py-0.5 rounded">logs/shun-actions.log</code>.
+                                        </div>
+                                    </div>
+
+                                    {/* Target Fleet Selection */}
+                                    <div className="space-y-1.5">
+                                        <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider">
+                                            Target Firewall Fleet:
+                                        </label>
+                                        <select
+                                            value={unshunModal.targetHost}
+                                            onChange={(e) => setUnshunModal({ ...unshunModal, targetHost: e.target.value })}
+                                            className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-indigo-500"
+                                        >
+                                            <option value="all">All 4 Perimeter Firewalls (Perimeter Fleet - Recommended)</option>
+                                            {summary?.byFirewall?.map(fw => (
+                                                <option key={fw.firewall} value={fw.firewall}>
+                                                    Node: {fw.firewall} ({fw.activeCount} active shuns)
+                                                </option>
+                                            ))}
+                                        </select>
+                                    </div>
+
+                                    {/* IP List Chips */}
+                                    <div className="space-y-1.5">
+                                        <div className="flex items-center justify-between text-xs text-slate-400">
+                                            <span>IP Addresses to Un-Shun ({unshunModal.ips.length}):</span>
+                                        </div>
+                                        <div className="p-3 bg-slate-950 rounded-xl border border-slate-800 max-h-48 overflow-y-auto flex flex-wrap gap-1.5 font-mono text-xs">
+                                            {unshunModal.ips.map(ip => (
+                                                <span 
+                                                    key={ip} 
+                                                    className="px-2 py-0.5 rounded bg-indigo-500/15 border border-indigo-500/30 text-indigo-300 font-semibold flex items-center gap-1"
+                                                >
+                                                    {ip}
+                                                </span>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    {unshunError && (
+                                        <div className="p-3 rounded-lg bg-red-950/40 border border-red-500/40 text-red-300 text-xs flex items-center gap-2">
+                                            <AlertTriangle className="w-4 h-4 shrink-0 text-red-400" />
+                                            <span>{unshunError}</span>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Footer Actions */}
+                        <div className="px-5 py-3.5 border-t border-slate-800 bg-slate-950/80 flex items-center justify-between">
+                            {unshunResult ? (
+                                <>
+                                    <a
+                                        href="/api/firewall/shun/log?download=true"
+                                        download
+                                        className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 font-medium text-xs flex items-center gap-1.5 transition-colors"
+                                    >
+                                        <Download className="w-3.5 h-3.5" />
+                                        Download shun-actions.log
+                                    </a>
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setUnshunModal(null);
+                                            setUnshunResult(null);
+                                            setUnshunError(null);
+                                        }}
+                                        className="px-4 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs transition-colors shadow-md shadow-indigo-600/30"
+                                    >
+                                        Close & Return to Database
+                                    </button>
+                                </>
+                            ) : (
+                                <>
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setUnshunModal(null);
+                                            setUnshunError(null);
+                                        }}
+                                        disabled={unshunExecuting}
+                                        className="px-3.5 py-1.5 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white text-xs transition-colors disabled:opacity-50"
+                                    >
+                                        Cancel
+                                    </button>
+
+                                    <button
+                                        type="button"
+                                        onClick={() => executeUnshun(unshunModal.ips, unshunModal.targetHost)}
+                                        disabled={unshunExecuting || unshunModal.ips.length === 0}
+                                        className="px-4 py-2 rounded-lg bg-red-600 hover:bg-red-500 text-white font-semibold text-xs transition-all shadow-lg shadow-red-600/30 disabled:opacity-50 flex items-center gap-2"
+                                    >
+                                        {unshunExecuting ? (
+                                            <>
+                                                <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                                                Removing Shuns on Firewalls...
+                                            </>
+                                        ) : (
+                                            <>
+                                                <Unlock className="w-3.5 h-3.5" />
+                                                Confirm Unshun ({unshunModal.ips.length} IPs)
+                                            </>
+                                        )}
+                                    </button>
+                                </>
+                            )}
+                        </div>
+                    </div>
+                </div>
             )}
         </div>
     );

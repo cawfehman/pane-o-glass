@@ -235,7 +235,7 @@ export async function POST(req: Request) {
                 clientIp
             ).catch(() => {});
 
-            // If shun removed, clean up guardian blacklist if present
+            // If shun removed, clean up guardian blacklist if present and update shun database status
             if (action === "remove") {
                 try {
                     const result = await prisma.guardianBlacklist.deleteMany({
@@ -251,6 +251,21 @@ export async function POST(req: Request) {
                     }
                 } catch (e: any) {
                     console.error("Failed to delete IP from GuardianBlacklist:", e.message);
+                }
+
+                try {
+                    const fwFilter = targetHost === "all" ? {} : { firewall: targetLabel };
+                    await prisma.firewallShunStats.updateMany({
+                        where: {
+                            ip: { in: targetIps },
+                            ...fwFilter
+                        },
+                        data: {
+                            isActive: false
+                        }
+                    });
+                } catch (e: any) {
+                    console.error("Failed to update firewallShunStats isActive:", e.message);
                 }
             }
         }
