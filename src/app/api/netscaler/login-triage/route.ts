@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth";
 import { hasPermission } from "@/app/actions/permissions";
 import {
     analyzeCitrixLoginTriage,
+    reevaluateSingleCitrixIp,
     blockCitrixAbusiveIps,
     updateCitrixAutoShunConfig,
     runCitrixLoginAutoShunCycle,
@@ -44,6 +45,12 @@ export async function GET(req: NextRequest) {
                 ? searchParams.get("protectIspWithValidAdUser") !== "false"
                 : DEFAULT_CITRIX_TRIAGE_CONFIG.protectIspWithValidAdUser,
         };
+
+        if (searchParams.has("targetIp")) {
+            const targetIp = searchParams.get("targetIp")!;
+            const result = await reevaluateSingleCitrixIp(targetIp, rangeSeconds, customConfig);
+            return NextResponse.json({ success: true, ...result });
+        }
 
         const data = await analyzeCitrixLoginTriage(rangeSeconds, customConfig);
         return NextResponse.json({ success: true, ...data });
@@ -103,6 +110,16 @@ export async function POST(req: NextRequest) {
                 triggeredBy: userId,
             });
             return NextResponse.json({ success: true, cycleResult });
+        }
+
+        if (action === "reevaluate_ip") {
+            const target = ip || (Array.isArray(ips) && ips.length > 0 ? ips[0] : null);
+            if (!target) {
+                return NextResponse.json({ error: "Missing target IP address" }, { status: 400 });
+            }
+            const rangeSeconds = typeof body.rangeSeconds === "number" ? body.rangeSeconds : 86400;
+            const result = await reevaluateSingleCitrixIp(target, rangeSeconds, body.config);
+            return NextResponse.json({ success: true, ...result });
         }
 
         const targetIps: string[] = Array.isArray(ips) && ips.length > 0 ? ips : ip ? [ip] : [];

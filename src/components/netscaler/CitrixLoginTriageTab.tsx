@@ -5,7 +5,7 @@ import {
     ShieldAlert, ShieldCheck, AlertTriangle, Lock, Unlock, UserCheck, UserX,
     Globe, Server, RefreshCw, Search, CheckCircle2, Flame, Eye, ExternalLink,
     Sliders, Terminal, Laptop, FileSpreadsheet, Ban, Shield, ChevronRight, X,
-    Download, ClipboardCheck, FileText
+    Download, ClipboardCheck, FileText, Sparkles
 } from "lucide-react";
 import Link from "next/link";
 import type {
@@ -15,6 +15,7 @@ import type {
     CitrixLoginFailureEvent,
     GuardianAbuseVerdict,
     CitrixIssueCategory,
+    SingleIpReevaluationResult,
 } from "@/lib/netscaler-login-triage";
 
 interface CitrixLoginTriageTabProps {
@@ -98,6 +99,56 @@ export default function CitrixLoginTriageTab({
             fetchShunLogs();
         }
     }, [showShunLogModal, fetchShunLogs]);
+
+    // Single IP Re-Evaluation & Reasoning State
+    const [reevaluateModalIp, setReevaluateModalIp] = useState<string | null>(null);
+    const [reevaluateData, setReevaluateData] = useState<SingleIpReevaluationResult | null>(null);
+    const [reevaluateLoading, setReevaluateLoading] = useState<boolean>(false);
+    const [reevaluateTab, setReevaluateTab] = useState<"reasoning" | "users" | "events">("reasoning");
+
+    const handleReevaluateIp = async (ip: string) => {
+        setReevaluateLoading(true);
+        try {
+            const res = await fetch("/api/netscaler/login-triage", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    action: "reevaluate_ip",
+                    ip,
+                    rangeSeconds: timeframe,
+                    config: {
+                        minFailuresForBlock: minFailures,
+                        minSprayUsers,
+                        flagForeignIps,
+                        flagNonExistentAdUsers,
+                        protectIspWithValidAdUser,
+                    },
+                }),
+            });
+            const json = await res.json();
+            if (res.ok && json.evaluation) {
+                setReevaluateData(json);
+                // In-place update of that IP inside data.ipEvaluations
+                setData((prev) => {
+                    if (!prev) return prev;
+                    const updatedIps = prev.ipEvaluations.map((item) =>
+                        item.ip === ip ? { ...item, ...json.evaluation } : item
+                    );
+                    return { ...prev, ipEvaluations: updatedIps };
+                });
+            }
+        } catch (e) {
+            console.error("Failed to reevaluate IP:", e);
+        } finally {
+            setReevaluateLoading(false);
+        }
+    };
+
+    const handleOpenReevaluateModal = (ip: string) => {
+        setReevaluateModalIp(ip);
+        setReevaluateTab("reasoning");
+        handleReevaluateIp(ip);
+    };
 
     const fetchTriage = useCallback(async () => {
         setLoading(true);
@@ -1098,6 +1149,15 @@ export default function CitrixLoginTriageTab({
                                                         <Search className="w-3 h-3" />
                                                         Inspect Timeline
                                                     </button>
+
+                                                    <button
+                                                        onClick={() => handleOpenReevaluateModal(item.ip)}
+                                                        title="Re-check Graylog and Active Directory in real time, inspect step-by-step scoring reasoning, and update verdict."
+                                                        className="px-2.5 py-1 rounded text-[11px] font-medium bg-slate-800 hover:bg-indigo-950/60 text-slate-300 hover:text-indigo-300 border border-slate-700 hover:border-indigo-500/40 flex items-center gap-1 transition-all"
+                                                    >
+                                                        <Sparkles className="w-3 h-3 text-indigo-400" />
+                                                        Re-Evaluate & Reasoning
+                                                    </button>
                                                 </div>
                                             </td>
                                         </tr>
@@ -1673,6 +1733,433 @@ export default function CitrixLoginTriageTab({
                             >
                                 Close
                             </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Real-time IP Re-Evaluation & Scoring Reasoning Modal */}
+            {reevaluateModalIp && (
+                <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+                    <div className="bg-slate-900 border border-slate-700 rounded-xl max-w-4xl w-full max-h-[90vh] flex flex-col shadow-2xl overflow-hidden">
+                        {/* Modal Header */}
+                        <div className="p-4 border-b border-slate-800 flex items-center justify-between bg-slate-950/80">
+                            <div className="flex items-center gap-3">
+                                <div className="p-2 rounded-lg bg-indigo-500/20 text-indigo-400 border border-indigo-500/30">
+                                    <Sparkles className="w-5 h-5" />
+                                </div>
+                                <div>
+                                    <div className="flex items-center gap-2">
+                                        <h3 className="text-base font-bold font-mono text-white">
+                                            {reevaluateModalIp}
+                                        </h3>
+                                        {reevaluateData?.evaluation?.isCurrentlyShunned && (
+                                            <span className="px-2 py-0.5 rounded text-[10px] font-sans font-semibold bg-red-500/20 text-red-300 border border-red-500/40">
+                                                SHUNNED ON PERIMETER
+                                            </span>
+                                        )}
+                                        {reevaluateData?.evaluation?.isOnGuardianBlacklist && (
+                                            <span className="px-2 py-0.5 rounded text-[10px] font-sans font-semibold bg-amber-500/20 text-amber-300 border border-amber-500/40">
+                                                DO-NOT-UNSHUN
+                                            </span>
+                                        )}
+                                    </div>
+                                    <div className="text-xs text-slate-400 flex items-center gap-2 mt-0.5">
+                                        <span>
+                                            {reevaluateData?.evaluation?.cityName !== "N/A"
+                                                ? `${reevaluateData?.evaluation?.cityName}, `
+                                                : ""}
+                                            {reevaluateData?.evaluation?.countryCode || "Unknown"}
+                                        </span>
+                                        <span>•</span>
+                                        <span>{reevaluateData?.evaluation?.companyName || "Unknown ISP"}</span>
+                                        <span className="font-mono text-slate-500">
+                                            ({reevaluateData?.evaluation?.asn})
+                                        </span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="flex items-center gap-3">
+                                {reevaluateData?.evaluation && (
+                                    <div className="flex items-center gap-2">
+                                        {getVerdictBadge(
+                                            reevaluateData.evaluation.verdict,
+                                            reevaluateData.evaluation.riskScore
+                                        )}
+                                        <div className="px-2 py-1 rounded bg-slate-800 border border-slate-700 text-xs font-mono text-slate-200">
+                                            Score: <span className="font-bold text-white">{reevaluateData.evaluation.riskScore}</span>/100
+                                        </div>
+                                    </div>
+                                )}
+                                <button
+                                    onClick={() => {
+                                        setReevaluateModalIp(null);
+                                        setReevaluateData(null);
+                                    }}
+                                    className="p-1 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white"
+                                >
+                                    <X className="w-5 h-5" />
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Modal Toolbar */}
+                        <div className="px-4 py-2 bg-slate-950/40 border-b border-slate-800 flex items-center justify-between text-xs">
+                            <div className="flex items-center gap-1.5 bg-slate-800/80 p-0.5 rounded-lg border border-slate-700">
+                                <button
+                                    onClick={() => setReevaluateTab("reasoning")}
+                                    className={`px-3 py-1 rounded-md font-medium transition-all ${
+                                        reevaluateTab === "reasoning"
+                                            ? "bg-indigo-600 text-white"
+                                            : "text-slate-400 hover:text-white"
+                                    }`}
+                                >
+                                    Scoring Reasoning & Rules ({reevaluateData?.reasoningDetails?.triggeredRules?.length || 0})
+                                </button>
+                                <button
+                                    onClick={() => setReevaluateTab("users")}
+                                    className={`px-3 py-1 rounded-md font-medium transition-all ${
+                                        reevaluateTab === "users"
+                                            ? "bg-indigo-600 text-white"
+                                            : "text-slate-400 hover:text-white"
+                                    }`}
+                                >
+                                    Targeted Users & AD ({reevaluateData?.evaluation?.targetedUsers?.length || 0})
+                                </button>
+                                <button
+                                    onClick={() => setReevaluateTab("events")}
+                                    className={`px-3 py-1 rounded-md font-medium transition-all ${
+                                        reevaluateTab === "events"
+                                            ? "bg-indigo-600 text-white"
+                                            : "text-slate-400 hover:text-white"
+                                    }`}
+                                >
+                                    Recent Events ({reevaluateData?.events?.length || 0})
+                                </button>
+                            </div>
+
+                            <button
+                                onClick={() => reevaluateModalIp && handleReevaluateIp(reevaluateModalIp)}
+                                disabled={reevaluateLoading}
+                                title="Re-queries Graylog, Active Directory, and perimeter firewalls right now"
+                                className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-semibold flex items-center gap-1.5 shadow-sm shadow-indigo-600/30 transition-all disabled:opacity-50"
+                            >
+                                <RefreshCw className={`w-3.5 h-3.5 ${reevaluateLoading ? "animate-spin" : ""}`} />
+                                {reevaluateLoading ? "Re-Evaluating Live..." : "Re-Check Live Telemetry"}
+                            </button>
+                        </div>
+
+                        {/* Modal Body */}
+                        <div className="p-4 overflow-y-auto flex-1 space-y-4 font-sans text-xs">
+                            {reevaluateLoading && !reevaluateData ? (
+                                <div className="py-16 flex flex-col items-center justify-center text-slate-400 gap-2.5">
+                                    <RefreshCw className="w-7 h-7 animate-spin text-indigo-400" />
+                                    <span className="text-sm font-medium">Re-checking Graylog & Active Directory for {reevaluateModalIp}...</span>
+                                </div>
+                            ) : !reevaluateData ? (
+                                <div className="py-12 text-center text-slate-400">
+                                    Unable to load evaluation data for this IP address.
+                                </div>
+                            ) : reevaluateTab === "reasoning" ? (
+                                <div className="space-y-3.5">
+                                    {/* Verdict Reasoning Card */}
+                                    <div
+                                        className={`p-3.5 rounded-xl border space-y-2 ${
+                                            reevaluateData.evaluation.verdict === "ABUSIVE_BLOCK"
+                                                ? "bg-red-950/30 border-red-500/40 text-red-200"
+                                                : reevaluateData.evaluation.verdict === "SUSPICIOUS_WATCH"
+                                                ? "bg-amber-950/30 border-amber-500/40 text-amber-200"
+                                                : "bg-emerald-950/30 border-emerald-500/40 text-emerald-200"
+                                        }`}
+                                    >
+                                        <div className="flex items-center justify-between">
+                                            <span className="font-bold text-xs uppercase tracking-wider">
+                                                Verdict Explanation: {reevaluateData.evaluation.verdict.replace(/_/g, " ")}
+                                            </span>
+                                            <span className="font-mono text-xs font-semibold">
+                                                Base Score: {reevaluateData.reasoningDetails.baseScore} → Final Score: {reevaluateData.reasoningDetails.finalScore}
+                                            </span>
+                                        </div>
+                                        <p className="text-sm font-medium leading-relaxed">
+                                            {reevaluateData.evaluation.verdictReason}
+                                        </p>
+                                        {reevaluateData.evaluation.protectionNote && (
+                                            <div className="mt-2 text-xs bg-slate-900/60 p-2 rounded border border-slate-700/60 text-slate-200">
+                                                {reevaluateData.evaluation.protectionNote}
+                                            </div>
+                                        )}
+                                        {reevaluateData.reasoningDetails.safetyShieldApplied && (
+                                            <div className="flex items-center gap-1.5 text-xs font-semibold text-emerald-300 pt-1">
+                                                <ShieldCheck className="w-4 h-4 text-emerald-400" />
+                                                Guardian Safety Shield Applied: {reevaluateData.reasoningDetails.safetyShieldReason}
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    {/* Triggered Rules Breakdown */}
+                                    <div className="space-y-2">
+                                        <h4 className="font-semibold text-slate-300 uppercase tracking-wider text-[11px]">
+                                            Triggered Smart Guardian Rules
+                                        </h4>
+                                        {reevaluateData.reasoningDetails.triggeredRules.length === 0 ? (
+                                            <div className="p-3 rounded-lg bg-slate-950 border border-slate-800 text-slate-400">
+                                                No abusive scoring rules triggered for this IP.
+                                            </div>
+                                        ) : (
+                                            <div className="space-y-2">
+                                                {reevaluateData.reasoningDetails.triggeredRules.map((rule, rIdx) => (
+                                                    <div
+                                                        key={rIdx}
+                                                        className="p-3 rounded-xl bg-slate-950/70 border border-slate-800 flex items-start justify-between gap-3"
+                                                    >
+                                                        <div className="space-y-1">
+                                                            <div className="flex items-center gap-2">
+                                                                <span
+                                                                    className={`px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
+                                                                        rule.severity === "CRITICAL"
+                                                                            ? "bg-red-500/20 text-red-300 border border-red-500/40"
+                                                                            : rule.severity === "HIGH"
+                                                                            ? "bg-orange-500/20 text-orange-300 border border-orange-500/40"
+                                                                            : "bg-amber-500/20 text-amber-300 border border-amber-500/40"
+                                                                    }`}
+                                                                >
+                                                                    {rule.severity}
+                                                                </span>
+                                                                <span className="font-semibold text-white">
+                                                                    {rule.label}
+                                                                </span>
+                                                            </div>
+                                                            <p className="text-slate-400 text-xs leading-relaxed">
+                                                                {rule.detail}
+                                                            </p>
+                                                        </div>
+                                                        <div className="px-2.5 py-1 rounded-lg bg-red-950/60 border border-red-500/40 text-red-300 font-mono font-bold text-xs shrink-0">
+                                                            +{rule.points} pts
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    {/* Network & Forensic Telemetry */}
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-2">
+                                        <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 space-y-1.5">
+                                            <div className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
+                                                Network & ISP Classification
+                                            </div>
+                                            <div className="text-xs text-slate-200">
+                                                <span className="text-slate-500">Provider:</span> {reevaluateData.reasoningDetails.ispClassification.companyName}
+                                            </div>
+                                            <div className="text-xs text-slate-200">
+                                                <span className="text-slate-500">Type:</span> {reevaluateData.reasoningDetails.ispClassification.companyType}{" "}
+                                                {reevaluateData.reasoningDetails.ispClassification.isResidentialIsp && (
+                                                    <span className="text-sky-400 font-semibold">(Residential ISP)</span>
+                                                )}
+                                            </div>
+                                            <div className="text-xs text-slate-200">
+                                                <span className="text-slate-500">Blacklisted ASN:</span>{" "}
+                                                {reevaluateData.reasoningDetails.ispClassification.isOnAsnBlacklist ? (
+                                                    <span className="text-red-400 font-bold">YES</span>
+                                                ) : (
+                                                    <span className="text-slate-400">No</span>
+                                                )}
+                                            </div>
+                                        </div>
+
+                                        <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 space-y-1.5">
+                                            <div className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
+                                                Imprivata RADIUS Telemetry
+                                            </div>
+                                            <div className="flex items-center justify-between text-xs text-slate-200">
+                                                <span className="text-slate-500">Bad AD Password / Policy:</span>
+                                                <span className="font-mono font-bold text-amber-300">
+                                                    {reevaluateData.reasoningDetails.imprivataSummary.badPasswordCount}
+                                                </span>
+                                            </div>
+                                            <div className="flex items-center justify-between text-xs text-slate-200">
+                                                <span className="text-slate-500">MFA Push Timeout (Smartphone):</span>
+                                                <span className="font-mono font-bold text-cyan-300">
+                                                    {reevaluateData.reasoningDetails.imprivataSummary.mfaTimeoutCount}
+                                                </span>
+                                            </div>
+                                            <div className="flex items-center justify-between text-xs text-slate-200">
+                                                <span className="text-slate-500">Invalid Username in RADIUS:</span>
+                                                <span className="font-mono font-bold text-red-300">
+                                                    {reevaluateData.reasoningDetails.imprivataSummary.invalidUserCount}
+                                                </span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            ) : reevaluateTab === "users" ? (
+                                <div className="space-y-2">
+                                    <h4 className="font-semibold text-slate-300 uppercase tracking-wider text-[11px]">
+                                        Targeted Usernames & Live Active Directory Status
+                                    </h4>
+                                    <div className="border border-slate-800 rounded-xl overflow-hidden">
+                                        <table className="w-full text-left text-xs">
+                                            <thead className="bg-slate-950 text-slate-400 font-semibold border-b border-slate-800">
+                                                <tr>
+                                                    <th className="py-2.5 px-3">Username</th>
+                                                    <th className="py-2.5 px-3">AD Account Status</th>
+                                                    <th className="py-2.5 px-3">Display Name / Dept</th>
+                                                    <th className="py-2.5 px-3 text-right">Failures</th>
+                                                    <th className="py-2.5 px-3 text-right">Citrix Success</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-slate-800 bg-slate-950/60">
+                                                {reevaluateData.evaluation.targetedUsers.map((u) => (
+                                                    <tr key={u.username} className="hover:bg-slate-800/40">
+                                                        <td className="py-2.5 px-3 font-mono font-semibold text-white">
+                                                            {u.username}
+                                                        </td>
+                                                        <td className="py-2.5 px-3">{getAdBadge(u.adStatus)}</td>
+                                                        <td className="py-2.5 px-3 text-slate-300">
+                                                            {u.adDisplayName || "-"}
+                                                            {u.adDepartment && (
+                                                                <span className="text-slate-500 block text-[10px]">
+                                                                    {u.adDepartment}
+                                                                </span>
+                                                            )}
+                                                        </td>
+                                                        <td className="py-2.5 px-3 text-right font-mono text-slate-300">
+                                                            {u.failures} fail(s)
+                                                        </td>
+                                                        <td className="py-2.5 px-3 text-right">
+                                                            {u.succeededLater ? (
+                                                                <span className="text-emerald-400 font-medium">✓ Logged in later</span>
+                                                            ) : (
+                                                                <span className="text-slate-500">-</span>
+                                                            )}
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="space-y-2">
+                                    <h4 className="font-semibold text-slate-300 uppercase tracking-wider text-[11px]">
+                                        Authentication Failure Event Timeline ({reevaluateData.events.length})
+                                    </h4>
+                                    <div className="space-y-2">
+                                        {reevaluateData.events.map((ev) => (
+                                            <div
+                                                key={ev.id}
+                                                className="p-3 rounded-xl bg-slate-950/80 border border-slate-800 space-y-1.5 font-mono text-[11px]"
+                                            >
+                                                <div className="flex items-center justify-between text-slate-400">
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 font-sans font-semibold text-[10px]">
+                                                            {ev.category}
+                                                        </span>
+                                                        <span className="text-white font-bold">{ev.username}</span>
+                                                    </div>
+                                                    <span className="text-slate-500 font-sans text-[10px]">
+                                                        {new Date(ev.timestamp).toLocaleString()}
+                                                    </span>
+                                                </div>
+                                                <div className="text-slate-300 font-sans">
+                                                    <span className="text-slate-500 font-medium">Failure Reason:</span>{" "}
+                                                    {ev.failureReason}
+                                                </div>
+                                                {ev.imprivataVerdictLabel && (
+                                                    <div className="text-[10px] text-cyan-300 font-sans bg-cyan-950/30 p-1.5 rounded border border-cyan-500/20">
+                                                        📱 Imprivata RADIUS: {ev.imprivataVerdictLabel} {ev.imprivataMfaMethod ? `via ${ev.imprivataMfaMethod}` : ""}
+                                                    </div>
+                                                )}
+                                                <div className="text-[10px] text-slate-500 truncate">
+                                                    Raw: {ev.rawMessage}
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Modal Footer */}
+                        <div className="p-3.5 bg-slate-950/90 border-t border-slate-800 rounded-b-xl flex flex-wrap items-center justify-between gap-3 text-xs">
+                            <div className="text-slate-400 text-[11px]">
+                                Re-evaluated at: <span className="font-mono text-slate-300">{reevaluateData?.refreshedAt ? new Date(reevaluateData.refreshedAt).toLocaleTimeString() : "-"}</span>
+                            </div>
+
+                            <div className="flex items-center gap-2">
+                                {reevaluateData?.evaluation && (
+                                    <>
+                                        {reevaluateData.evaluation.isCurrentlyShunned ? (
+                                            <button
+                                                onClick={() => {
+                                                    handleUnshunIp(reevaluateData.evaluation.ip);
+                                                    setReevaluateModalIp(null);
+                                                }}
+                                                className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-white font-medium flex items-center gap-1.5 border border-slate-700"
+                                            >
+                                                <Unlock className="w-3.5 h-3.5 text-emerald-400" />
+                                                Unshun IP
+                                            </button>
+                                        ) : (
+                                            <button
+                                                onClick={() => {
+                                                    setBlockModal({
+                                                        ips: [reevaluateData.evaluation.ip],
+                                                        reason: reevaluateData.evaluation.verdictReason || "Citrix Login Abuse",
+                                                        targetHost: "all",
+                                                        addToGuardianBlacklist: true,
+                                                        loading: false,
+                                                        result: null,
+                                                        error: null,
+                                                    });
+                                                }}
+                                                className="px-3 py-1.5 rounded-lg bg-red-600 hover:bg-red-500 text-white font-semibold flex items-center gap-1.5 shadow-sm shadow-red-600/30"
+                                            >
+                                                <Flame className="w-3.5 h-3.5" />
+                                                Shun & Blacklist
+                                            </button>
+                                        )}
+
+                                        <button
+                                            onClick={async () => {
+                                                await handleToggleGuardianBlacklist(
+                                                    reevaluateData.evaluation.ip,
+                                                    reevaluateData.evaluation.isOnGuardianBlacklist,
+                                                    reevaluateData.evaluation.verdictReason || "Citrix Login Abuse"
+                                                );
+                                                handleReevaluateIp(reevaluateData.evaluation.ip);
+                                            }}
+                                            className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-medium"
+                                        >
+                                            {reevaluateData.evaluation.isOnGuardianBlacklist
+                                                ? "Remove Do-Not-Unshun"
+                                                : "+ Add Do-Not-Unshun"}
+                                        </button>
+
+                                        <button
+                                            onClick={() => {
+                                                onInvestigateTarget(reevaluateData.evaluation.ip);
+                                                setReevaluateModalIp(null);
+                                            }}
+                                            className="px-3 py-1.5 rounded-lg bg-indigo-600/20 border border-indigo-500/40 text-indigo-300 hover:bg-indigo-600/30 font-medium flex items-center gap-1"
+                                        >
+                                            <Search className="w-3.5 h-3.5" />
+                                            Deep Timeline
+                                        </button>
+                                    </>
+                                )}
+
+                                <button
+                                    onClick={() => {
+                                        setReevaluateModalIp(null);
+                                        setReevaluateData(null);
+                                    }}
+                                    className="px-4 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 font-medium"
+                                >
+                                    Close
+                                </button>
+                            </div>
                         </div>
                     </div>
                 </div>

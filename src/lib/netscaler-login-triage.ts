@@ -1713,3 +1713,633 @@ export async function runCitrixLoginAutoShunCycle(options?: {
         summary,
     };
 }
+
+export interface SingleIpReevaluationResult {
+    evaluation: CitrixIpEvaluation;
+    events: CitrixLoginFailureEvent[];
+    reasoningDetails: {
+        baseScore: number;
+        finalScore: number;
+        verdict: GuardianAbuseVerdict;
+        verdictReason: string;
+        protectionNote?: string;
+        triggeredRules: CitrixGuardianRuleFlag[];
+        safetyShieldApplied: boolean;
+        safetyShieldReason?: string;
+        ispClassification: {
+            asn: string;
+            companyName: string;
+            companyType: string;
+            isResidentialIsp: boolean;
+            isEnterpriseProxy: boolean;
+            isOnAsnBlacklist: boolean;
+        };
+        userAdBreakdown: {
+            username: string;
+            isCorporateFormat: boolean;
+            adStatus: string;
+            adDisplayName?: string;
+            adDepartment?: string;
+            failures: number;
+            succeededLater: boolean;
+        }[];
+        imprivataSummary: {
+            badPasswordCount: number;
+            mfaTimeoutCount: number;
+            invalidUserCount: number;
+        };
+    };
+    refreshedAt: string;
+}
+
+/**
+ * Re-evaluates a single IP address on-demand against Graylog, Active Directory, Imprivata,
+ * and perimeter firewalls. Returns updated verdict, full rule-by-rule scoring reasoning,
+ * and recent failure events.
+ */
+export async function reevaluateSingleCitrixIp(
+    targetIp: string,
+    rangeSeconds: number = 86400,
+    customConfig?: Partial<CitrixTriageConfig>
+): Promise<SingleIpReevaluationResult> {
+    const cleanIp = String(targetIp).trim();
+    const config: CitrixTriageConfig = {
+        ...DEFAULT_CITRIX_TRIAGE_CONFIG,
+        ...(customConfig || {}),
+    };
+
+    const baseUrl = (process.env.OG_GRAYLOG_URL || "https://graylog.cooperhealth.edu:9000").replace(/\/$/, "");
+    const apiToken = process.env.OG_GRAYLOG_API_TOKEN || "";
+    const authHeader = "Basic " + Buffer.from(`${apiToken}:token`).toString("base64");
+    const baseStream = "(streams:5c055e3ab20902046cedcfcd OR _exists_:ns_module)";
+
+    const ipQuery = `(src_ip:"${cleanIp}" OR client_ip:"${cleanIp}" OR source_ip:"${cleanIp}" OR ns_remote_ip:"${cleanIp}" OR "${cleanIp}")`;
+    const failQuery = `${baseStream} AND ${ipQuery} AND (ns_action:LOGIN_FAILED OR (ns_module:(AAA OR SSLVPN OR AAATM OR ICA) AND (LOGIN_FAILED OR "Failed policy" OR "denied access" OR "STA ticket validation failed" OR "Invalid tass cookie" OR FAILURE OR FAILED OR DENIED OR "type 5") AND NOT "invalid opcode" AND NOT "NAS_NAC_PROXY" AND NOT "CONSOLE_CLOUD_AGENT"))`;
+    const successQuery = `${baseStream} AND ${ipQuery} AND (ns_action:(LOGIN OR LOGOUT OR ICASTART OR ICAEND_CONNSTAT) OR (ns_module:SSLVPN AND "response-200"))`;
+
+    const fields = [
+        "src_ip",
+        "source_ip",
+        "client_ip",
+        "ns_remote_ip",
+        "src_ip_country_code",
+        "source_ip_country_code",
+        "client_ip_country_code",
+        "src_ip_city_name",
+        "source_ip_city_name",
+        "client_ip_city_name",
+        "ns_username",
+        "username",
+        "user",
+        "ns_module",
+        "ns_action",
+        "status",
+        "failure_reason",
+        "reason",
+        "user_agent",
+        "message",
+        "timestamp",
+    ].join(",");
+
+    const adaptive = await getAdaptiveSearchWindow("OG_GRAYLOG", rangeSeconds);
+
+    const [failRes, successRes, ipMeta, vpnHist, shunDbRecord, shunStats, blEntry, watchEntry, asnBlEntries] =
+        await Promise.all([
+            axios
+                .get(`${baseUrl}/api/search/universal/relative`, {
+                    params: {
+                        query: failQuery,
+                        range: adaptive.effectiveRangeSeconds,
+                        limit: 300,
+                        fields,
+                        sort: "timestamp:desc",
+                    },
+                    httpsAgent,
+                    headers: {
+                        Authorization: authHeader,
+                        Accept: "application/json",
+                        "X-Requested-By": "pane-o-glass",
+                    },
+                    timeout: 15000,
+                })
+                .catch(() => ({ data: { messages: [], total_results: 0 } })),
+            axios
+                .get(`${baseUrl}/api/search/universal/relative`, {
+                    params: {
+                        query: successQuery,
+                        range: adaptive.effectiveRangeSeconds,
+                        limit: 150,
+                        fields,
+                        sort: "timestamp:desc",
+                    },
+                    httpsAgent,
+                    headers: {
+                        Authorization: authHeader,
+                        Accept: "application/json",
+                        "X-Requested-By": "pane-o-glass",
+                    },
+                    timeout: 15000,
+                })
+                .catch(() => ({ data: { messages: [], total_results: 0 } })),
+            enrichIpMetadata(cleanIp),
+            prisma.vpnEvent.findFirst({
+                where: { sourceIp: cleanIp, status: "SUCCESS" },
+                select: { id: true },
+            }).catch(() => null),
+            prisma.shunDatabaseIp.findUnique({
+                where: { ip: cleanIp },
+            }).catch(() => null),
+            prisma.firewallShunStats.findMany({
+                where: { ip: cleanIp, isActive: true },
+                select: { firewall: true },
+            }).catch(() => []),
+            prisma.guardianBlacklist.findUnique({
+                where: { ip: cleanIp },
+            }).catch(() => null),
+            prisma.guardianWatchIp.findUnique({
+                where: { ip: cleanIp },
+            }).catch(() => null),
+            prisma.guardianAsnBlacklist.findMany({
+                select: { asn: true },
+            }).catch(() => []),
+        ]);
+
+    const rawFailures: any[] = failRes.data?.messages || [];
+    const rawSuccesses: any[] = successRes.data?.messages || [];
+
+    // Success tracking
+    let citrixSucc = 0;
+    const userSuccessMap = new Map<string, string>(); // user -> latest success
+    for (const s of rawSuccesses) {
+        const msg = s.message || {};
+        const ip = NetscalerGraylogClient.extractSourceIp(msg);
+        const u = NetscalerGraylogClient.extractUsername(msg).toLowerCase();
+        const ts = msg.timestamp || "";
+        if (ip === cleanIp || !ip) {
+            citrixSucc++;
+            if (u && (!userSuccessMap.has(u) || ts > userSuccessMap.get(u)!)) {
+                userSuccessMap.set(u, ts);
+            }
+        }
+    }
+
+    // Collect targeted users
+    const allUsersSet = new Set<string>();
+    for (const f of rawFailures) {
+        const u = NetscalerGraylogClient.extractUsername(f.message);
+        if (u && u !== "anonymous" && u !== "nsroot") {
+            allUsersSet.add(u);
+        }
+    }
+
+    // Check AD status and Imprivata RADIUS in parallel
+    const [adStatusMap, imprivataIndex] = await Promise.all([
+        allUsersSet.size > 0
+            ? getBulkUserAdStatus(Array.from(allUsersSet)).catch(() => ({} as any))
+            : Promise.resolve({} as any),
+        allUsersSet.size > 0
+            ? fetchImprivataBatchIndex(rangeSeconds + 600, "CITRIX", 600, Array.from(allUsersSet)).catch(() => new Map())
+            : Promise.resolve(new Map()),
+    ]);
+
+    // Check 4740 lockouts
+    if (allUsersSet.size > 0) {
+        const sinceDate = new Date(Date.now() - rangeSeconds * 1000);
+        const lockedRecords = await prisma.accountLifecycleEvent.findMany({
+            where: {
+                canonicalUsername: { in: Array.from(allUsersSet) },
+                eventType: "ACCOUNT_LOCKOUT",
+                timestamp: { gte: sinceDate },
+            },
+            select: { canonicalUsername: true },
+            distinct: ["canonicalUsername"],
+        }).catch(() => []);
+        for (const lr of lockedRecords) {
+            const key = lr.canonicalUsername.toLowerCase();
+            if (adStatusMap[key] && adStatusMap[key].adStatus === "ACTIVE") {
+                adStatusMap[key].adStatus = "LOCKED";
+            }
+        }
+    }
+
+    // Parse failure events
+    const events: CitrixLoginFailureEvent[] = [];
+    let loginFailedCount = 0;
+    let policyFailedCount = 0;
+    let staFailedCount = 0;
+    let cookieFailedCount = 0;
+    let ipImpBadPwdCount = 0;
+    let ipImpMfaTimeoutCount = 0;
+    let ipImpInvalidUserCount = 0;
+    const userMap = new Map<string, any>();
+    const authFailureEpochs: number[] = [];
+
+    let firstSeen = rawFailures.length > 0 ? rawFailures[0].message?.timestamp || new Date().toISOString() : new Date().toISOString();
+    let lastSeen = firstSeen;
+
+    for (const f of rawFailures) {
+        const msg = f.message || {};
+        const raw = msg.message || "";
+        if (/invalid opcode 8/i.test(raw) || /NAS_NAC_PROXY to INVALID/i.test(raw) || /CONSOLE_CLOUD_AGENT/i.test(raw)) {
+            continue;
+        }
+
+        const usernameRaw = NetscalerGraylogClient.extractUsername(msg);
+        const usernameClean = (usernameRaw || "anonymous").toLowerCase();
+        const classified = classifyFailureMessage(msg);
+
+        const uNoDomain = usernameClean.replace(/^[a-zA-Z0-9_\-\.]+[\\\/]/, "");
+        const uNoEmail = uNoDomain.split("@")[0];
+        const adInfo =
+            adStatusMap[usernameClean] ||
+            adStatusMap[usernameRaw] ||
+            adStatusMap[uNoDomain] ||
+            adStatusMap[uNoEmail];
+        const isCorp = isCorporateUsernameFormat(usernameClean) || isCorporateUsernameFormat(uNoEmail);
+
+        // Imprivata correlation
+        let imprivataVerdict: string | undefined;
+        let imprivataVerdictLabel: string | undefined;
+        let imprivataMfaMethod: string | undefined;
+        let imprivataNode: string | undefined;
+        let enrichedFailureReason = classified.failureReason;
+
+        if (
+            usernameClean !== "anonymous" &&
+            (classified.category === "AAA_LOGIN_FAILED" ||
+                classified.category === "AAA_POLICY_FAILED" ||
+                classified.category === "AUTH_DENIED_OTHER")
+        ) {
+            const matchedImp = matchEventToImprivataSession(
+                usernameRaw,
+                msg.timestamp || new Date().toISOString(),
+                imprivataIndex,
+                120000,
+                true
+            );
+            if (matchedImp) {
+                imprivataVerdict = matchedImp.verdict;
+                imprivataVerdictLabel = matchedImp.verdictLabel;
+                imprivataMfaMethod = matchedImp.mfaMethod;
+                imprivataNode = matchedImp.imprivataNode;
+
+                if (classified.category === "AAA_POLICY_FAILED") {
+                    enrichedFailureReason = `AAA Policy (${classified.policyName || "Imprivata-prod"}) → ${formatImprivataFailureReason(matchedImp)}`;
+                } else {
+                    enrichedFailureReason = formatImprivataFailureReason(matchedImp);
+                }
+
+                if (matchedImp.verdict === "BAD_AD_PASSWORD_OR_POLICY") ipImpBadPwdCount++;
+                if (matchedImp.verdict === "MFA_PUSH_TIMEOUT" || matchedImp.verdict === "MFA_CHALLENGED") ipImpMfaTimeoutCount++;
+                if (matchedImp.verdict === "INVALID_USER") ipImpInvalidUserCount++;
+            }
+        }
+
+        const evTs = msg.timestamp || new Date().toISOString();
+        if (evTs < firstSeen) firstSeen = evTs;
+        if (evTs > lastSeen) lastSeen = evTs;
+
+        if (classified.category === "AAA_LOGIN_FAILED") loginFailedCount++;
+        else if (classified.category === "AAA_POLICY_FAILED") policyFailedCount++;
+        else if (classified.category === "STA_TICKET_FAILED") staFailedCount++;
+        else if (classified.category === "IDP_COOKIE_INVALID") cookieFailedCount++;
+
+        const ep = new Date(evTs).getTime();
+        if (!isNaN(ep) && (classified.category === "AAA_LOGIN_FAILED" || classified.category === "AAA_POLICY_FAILED")) {
+            authFailureEpochs.push(ep);
+        }
+
+        const uKey = usernameClean;
+        const latestSucc = userSuccessMap.get(uKey);
+        const succeededLater = Boolean(latestSucc && latestSucc >= evTs);
+
+        if (userMap.has(uKey)) {
+            userMap.get(uKey).failures++;
+            if (succeededLater) userMap.get(uKey).succeededLater = true;
+        } else {
+            userMap.set(uKey, {
+                username: usernameRaw || "anonymous",
+                isCorporateFormat: isCorp,
+                adStatus: usernameClean === "anonymous" ? "ANONYMOUS" : (adInfo?.adStatus || "NOT_FOUND"),
+                adDisplayName: adInfo?.displayName,
+                adDepartment: adInfo?.department,
+                failures: 1,
+                succeededLater,
+            });
+        }
+
+        events.push({
+            id: msg._id || `${evTs}-${Math.random().toString(36).slice(2, 8)}`,
+            timestamp: evTs,
+            category: classified.category,
+            module: msg.ns_module || "Citrix",
+            action: msg.ns_action || "Message",
+            username: usernameRaw || "anonymous",
+            isCorporateFormat: isCorp,
+            adStatus: usernameClean === "anonymous" ? "ANONYMOUS" : (adInfo?.adStatus || "NOT_FOUND"),
+            adDisplayName: adInfo?.displayName,
+            adDepartment: adInfo?.department,
+            clientIp: cleanIp,
+            countryCode: ipMeta.countryCode,
+            cityName: ipMeta.city,
+            failureReason: enrichedFailureReason,
+            policyName: classified.policyName,
+            userAgent: classified.userAgent,
+            imprivataVerdict,
+            imprivataVerdictLabel,
+            imprivataMfaMethod,
+            imprivataNode,
+            rawMessage: raw,
+        });
+    }
+
+    authFailureEpochs.sort((a, b) => a - b);
+    let maxAuthFailuresIn10m = 0;
+    let windowStartIdx = 0;
+    for (let i = 0; i < authFailureEpochs.length; i++) {
+        while (authFailureEpochs[i] - authFailureEpochs[windowStartIdx] > 600_000) {
+            windowStartIdx++;
+        }
+        const count = i - windowStartIdx + 1;
+        if (count > maxAuthFailuresIn10m) maxAuthFailuresIn10m = count;
+    }
+
+    const targetedUsers = Array.from(userMap.values());
+    const nonAnonUsers = targetedUsers.filter((u) => u.username.toLowerCase() !== "anonymous");
+    const totalFailures = events.length;
+
+    // Smart Guardian Rules
+    const triggeredRules: CitrixGuardianRuleFlag[] = [];
+    let riskScore = 0;
+
+    // 1. Foreign Origin
+    if (config.flagForeignIps && ipMeta.countryCode !== "US" && ipMeta.countryCode !== "Unknown") {
+        triggeredRules.push({
+            code: "FOREIGN_ORIGIN",
+            label: `Foreign Origin (${ipMeta.countryCode})`,
+            severity: "CRITICAL",
+            points: 50,
+            detail: `Authentication failures originating outside the US (${ipMeta.city !== "N/A" ? `${ipMeta.city}, ` : ""}${ipMeta.countryCode}).`,
+        });
+        riskScore += 50;
+    }
+
+    // 2. Password Spray
+    if (nonAnonUsers.length >= config.minSprayUsers) {
+        triggeredRules.push({
+            code: "PASSWORD_SPRAY",
+            label: `Password Spray (${nonAnonUsers.length} Users)`,
+            severity: "CRITICAL",
+            points: 55,
+            detail: `Targeted ${nonAnonUsers.length} distinct usernames (${nonAnonUsers.map((u) => u.username).slice(0, 4).join(", ")}).`,
+        });
+        riskScore += 55;
+    }
+
+    // 3. AD User Evaluation
+    if (config.flagNonExistentAdUsers && nonAnonUsers.length > 0) {
+        const invalidFormatUsers = nonAnonUsers.filter((u) => !u.isCorporateFormat);
+        const notFoundAdUsers = nonAnonUsers.filter((u) => u.isCorporateFormat && u.adStatus === "NOT_FOUND");
+        const disabledLockedUsers = nonAnonUsers.filter((u) => u.adStatus === "DISABLED" || u.adStatus === "LOCKED" || u.adStatus === "EXPIRED");
+
+        if (invalidFormatUsers.length > 0) {
+            triggeredRules.push({
+                code: "NON_CORPORATE_USERNAME",
+                label: "Non-Corporate Username Format",
+                severity: "HIGH",
+                points: 45,
+                detail: `Attempted username(s) do not match corporate format: ${invalidFormatUsers.map((u) => u.username).join(", ")}.`,
+            });
+            riskScore += 45;
+        }
+
+        if (notFoundAdUsers.length > 0) {
+            triggeredRules.push({
+                code: "NON_EXISTENT_AD_USER",
+                label: "Username Not Found in AD",
+                severity: "CRITICAL",
+                points: 50,
+                detail: `Username(s) do not exist in Active Directory: ${notFoundAdUsers.map((u) => u.username).join(", ")}.`,
+            });
+            riskScore += 50;
+        }
+
+        if (disabledLockedUsers.length > 0) {
+            triggeredRules.push({
+                code: "DISABLED_OR_LOCKED_AD",
+                label: `AD Account ${disabledLockedUsers[0].adStatus}`,
+                severity: "MEDIUM",
+                points: 25,
+                detail: `Targeted AD account is ${disabledLockedUsers.map((u) => `${u.username} (${u.adStatus})`).join(", ")}.`,
+            });
+            riskScore += 25;
+        }
+    }
+
+    // 4. 10m Burst or Volume
+    const hasVpnSuccessHistory = Boolean(vpnHist);
+    if (maxAuthFailuresIn10m >= config.minFailuresForBlock) {
+        triggeredRules.push({
+            code: "AUTH_BURST_10M",
+            label: `${maxAuthFailuresIn10m} Auth Failures in ≤10m`,
+            severity: "CRITICAL",
+            points: 55,
+            detail: `${maxAuthFailuresIn10m} authentication failures within 10 minutes (threshold: ${config.minFailuresForBlock}).`,
+        });
+        riskScore += 55;
+    } else if (totalFailures >= config.minFailuresForBlock && citrixSucc === 0 && !hasVpnSuccessHistory) {
+        triggeredRules.push({
+            code: "HIGH_FAILURE_VOLUME",
+            label: `Repeated Failures (${totalFailures}x, 0 Success)`,
+            severity: "HIGH",
+            points: 35,
+            detail: `${totalFailures} failure events with 0 successful logins.`,
+        });
+        riskScore += 35;
+    }
+
+    // 5. ASN classification
+    const cleanAsnNum = String(ipMeta.asn).toUpperCase().replace(/^AS/, "");
+    const blacklistedAsnSet = new Set(asnBlEntries.map((a) => String(a.asn).toUpperCase().replace(/^AS/, "")));
+    const isOnAsnBlacklist = blacklistedAsnSet.has(cleanAsnNum);
+    const isEnterpriseProxy = /zscaler|netskope|palo alto|cloudflare|akamai|cisco umbrella/i.test(ipMeta.companyName);
+
+    if (isOnAsnBlacklist) {
+        triggeredRules.push({
+            code: "BLACKLISTED_ASN",
+            label: `Blacklisted ASN (${ipMeta.asn})`,
+            severity: "CRITICAL",
+            points: 65,
+            detail: `Belongs to blacklisted ASN ${ipMeta.asn} (${ipMeta.companyName}).`,
+        });
+        riskScore += 65;
+    } else if (ipMeta.companyType === "hosting" && !isEnterpriseProxy) {
+        triggeredRules.push({
+            code: "HOSTING_DATACENTER_ASN",
+            label: "Hosting / Datacenter ASN",
+            severity: "HIGH",
+            points: 40,
+            detail: `Source belongs to cloud/datacenter provider ${ipMeta.companyName} (${ipMeta.asn}).`,
+        });
+        riskScore += 40;
+    }
+
+    // 6. STA ticket probing
+    if (staFailedCount >= config.minFailuresForBlock && nonAnonUsers.length === 0 && citrixSucc === 0 && !hasVpnSuccessHistory) {
+        triggeredRules.push({
+            code: "REPEATED_STA_TICKET_ABUSE",
+            label: `Repeated STA Ticket Failures (${staFailedCount}x)`,
+            severity: "HIGH",
+            points: 35,
+            detail: `Repeated STA ticket failures (${staFailedCount}x) with no authenticated user session.`,
+        });
+        riskScore += 35;
+    }
+
+    // Safety Shield
+    const baseScore = riskScore;
+    const allUsersValidAd =
+        nonAnonUsers.length > 0 &&
+        nonAnonUsers.every((u) => u.adStatus === "ACTIVE" || u.adStatus === "ENABLED" || u.adStatus === "LOCKED");
+    const isSingleUser = nonAnonUsers.length === 1;
+    const isOnWatchlist = Boolean(watchEntry);
+    const isOnGuardianBlacklist = Boolean(blEntry);
+
+    let verdict: GuardianAbuseVerdict = "SUSPICIOUS_WATCH";
+    let verdictReason = "";
+    let protectionNote: string | undefined;
+    let safetyShieldApplied = false;
+    let safetyShieldReason: string | undefined;
+
+    if (isOnGuardianBlacklist) {
+        verdict = "ABUSIVE_BLOCK";
+        riskScore = Math.max(riskScore, 85);
+        verdictReason = `On Guardian Do-Not-Unshun Blacklist: ${blEntry?.reason || "Locked"}`;
+    } else if (isOnWatchlist) {
+        verdict = "LEGIT_USER_ISSUE";
+        riskScore = Math.min(riskScore, 10);
+        verdictReason = "Protected Watchlist Asset IP";
+        protectionNote = "IP is registered on the Guardian Monitored Watchlist.";
+        safetyShieldApplied = true;
+        safetyShieldReason = "Guardian Monitored Watchlist Asset";
+    } else if (isOnAsnBlacklist) {
+        verdict = "ABUSIVE_BLOCK";
+        riskScore = Math.max(riskScore, 85);
+        verdictReason = `Blacklisted ASN ${ipMeta.asn} (${ipMeta.companyName}) with ${totalFailures} attempt(s).`;
+    } else if (
+        config.protectIspWithValidAdUser &&
+        ipMeta.countryCode === "US" &&
+        allUsersValidAd &&
+        isSingleUser &&
+        (citrixSucc > 0 ||
+            hasVpnSuccessHistory ||
+            (ipImpMfaTimeoutCount > 0 && ipImpBadPwdCount === 0) ||
+            (ipMeta.isResidentialIsp && maxAuthFailuresIn10m < config.minFailuresForBlock))
+    ) {
+        verdict = "LEGIT_USER_ISSUE";
+        riskScore = Math.min(riskScore, 15);
+        safetyShieldApplied = true;
+        const u = nonAnonUsers[0];
+        const userLabel = u.adDisplayName ? `${u.adDisplayName} (${u.username})` : u.username;
+
+        if (ipImpMfaTimeoutCount > 0 && ipImpBadPwdCount === 0 && citrixSucc === 0) {
+            verdictReason = `Imprivata Confirmed AD Password OK for ${userLabel}, but user did not accept the MFA Push in time (${ipImpMfaTimeoutCount}x MFA timeout).`;
+            protectionNote = "Guardian Protected: Imprivata RADIUS verified AD password succeeded (only MFA push timed out).";
+            safetyShieldReason = "Imprivata RADIUS: AD password was correct; only 2FA smartphone push timed out.";
+        } else if (citrixSucc > 0 || u.succeededLater) {
+            verdictReason = `Legitimate AD user ${userLabel} had ${totalFailures} failure(s) and logged in successfully (${citrixSucc} sessions).`;
+            protectionNote = "Guardian Protected: Verified AD user with successful Citrix sessions from this IP.";
+            safetyShieldReason = "Verified corporate employee with successful authenticated Citrix sessions.";
+        } else if (hasVpnSuccessHistory) {
+            verdictReason = `Legitimate AD user ${userLabel} with prior AnyConnect VPN history from this IP.`;
+            protectionNote = "Guardian Protected: Verified corporate VPN history on this IP.";
+            safetyShieldReason = "Prior AnyConnect VPN authentication history from this IP.";
+        } else {
+            verdictReason = `Valid AD user ${userLabel} connecting from US ISP (${ipMeta.companyName}).`;
+            protectionNote = "Guardian Protected: US ISP with verified Active Directory corporate user.";
+            safetyShieldReason = `US Residential ISP (${ipMeta.companyName}) with valid Active Directory account.`;
+        }
+    } else if (riskScore >= 50) {
+        verdict = "ABUSIVE_BLOCK";
+        verdictReason = triggeredRules.map((r) => r.label).join(" + ") || "High-risk authentication abuse pattern";
+    } else if (riskScore >= 20 || staFailedCount > 0) {
+        verdict = "SUSPICIOUS_WATCH";
+        verdictReason = triggeredRules.map((r) => r.label).join(" + ") || "Unattributed authentication / session anomaly";
+    } else {
+        verdict = "LEGIT_USER_ISSUE";
+        verdictReason = "Low-risk authentication anomaly from US network.";
+    }
+
+    riskScore = Math.min(100, Math.max(0, riskScore));
+
+    const shunnedFirewalls = shunStats.map((s) => s.firewall);
+    const isCurrentlyShunned = shunnedFirewalls.length > 0 || Boolean(shunDbRecord);
+
+    const evaluation: CitrixIpEvaluation = {
+        ip: cleanIp,
+        countryCode: ipMeta.countryCode,
+        cityName: ipMeta.city,
+        asn: ipMeta.asn,
+        companyName: ipMeta.companyName,
+        companyType: ipMeta.companyType,
+        cidr: ipMeta.cidr,
+        isResidentialIsp: ipMeta.isResidentialIsp,
+        totalFailures,
+        loginFailedCount,
+        policyFailedCount,
+        staFailedCount,
+        cookieFailedCount,
+        maxAuthFailuresIn10m,
+        isOnAsnBlacklist,
+        imprivataBadPasswordCount: ipImpBadPwdCount,
+        imprivataMfaTimeoutCount: ipImpMfaTimeoutCount,
+        imprivataInvalidUserCount: ipImpInvalidUserCount,
+        citrixSuccessCount: citrixSucc,
+        hasVpnSuccessHistory,
+        targetedUsers,
+        firstSeen,
+        lastSeen,
+        riskScore,
+        verdict,
+        verdictReason,
+        protectionNote,
+        triggeredRules,
+        isCurrentlyShunned,
+        shunnedFirewalls,
+        isOnGuardianBlacklist,
+        guardianBlacklistReason: blEntry?.reason || undefined,
+        isOnWatchlist,
+        sampleMessages: events.slice(0, 3).map((e) => e.rawMessage),
+    };
+
+    return {
+        evaluation,
+        events,
+        reasoningDetails: {
+            baseScore,
+            finalScore: riskScore,
+            verdict,
+            verdictReason,
+            protectionNote,
+            triggeredRules,
+            safetyShieldApplied,
+            safetyShieldReason,
+            ispClassification: {
+                asn: ipMeta.asn,
+                companyName: ipMeta.companyName,
+                companyType: ipMeta.companyType,
+                isResidentialIsp: ipMeta.isResidentialIsp,
+                isEnterpriseProxy,
+                isOnAsnBlacklist,
+            },
+            userAdBreakdown: targetedUsers,
+            imprivataSummary: {
+                badPasswordCount: ipImpBadPwdCount,
+                mfaTimeoutCount: ipImpMfaTimeoutCount,
+                invalidUserCount: ipImpInvalidUserCount,
+            },
+        },
+        refreshedAt: new Date().toISOString(),
+    };
+}
+
