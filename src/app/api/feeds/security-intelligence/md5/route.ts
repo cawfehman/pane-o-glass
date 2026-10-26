@@ -1,35 +1,28 @@
 import { NextResponse } from "next/server";
-import { getSecurityIntelligenceIps } from "../route";
-import crypto from "crypto";
+import { getSecurityIntelligenceFeed } from "../route";
+import { prisma } from "@/lib/prisma";
+
+export const dynamic = "force-dynamic";
 
 export async function GET(req: Request) {
     try {
         const url = new URL(req.url);
         const tier = url.searchParams.get("tier") || "all";
-        const { ips, metrics } = await getSecurityIntelligenceIps(tier);
 
-        const lines: string[] = [
-            `# ==============================================================================`,
-            `# Cooper Health Security Intelligence Threat Feed (Cisco FTD / FMC)`,
-            `# Generated: ${metrics.generatedAt}`,
-            `# Total Active Threat Entries: ${metrics.total}`,
-            `# Breakdown: CVE (${metrics.cveCount}) | Blacklist (${metrics.blacklistCount}) | Datacenter/VPS (${metrics.hostingCount}) | Active Residential (<7d) (${metrics.residentialCount})`,
-            `# Recommended Action in FMC: Block with Reset`,
-            `# ==============================================================================`
-        ];
+        // Track last poll timestamp for FMC dynamic hold synchronization
+        await prisma.netscalerCveSetting.upsert({
+            where: { key: "LAST_FMC_SI_POLL" },
+            update: { value: new Date().toISOString() },
+            create: { key: "LAST_FMC_SI_POLL", value: new Date().toISOString() }
+        }).catch(() => {});
 
-        for (const ip of ips) {
-            lines.push(ip);
-        }
+        const { md5, metrics } = await getSecurityIntelligenceFeed(tier);
 
-        const body = lines.join("\n") + "\n";
-        const md5 = crypto.createHash("md5").update(body).digest("hex");
-
-        return new NextResponse(md5, {
+        return new NextResponse(md5.trim(), {
             status: 200,
             headers: {
                 "Content-Type": "text/plain; charset=utf-8",
-                "Cache-Control": "public, max-age=300",
+                "Cache-Control": "public, max-age=60",
                 "X-Total-Entries": String(metrics.total)
             }
         });

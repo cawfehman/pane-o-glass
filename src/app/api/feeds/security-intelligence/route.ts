@@ -160,6 +160,64 @@ export async function getSecurityIntelligenceIps(tierFilter: string = "all"): Pr
     };
 }
 
+export const dynamic = "force-dynamic";
+
+export interface FeedResult {
+    body: string;
+    md5: string;
+    ips: string[];
+    metrics: {
+        total: number;
+        cveCount: number;
+        blacklistCount: number;
+        hostingCount: number;
+        residentialCount: number;
+        generatedAt: string;
+    };
+}
+
+let cachedFeeds: Record<string, { data: FeedResult; timestamp: number }> = {};
+const FEED_CACHE_TTL_MS = 60 * 1000; // 60s TTL ensures FMC MD5 check and feed download receive 100% identical data
+
+export async function getSecurityIntelligenceFeed(tierFilter: string = "all", forceRefresh = false): Promise<FeedResult> {
+    const now = Date.now();
+    const cached = cachedFeeds[tierFilter];
+    if (!forceRefresh && cached && (now - cached.timestamp < FEED_CACHE_TTL_MS)) {
+        return cached.data;
+    }
+
+    const { ips, metrics } = await getSecurityIntelligenceIps(tierFilter);
+
+    // Standard Cisco FMC plain text feed format
+    // Crucial: Deterministic content without volatile sub-minute timestamps in body
+    // so FMC checksum validation is 100% consistent between the MD5 check and the feed download.
+    const lines: string[] = [
+        `# ==============================================================================`,
+        `# Cooper Health Security Intelligence Threat Feed (Cisco FTD / FMC)`,
+        `# Total Active Threat Entries: ${metrics.total}`,
+        `# Breakdown: CVE (${metrics.cveCount}) | Blacklist (${metrics.blacklistCount}) | Datacenter/VPS (${metrics.hostingCount}) | Active Residential (<7d) (${metrics.residentialCount})`,
+        `# Recommended Action in FMC: Block with Reset`,
+        `# ==============================================================================`
+    ];
+
+    for (const ip of ips) {
+        lines.push(ip);
+    }
+
+    const body = lines.join("\n") + "\n";
+    const md5 = crypto.createHash("md5").update(body).digest("hex");
+
+    const result: FeedResult = {
+        body,
+        md5,
+        ips,
+        metrics
+    };
+
+    cachedFeeds[tierFilter] = { data: result, timestamp: now };
+    return result;
+}
+
 export async function GET(req: Request) {
     try {
         const url = new URL(req.url);
@@ -185,7 +243,7 @@ export async function GET(req: Request) {
             }
         }
 
-        const { ips, metrics } = await getSecurityIntelligenceIps(tier);
+        const { body, md5, metrics, ips } = await getSecurityIntelligenceFeed(tier);
 
         if (format === "json") {
             return NextResponse.json({
@@ -196,26 +254,8 @@ export async function GET(req: Request) {
             });
         }
 
-        // Standard Cisco FMC plain text feed format
-        const lines: string[] = [
-            `# ==============================================================================`,
-            `# Cooper Health Security Intelligence Threat Feed (Cisco FTD / FMC)`,
-            `# Generated: ${metrics.generatedAt}`,
-            `# Total Active Threat Entries: ${metrics.total}`,
-            `# Breakdown: CVE (${metrics.cveCount}) | Blacklist (${metrics.blacklistCount}) | Datacenter/VPS (${metrics.hostingCount}) | Active Residential (<7d) (${metrics.residentialCount})`,
-            `# Recommended Action in FMC: Block with Reset`,
-            `# ==============================================================================`
-        ];
-
-        for (const ip of ips) {
-            lines.push(ip);
-        }
-
-        const body = lines.join("\n") + "\n";
-        const etag = crypto.createHash("md5").update(body).digest("hex");
-
         const ifNoneMatch = req.headers.get("if-none-match");
-        if (ifNoneMatch === etag || ifNoneMatch === `W/"${etag}"`) {
+        if (ifNoneMatch === md5 || ifNoneMatch === `"${md5}"` || ifNoneMatch === `W/"${md5}"`) {
             return new NextResponse(null, { status: 304 });
         }
 
@@ -223,8 +263,8 @@ export async function GET(req: Request) {
             status: 200,
             headers: {
                 "Content-Type": "text/plain; charset=utf-8",
-                "Cache-Control": "public, max-age=300, stale-while-revalidate=60",
-                "ETag": `W/"${etag}"`,
+                "Cache-Control": "public, max-age=60, stale-while-revalidate=30",
+                "ETag": `"${md5}"`,
                 "X-Total-Entries": String(metrics.total)
             }
         });
