@@ -6,7 +6,7 @@ import {
     LayoutDashboard, Wrench, Shield, Server, Network, Lock, 
     ShieldAlert, ShieldCheck, Globe, Map, Users, Key, 
     ClipboardList, Activity, MessageSquare, Mail, BellRing, FileText, Layers,
-    DownloadCloud, Link2, UserX
+    DownloadCloud, Link2, UserX, Archive
 } from "lucide-react";
 import packageJson from "../../package.json";
 import FeedbackModal from "./FeedbackModal";
@@ -354,6 +354,15 @@ export default function SidebarClient({ role, permissions = [] }: { role: string
                                     <span>FTD Operations</span>
                                     <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30">V2</span>
                                 </span>
+                            </Link>
+                            <Link 
+                                href="/admin/incidents" 
+                                onClick={closeMobile} 
+                                title={isCollapsed ? "Incident Archive" : undefined}
+                                className={`nav-link ${pathname.startsWith("/admin/incidents") ? "active" : ""}`}
+                            >
+                                <Archive size={20} className="shrink-0 text-red-400" />
+                                <span className="nav-text">Incident Archive</span>
                             </Link>
                         </>
                     )}

@@ -691,3 +691,83 @@ model FirewallCommandQueue {
   @@index([createdAt])
 }
 
+model IncidentArchive {
+  id               String                 @id @default(cuid())
+  incidentNumber   String                 @unique // e.g. "INC-2026-0801"
+  title            String
+  severity         String                 @default("HIGH") // "CRITICAL", "HIGH", "MEDIUM", "LOW"
+  category         String                 @default("BOTNET_BRUTE_FORCE") // "BOTNET_BRUTE_FORCE", "CREDENTIAL_STUFFING", "RANSOMWARE", "PHISHING", "DATA_EXFILTRATION", "UNAUTHORIZED_ACCESS", "DDoS", "OTHER"
+  status           String                 @default("CONTAINED") // "INVESTIGATING", "CONTAINED", "CLOSED", "ARCHIVED"
+  leadInvestigator String?
+  threatActor      String?
+  attackVector     String?
+  impactedSystems  String[]
+  startedAt        DateTime
+  containedAt      DateTime?
+  closedAt         DateTime?
+  executiveSummary String                 @db.Text
+  rootCause        String?                @db.Text
+  impactAssessment String?                @db.Text
+  metricsSummary   Json?                  // e.g. { totalAttempts, uniqueIps, targetedAccounts, etc }
+  indicators       Json?                  // Array of { type, value, notes }
+  sanitized        Boolean                @default(true)
+  createdAt        DateTime               @default(now())
+  updatedAt        DateTime               @updatedAt
+
+  timeline         IncidentTimelineEvent[]
+  evidence         IncidentEvidence[]
+  actions          IncidentActionItem[]
+
+  @@index([incidentNumber])
+  @@index([severity])
+  @@index([status])
+  @@index([startedAt])
+}
+
+model IncidentTimelineEvent {
+  id          String          @id @default(cuid())
+  incidentId  String
+  incident    IncidentArchive @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+  timestamp   DateTime
+  title       String
+  description String          @db.Text
+  source      String?         // "Graylog", "Cisco FMC", "NetScaler", "Palo Alto", "Mandiant", "Internal Telemetry"
+  isMilestone Boolean         @default(false)
+  severity    String?         // "CRITICAL", "HIGH", "INFO"
+  createdAt   DateTime        @default(now())
+
+  @@index([incidentId])
+  @@index([timestamp])
+}
+
+model IncidentEvidence {
+  id           String          @id @default(cuid())
+  incidentId   String
+  incident     IncidentArchive @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+  title        String
+  description  String?         @db.Text
+  fileType     String          // "IMAGE", "PDF", "REPORT", "LOG", "JSON"
+  sourceVendor String?         // "Mandiant", "Microsoft Defender", "Graylog", "Cisco FMC", "Internal"
+  dataUri      String?         @db.Text // Base64 data URI for screenshots/diagrams
+  fileName     String?
+  fileSize     Int?
+  createdAt    DateTime        @default(now())
+
+  @@index([incidentId])
+}
+
+model IncidentActionItem {
+  id          String          @id @default(cuid())
+  incidentId  String
+  incident    IncidentArchive @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+  action      String          @db.Text
+  owner       String?
+  status      String          @default("COMPLETED") // "PENDING", "IN_PROGRESS", "COMPLETED"
+  category    String?         // "CONTAINMENT", "ERADICATION", "RECOVERY", "LESSONS_LEARNED"
+  completedAt DateTime?
+  createdAt   DateTime        @default(now())
+
+  @@index([incidentId])
+  @@index([status])
+}
+
