@@ -669,17 +669,17 @@ export function SecurityIntelligenceTab() {
                         <div className="flex items-center gap-2.5 mb-2">
                             <Search className="w-5 h-5 text-accent-primary" />
                             <h3 className="text-base font-bold text-text-primary">
-                                False-Positive & Block Investigator
+                                IP & ASN Threat Investigator
                             </h3>
                         </div>
                         <p className="text-xs text-text-muted mb-4">
-                            Check if an IP or subnet is currently in the SI feed, calculate Graylog FTD drop counts, and analyze recent user VPN history.
+                            Triage any IPv4 address or Autonomous System (ASN). Retrieve enriched threat posture, blacklists, active firewall shuns, residential strikes, and user VPN telemetry.
                         </p>
 
                         <form onSubmit={handleInvestigate} className="flex gap-2">
                             <input
                                 type="text"
-                                placeholder="Enter IPv4 address (e.g. 198.51.100.4)"
+                                placeholder="Enter IPv4 or ASN (e.g. 73.150.200.49 or AS16509)..."
                                 value={searchQuery}
                                 onChange={(e) => setSearchQuery(e.target.value)}
                                 className="flex-1 bg-bg-surface border border-border-color rounded-lg px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-accent-primary"
@@ -690,7 +690,7 @@ export function SecurityIntelligenceTab() {
                                 className="px-4 py-2 bg-accent-primary hover:bg-accent-hover disabled:opacity-50 text-white rounded-lg text-sm font-semibold flex items-center gap-2 transition-colors cursor-pointer"
                             >
                                 {investigating ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
-                                Triage
+                                Investigate
                             </button>
                         </form>
 
@@ -705,26 +705,52 @@ export function SecurityIntelligenceTab() {
                             <div className="mt-5 space-y-4 text-xs">
                                 <div className="p-3 bg-bg-surface border border-border-color rounded-lg space-y-2">
                                     <div className="flex items-center justify-between">
-                                        <span className="font-semibold text-text-primary">{investigateResult.target}</span>
+                                        <span className="font-semibold text-text-primary flex items-center gap-1.5 font-mono">
+                                            {investigateResult.type === "ASN" && <Network className="w-3.5 h-3.5 text-accent-primary" />}
+                                            {investigateResult.target}
+                                        </span>
                                         <span className={`px-2 py-0.5 rounded text-[11px] font-bold ${
-                                            investigateResult.inSecurityIntelligence 
+                                            investigateResult.inSecurityIntelligence || investigateResult.isBlacklisted
                                                 ? "bg-red-500/20 text-red-400 border border-red-500/30" 
                                                 : "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"
                                         }`}>
-                                            {investigateResult.inSecurityIntelligence ? "BLOCKED IN SI FEED" : "NOT IN SI FEED"}
+                                            {investigateResult.type === "ASN" 
+                                                ? (investigateResult.isBlacklisted ? "BLACKLISTED ASN" : "ACTIVE ASN")
+                                                : (investigateResult.inSecurityIntelligence ? "BLOCKED IN SI / SHUNS" : "CLEAN / NOT BLOCKED")}
                                         </span>
                                     </div>
-                                    <div className="text-text-muted">
-                                        ISP / Org: <span className="text-text-primary">{investigateResult.ipInfo?.as_name || "Unknown"}</span> ({investigateResult.ipInfo?.asn || "N/A"})
-                                    </div>
-                                    <div className="text-text-muted">
-                                        Graylog FTD Drops (24h): <span className="font-mono font-bold text-red-400">{investigateResult.ftdDropCount24h} drops</span>
-                                    </div>
-                                    <div className="text-text-muted">
-                                        VPN Success History: <span className={`font-semibold ${investigateResult.vpnHistory?.hasRecentSuccess ? "text-emerald-400" : "text-text-primary"}`}>
-                                            {investigateResult.vpnHistory?.hasRecentSuccess ? "Yes (Legitimate Employee Activity)" : "No record"}
-                                        </span>
-                                    </div>
+                                    {investigateResult.type === "ASN" ? (
+                                        <>
+                                            <div className="text-text-muted">
+                                                Provider: <span className="text-text-primary font-medium">{investigateResult.asnName}</span> ({investigateResult.country})
+                                            </div>
+                                            <div className="text-text-muted">
+                                                VPN Telemetry: <span className="font-semibold text-emerald-400">{investigateResult.vpnHistory?.successfulLogins?.toLocaleString() || 0} successes</span> • <span className="text-orange-400">{investigateResult.vpnHistory?.failedLogins?.toLocaleString() || 0} failures</span>
+                                            </div>
+                                            <div className="text-text-muted">
+                                                Active Residential Strikes: <span className="font-semibold text-text-primary">{investigateResult.details?.residentialStrikesCount || 0} tracked IPs</span>
+                                            </div>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <div className="text-text-muted">
+                                                ISP / Org: <span className="text-text-primary">{investigateResult.ipInfo?.as_name || "Unknown"}</span> ({investigateResult.ipInfo?.asn || "N/A"}) • {investigateResult.ipInfo?.country || "US"}
+                                            </div>
+                                            {investigateResult.details?.residential && (
+                                                <div className="text-text-muted">
+                                                    Residential Strike: <span className="font-semibold text-amber-400">Strike {investigateResult.details.residential.strikeCount} ({investigateResult.details.residential.status})</span> • Attempted: {investigateResult.details.residential.attemptedUsers?.join(", ") || "None"}
+                                                </div>
+                                            )}
+                                            <div className="text-text-muted">
+                                                Graylog FTD Drops (24h): <span className="font-mono font-bold text-red-400">{investigateResult.ftdDropCount24h} drops</span>
+                                            </div>
+                                            <div className="text-text-muted">
+                                                VPN History: <span className={`font-semibold ${investigateResult.vpnHistory?.hasRecentSuccess ? "text-emerald-400" : "text-text-primary"}`}>
+                                                    {investigateResult.vpnHistory?.hasRecentSuccess ? `Yes (${investigateResult.vpnHistory.successfulLogins} successful logins)` : "No successful logins"}
+                                                </span>
+                                            </div>
+                                        </>
+                                    )}
                                 </div>
 
                                 <div className="p-3 rounded-lg border bg-accent-primary/5 border-accent-primary/20 space-y-1">

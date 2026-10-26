@@ -20,7 +20,7 @@ async function isAuthorized(session: any): Promise<boolean> {
     return Boolean(hasFw || hasNetscaler);
 }
 
-// GET: Quickly investigate if an IP or corporate user is being blocked by Security Intelligence or Shuns
+// GET: Investigate an IP, ASN, or corporate user across Security Intelligence, Shuns, and VPN telemetry
 export async function GET(req: NextRequest) {
     try {
         const session = await auth();
@@ -29,16 +29,16 @@ export async function GET(req: NextRequest) {
         }
 
         const url = new URL(req.url);
-        const targetIp = url.searchParams.get("target")?.trim() || url.searchParams.get("ip")?.trim() || "";
+        const targetRaw = url.searchParams.get("target")?.trim() || url.searchParams.get("ip")?.trim() || "";
         const targetUser = url.searchParams.get("username")?.trim() || "";
 
-        if (!targetIp && !targetUser) {
-            return NextResponse.json({ error: "Either 'ip' or 'username' parameter is required." }, { status: 400 });
+        if (!targetRaw && !targetUser) {
+            return NextResponse.json({ error: "Either 'target', 'ip', or 'username' parameter is required." }, { status: 400 });
         }
 
-        let ipToInspect = targetIp;
+        let cleanTarget = targetRaw;
 
-        // If username given without IP, find recent IPs for that user
+        // If username given without target, find recent IPs for that user
         let userRecentIps: string[] = [];
         if (targetUser) {
             const cleanU = targetUser.toLowerCase().endsWith("@cooperhealth.edu") ? targetUser.slice(0, -17) : targetUser;
@@ -49,20 +49,135 @@ export async function GET(req: NextRequest) {
                 select: { sourceIp: true, status: true, createdAt: true }
             });
             userRecentIps = Array.from(new Set(recentVpn.map(v => v.sourceIp)));
-            if (!ipToInspect && userRecentIps.length > 0) {
-                ipToInspect = userRecentIps[0];
+            if (!cleanTarget && userRecentIps.length > 0) {
+                cleanTarget = userRecentIps[0];
             }
         }
 
-        if (!ipToInspect) {
+        if (!cleanTarget) {
             return NextResponse.json({
-                verdict: "NO_IP_FOUND",
+                verdict: "NO_TARGET_FOUND",
                 message: `No active or recent IP address found for user ${targetUser}.`,
                 userRecentIps: []
             });
         }
 
-        // 1. Check SI Feed & Shun Table Membership
+        // ==========================================
+        // 1. ASN INVESTIGATION MODE
+        // ==========================================
+        const isAsn = /^AS\d+$/i.test(cleanTarget) || (/^\d+$/.test(cleanTarget) && parseInt(cleanTarget, 10) > 0 && parseInt(cleanTarget, 10) < 4200000000 && !cleanTarget.includes('.'));
+
+        if (isAsn) {
+            const rawNum = cleanTarget.toUpperCase().replace(/^AS/, '');
+            const asnFormatted = `AS${rawNum}`;
+
+            const [asnBlacklistEntry, sampleVpn, vpnSuccessCount, vpnFailCount, vpnUsers, strikeCount, recentStrikes] = await Promise.all([
+                prisma.guardianAsnBlacklist.findFirst({
+                    where: { OR: [{ asn: asnFormatted }, { asn: rawNum }] }
+                }),
+                prisma.vpnEvent.findFirst({
+                    where: { OR: [{ ipAsn: asnFormatted }, { ipAsn: rawNum }, { ipAsn: { contains: rawNum } }] },
+                    select: { ipAsName: true, ipCountry: true }
+                }),
+                prisma.vpnEvent.count({
+                    where: { status: "SUCCESS", OR: [{ ipAsn: asnFormatted }, { ipAsn: rawNum }] }
+                }),
+                prisma.vpnEvent.count({
+                    where: { status: "FAILURE", OR: [{ ipAsn: asnFormatted }, { ipAsn: rawNum }] }
+                }),
+                prisma.vpnEvent.findMany({
+                    where: { status: "SUCCESS", OR: [{ ipAsn: asnFormatted }, { ipAsn: rawNum }] },
+                    select: { username: true },
+                    distinct: ["username"],
+                    take: 10
+                }),
+                prisma.residentialStrikeLedger.count({
+                    where: { OR: [{ asn: asnFormatted }, { asn: rawNum }] }
+                }),
+                prisma.residentialStrikeLedger.findMany({
+                    where: { OR: [{ asn: asnFormatted }, { asn: rawNum }] },
+                    orderBy: { lastSeen: "desc" },
+                    take: 5,
+                    select: { ip: true, strikeCount: true, status: true, ispOrg: true, lastSeen: true }
+                })
+            ]);
+
+            const isBlacklisted = Boolean(asnBlacklistEntry);
+            const orgName = asnBlacklistEntry?.asnName || sampleVpn?.ipAsName || "Autonomous System Network";
+            const country = sampleVpn?.ipCountry || "Global";
+
+            let verdictLevel: "CONFIRMED_THREAT" | "LEGITIMATE_RESIDENTIAL_ISP" | "SUSPICIOUS_NETWORK";
+            let recommendation = "";
+
+            if (isBlacklisted) {
+                verdictLevel = "CONFIRMED_THREAT";
+                recommendation = `BLACKLISTED ASN: Entire network ${asnFormatted} is blocked fleet-wide by Guardian policy. Reason: ${asnBlacklistEntry?.reason}`;
+            } else if (vpnSuccessCount > 100) {
+                verdictLevel = "LEGITIMATE_RESIDENTIAL_ISP";
+                recommendation = `CRITICAL PROVIDER: High legitimate employee usage (${vpnSuccessCount.toLocaleString()} successful sessions, ${vpnUsers.length} corporate staff). DO NOT BLACKLIST this ASN.`;
+            } else if (vpnFailCount > 0 && vpnSuccessCount === 0) {
+                verdictLevel = "SUSPICIOUS_NETWORK";
+                recommendation = `POTENTIAL THREAT: Network has ${vpnFailCount.toLocaleString()} failed attempts with zero legitimate employee logins. Safe to blacklist if abuse persists.`;
+            } else {
+                verdictLevel = "SUSPICIOUS_NETWORK";
+                recommendation = `Network ${asnFormatted} has minimal perimeter history (${vpnSuccessCount} logins).`;
+            }
+
+            return NextResponse.json({
+                type: "ASN",
+                target: asnFormatted,
+                targetIp: asnFormatted,
+                targetUser: null,
+                asn: asnFormatted,
+                asnName: orgName,
+                country,
+                isBlacklisted,
+                inSecurityIntelligence: isBlacklisted,
+                isCurrentlyBlocked: isBlacklisted,
+                blacklistReason: asnBlacklistEntry?.reason || null,
+                verdict: {
+                    level: verdictLevel,
+                    reason: isBlacklisted ? "Blacklisted in Guardian" : (vpnSuccessCount > 100 ? "Legitimate employee ISP" : "Low trust network"),
+                    recommendation
+                },
+                ipInfo: {
+                    ip: asnFormatted,
+                    as_name: orgName,
+                    asn: asnFormatted,
+                    country,
+                    city: null
+                },
+                ftdDropCount24h: 0,
+                vpnHistory: {
+                    hasRecentSuccess: vpnSuccessCount > 0,
+                    successfulLogins: vpnSuccessCount,
+                    failedLogins: vpnFailCount,
+                    users: vpnUsers.map(u => u.username)
+                },
+                details: {
+                    isAsn: true,
+                    asn: asnFormatted,
+                    org: orgName,
+                    inBlacklist: isBlacklisted,
+                    blacklistReason: asnBlacklistEntry?.reason || null,
+                    residentialStrikesCount: strikeCount,
+                    recentStrikeIps: recentStrikes,
+                    country
+                },
+                telemetry: {
+                    vpnSuccessfulLoginsPast30d: vpnSuccessCount,
+                    vpnFailedLoginsPast30d: vpnFailCount,
+                    associatedCorporateUsers: vpnUsers.map(u => u.username)
+                },
+                recommendedAction: isBlacklisted ? "MAINTAIN_BLOCK" : (vpnSuccessCount > 100 ? "ALLOWLIST_PERMANENT" : "MONITOR")
+            });
+        }
+
+        // ==========================================
+        // 2. IP ADDRESS INVESTIGATION MODE
+        // ==========================================
+        const ipToInspect = cleanTarget;
+
         const [blacklisted, activeShunStats, cveRecord, cacheInfo, residentialRecord, pendingCommands] = await Promise.all([
             prisma.guardianBlacklist.findUnique({ where: { ip: ipToInspect } }),
             prisma.firewallShunStats.findMany({
@@ -81,7 +196,7 @@ export async function GET(req: NextRequest) {
         const inCveBlock = Boolean(cveRecord && cveRecord.status === "ACTIVE");
         const isCurrentlyBlocked = inBlacklist || inActiveShuns || inCveBlock || inResidentialBlock;
 
-        // 2. Query Good Traffic Indicators (AnyConnect VPN Success)
+        // Query Good Traffic Indicators (AnyConnect VPN Success)
         const [vpnSuccesses, vpnFailures] = await Promise.all([
             prisma.vpnEvent.findMany({
                 where: { sourceIp: ipToInspect, status: "SUCCESS" },
@@ -100,7 +215,7 @@ export async function GET(req: NextRequest) {
         const hasVpnSuccess = vpnSuccesses.length > 0;
         const uniqueVpnSuccessUsers = Array.from(new Set(vpnSuccesses.map(v => v.username)));
 
-        // 3. Query Graylog for Cisco FTD Security Intelligence Block Logs (%FTD-4-430002 / 430003)
+        // Query Graylog for Cisco FTD Security Intelligence Block Logs (%FTD-4-430002 / 430003)
         let ftdDropCount = 0;
         let lastFtdDropAt: string | null = null;
         let citrixSuccessCount = 0;
@@ -118,7 +233,6 @@ export async function GET(req: NextRequest) {
                 
                 const agent = new https.Agent({ rejectUnauthorized: false });
 
-                // Query FTD SI blocks for this IP in the past 24 hours
                 const ftdRes = await axios.get(`${gUrl}/api/search/universal/relative`, {
                     params: {
                         query: `"${ipToInspect}" AND ("430002" OR "430003" OR "Security Intelligence" OR "blacklisted")`,
@@ -138,11 +252,10 @@ export async function GET(req: NextRequest) {
                     }
                 }
 
-                // Query Citrix NetScaler Success in Graylog
                 const citrixRes = await axios.get(`${gUrl}/api/search/universal/relative`, {
                     params: {
                         query: `(client_ip:"${ipToInspect}" OR source_ip:"${ipToInspect}") AND (ns_action:(LOGIN OR ICASTART) OR "response-200")`,
-                        range: 604800, // 7 days
+                        range: 604800,
                         limit: 10,
                         fields: "timestamp,username,ns_username"
                     },
@@ -159,7 +272,7 @@ export async function GET(req: NextRequest) {
             }
         }
 
-        // 4. Calculate Risk Verdict
+        // Calculate Risk Verdict
         let verdict: "FALSE_POSITIVE_LIKELY" | "CONFIRMED_THREAT" | "CLEAN_NOT_BLOCKED";
         let verdictReason = "";
 
@@ -186,6 +299,7 @@ export async function GET(req: NextRequest) {
         const asnStr = cacheInfo ? (geoData?.asn?.asn || "Unknown") : "Unenriched";
 
         return NextResponse.json({
+            type: "IP",
             target: ipToInspect,
             targetIp: ipToInspect,
             targetUser: targetUser || null,
