@@ -59,8 +59,8 @@ function isPrivateIp(ip: any) {
 }
 
 // IP Enrichment Fetcher (Primary: IPLocate, Fallback: IPInfo Lite)
-async function getIpInfo(ip: any): Promise<any> {
-    if (!ip || isPrivateIp(ip)) {
+async function getIpInfo(ip: any, eventDate?: Date): Promise<any> {
+        if (!ip || isPrivateIp(ip)) {
         return null;
     }
 
@@ -79,7 +79,12 @@ async function getIpInfo(ip: any): Promise<any> {
             };
         }
 
-        // 2. Fetch live via iplocate.io API
+        // 2. Strict 30-Day Freshness Cutoff: Do not make external API calls for events older than 30 days
+        if (eventDate && eventDate < new Date(Date.now() - 30 * 24 * 3600 * 1000)) {
+            return null;
+        }
+
+        // 3. Fetch live via iplocate.io API (only for active events < 30 days)
         const apiKey = process.env.IPLOCATE_API_KEY;
         try {
             const res = await axios.get(`https://www.iplocate.io/api/lookup/${ip}`, {
@@ -452,7 +457,7 @@ async function runSync() {
 
             // Enrich IPinfo & Point-in-Time Active Directory Identity
             const [ipInfo, adMap] = await Promise.all([
-                getIpInfo(sourceIp),
+                getIpInfo(sourceIp, logTimestamp),
                 getBulkUserAdStatus([username]).catch(() => ({}))
             ]);
 

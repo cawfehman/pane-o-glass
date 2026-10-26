@@ -40,7 +40,9 @@ function isPrivateIp(ip: string) {
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 async function backfillVpnIpEnrichment() {
-    const isCacheOnly = process.argv.includes('--cache-only');
+    const isCacheOnlyExplicit = process.argv.includes('--cache-only');
+    const enableHistorical = process.argv.includes('--enable-historical-backfill');
+    const isCacheOnly = isCacheOnlyExplicit || !enableHistorical;
     // Parse limit from CLI args (e.g. node script.js --limit 20000)
     const limitArgIndex = process.argv.indexOf('--limit');
     const targetLimit = (limitArgIndex !== -1 && process.argv[limitArgIndex + 1])
