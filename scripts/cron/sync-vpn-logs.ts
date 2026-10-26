@@ -7,6 +7,7 @@ import dotenv from 'dotenv';
 import { getBulkUserAdStatus } from '../../src/lib/ldap';
 import { getAdaptiveSearchWindow } from '../../src/lib/graylog-backlog-guardian';
 import { fetchImprivataBatchIndex, matchEventToImprivataSession, formatImprivataFailureReason } from '../../src/lib/imprivata-graylog';
+import { recordAuthFailure, recordAuthSuccess } from '../../src/lib/reputation-ledger';
 dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 
 const prisma = new PrismaClient();
@@ -497,6 +498,25 @@ async function runSync() {
                     createdAt: logTimestamp
                 }
             });
+
+            // Real-time continuous integration into 3-Strike Reputation Ledger
+            if (sourceIp && !isPrivateIp(sourceIp)) {
+                const streamLabel = finalVpnStream === "WDC-FTD" ? "VPN: Connect" : (finalVpnStream === "Kel-3140" ? "VPN: Reconnect" : "VPN");
+                if (status === "FAILURE") {
+                    recordAuthFailure({
+                        ip: sourceIp,
+                        username: username || "unknown",
+                        platform: streamLabel,
+                        reason: failureReason || "VPN Authentication failed"
+                    }).catch(e => errorLog("Failed to record VPN auth failure in reputation ledger:", e));
+                } else if (status === "SUCCESS") {
+                    recordAuthSuccess({
+                        ip: sourceIp,
+                        username: username || "unknown",
+                        platform: streamLabel
+                    }).catch(e => errorLog("Failed to record VPN auth success in reputation ledger:", e));
+                }
+            }
 
             addedCount++;
         }

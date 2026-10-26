@@ -1815,6 +1815,75 @@ export async function runCitrixLoginAutoShunCycle(options?: {
     }[] = [];
 
     for (const ipEval of triage.ipEvaluations) {
+        // Continuous Real-Time Integration into 3-Strike Reputation Ledger
+        const uList = ipEval.targetedUsers.map((u) => u.username);
+        const isMultiUser = uList.length >= 2;
+        const totalFails = ipEval.loginFailedCount + ipEval.policyFailedCount || ipEval.totalFailures || 1;
+        const now = new Date();
+
+        if (ipEval.isOnWatchlist || ipEval.verdict === "LEGIT_USER_ISSUE") {
+            // Protected Corporate Staff Issue -> Ingest as Pardoned in Reputation Ledger
+            prisma.residentialStrikeLedger.upsert({
+                where: { ip: ipEval.ip },
+                update: {
+                    lastSeen: now,
+                    attemptedUsers: uList,
+                    distinctUserCount: uList.length,
+                    hasCitrixSuccess: true
+                },
+                create: {
+                    ip: ipEval.ip,
+                    strikeCount: 1,
+                    status: "PARDONED",
+                    targetPlatform: "CITRIX",
+                    attemptedUsers: uList,
+                    distinctUserCount: uList.length,
+                    isSpraySuspect: false,
+                    hasCitrixSuccess: true,
+                    firstSeen: now,
+                    lastSeen: now,
+                    expiresAt: new Date(now.getTime() + 30 * 24 * 3600 * 1000),
+                    ispOrg: ipEval.companyName,
+                    asn: ipEval.asn ? String(ipEval.asn).replace(/^AS/, '') : null,
+                    country: ipEval.countryCode,
+                    city: ipEval.cityName
+                }
+            }).catch(() => {});
+        } else {
+            // Low-and-Slow Attack / Failed Ingress -> Ingest with Appropriate Strike Level
+            const strikeCount = (ipEval.isFullyShunned || totalFails >= 3 || uList.length >= 3) ? 3 : (totalFails >= 2 || isMultiUser ? 2 : 1);
+            const status = strikeCount === 3 ? "QUARANTINED" : (strikeCount === 2 ? "ENFORCED" : "WATCHING");
+            const holdDays = strikeCount === 3 ? 90 : (strikeCount === 2 ? 7 : 14);
+
+            prisma.residentialStrikeLedger.upsert({
+                where: { ip: ipEval.ip },
+                update: {
+                    lastSeen: now,
+                    strikeCount: Math.max(strikeCount, 1),
+                    targetPlatform: "CITRIX",
+                    attemptedUsers: uList,
+                    distinctUserCount: uList.length,
+                    isSpraySuspect: isMultiUser
+                },
+                create: {
+                    ip: ipEval.ip,
+                    strikeCount,
+                    status,
+                    targetPlatform: "CITRIX",
+                    attemptedUsers: uList,
+                    distinctUserCount: uList.length,
+                    isSpraySuspect: isMultiUser,
+                    firstSeen: now,
+                    lastSeen: now,
+                    expiresAt: new Date(now.getTime() + holdDays * 24 * 3600 * 1000),
+                    ispOrg: ipEval.companyName,
+                    asn: ipEval.asn ? String(ipEval.asn).replace(/^AS/, '') : null,
+                    country: ipEval.countryCode,
+                    city: ipEval.cityName
+                }
+            }).catch(() => {});
+        }
+
         // Only skip if the IP is ALREADY fully protected across all perimeter firewalls.
         // If it is only partially shunned (e.g. 1/4), it MUST be reconciled to prevent failover vulnerability!
         if (ipEval.isFullyShunned) {
