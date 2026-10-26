@@ -1,3 +1,4 @@
+import dns from "dns";
 import { enqueueFirewallCommand, getDynamicHoldExpiresAt } from "@/lib/firewall-queue";
 import https from "https";
 import axios from "axios";
@@ -259,6 +260,20 @@ export function isCorporateUsernameFormat(username: string): boolean {
     return CORPORATE_USERNAME_REGEX.test(clean);
 }
 
+
+const REVERSE_DNS_ISP_PATTERNS = [
+    { match: /comcast|hsd1/i, name: "Comcast Cable Communications", asn: "AS7922" },
+    { match: /verizon|fios|myvzw/i, name: "Verizon Business / Fios", asn: "AS701" },
+    { match: /spectrum|rr\.com|charter/i, name: "Charter Communications / Spectrum", asn: "AS20115" },
+    { match: /att\.net|sbcglobal|attlocal/i, name: "AT&T Services", asn: "AS7018" },
+    { match: /frontier/i, name: "Frontier Communications", asn: "AS5650" },
+    { match: /cox\.net/i, name: "Cox Communications", asn: "AS22773" },
+    { match: /optimum|cv\.net/i, name: "Optimum / Altice", asn: "AS6128" },
+    { match: /centurylink|qwest/i, name: "CenturyLink / Lumen", asn: "AS209" },
+    { match: /t-mobile/i, name: "T-Mobile USA", asn: "AS21928" },
+    { match: /rowan\.edu/i, name: "Rowan University", asn: "AS33523" }
+];
+
 interface IpMetaInfo {
     countryCode: string;
     city: string;
@@ -270,8 +285,8 @@ interface IpMetaInfo {
 }
 
 async function enrichIpMetadata(ip: string, allowExternalLookup: boolean = false): Promise<IpMetaInfo> {
-    const fallback = {
-        countryCode: "Unknown",
+    const fallback: IpMetaInfo = {
+        countryCode: "US",
         city: "N/A",
         asn: "Unknown",
         companyName: "Unknown Network",
@@ -283,85 +298,110 @@ async function enrichIpMetadata(ip: string, allowExternalLookup: boolean = false
     if (!ip || isPrivateIp(ip)) return fallback;
 
     try {
-        let rawData: any = null;
+        // 1. Check local PostgreSQL IpLookupCache first (Zero credits)
         const cached = await prisma.ipLookupCache.findUnique({ where: { ip } });
-        if (cached) {
+        if (cached?.rawJson) {
             try {
-                rawData = JSON.parse(cached.rawJson);
-            } catch {
-                rawData = {};
-            }
-        } else if (allowExternalLookup) {
-            const apiKey = process.env.IPLOCATE_API_KEY;
-            try {
-                const res = await axios.get(`https://www.iplocate.io/api/lookup/${ip}`, {
-                    headers: apiKey ? { "X-API-KEY": apiKey } : {},
-                    timeout: 4500,
-                });
-                if (res.data) {
-                    rawData = res.data;
-                    await prisma.ipLookupCache.upsert({
-                        where: { ip },
-                        update: {
-                            latitude: rawData.latitude || null,
-                            longitude: rawData.longitude || null,
-                            countryCode: rawData.country_code || null,
-                            city: rawData.city || null,
-                            subdivision: rawData.subdivision || null,
-                            rawJson: JSON.stringify(rawData),
-                        },
-                        create: {
-                            ip,
-                            latitude: rawData.latitude || null,
-                            longitude: rawData.longitude || null,
-                            countryCode: rawData.country_code || null,
-                            city: rawData.city || null,
-                            subdivision: rawData.subdivision || null,
-                            rawJson: JSON.stringify(rawData),
-                        },
-                    }).catch(() => {});
+                const rawData = JSON.parse(cached.rawJson);
+                const companyName = rawData.company?.name || rawData.asn?.name || rawData.as_name || rawData.org || "Unknown Network";
+                if (companyName !== "Unknown Network") {
+                    const companyType = (rawData.company?.type || rawData.asn?.type || "unknown").toLowerCase();
+                    const cidr = rawData.asn?.route || rawData.network?.route || "N/A";
+                    const asnRaw = typeof rawData.asn === "object" ? (rawData.asn?.asn || "Unknown") : (rawData.asn || "Unknown");
+                    const asn = String(asnRaw).replace(/^AS/, '');
+                    const countryCode = rawData.country_code || cached.countryCode || "US";
+                    const city = rawData.city || cached.city || "N/A";
+                    const cleanComp = companyName.toLowerCase();
+                    const isResidentialIsp = companyType === "isp" || cleanComp.includes("comcast") || cleanComp.includes("verizon") || cleanComp.includes("at&t") || cleanComp.includes("charter") || cleanComp.includes("spectrum") || cleanComp.includes("cox") || cleanComp.includes("optimum") || cleanComp.includes("frontier") || cleanComp.includes("centurylink") || cleanComp.includes("broadband") || cleanComp.includes("cable");
+                    return { countryCode, city, asn: `AS${asn}`, companyName, companyType, cidr, isResidentialIsp };
                 }
-            } catch {
-                // ignore external timeout
-            }
+            } catch {}
         }
 
-        if (!rawData) return fallback;
+        // 2. Check local VpnEvent history (Have staff logged in via AnyConnect VPN before?)
+        try {
+            const vpnSample = await prisma.vpnEvent.findFirst({
+                where: { sourceIp: ip, ipAsName: { not: null } },
+                select: { ipAsn: true, ipAsName: true, ipCountry: true, ipCountryCode: true }
+            });
+            if (vpnSample?.ipAsName) {
+                const companyName = vpnSample.ipAsName;
+                const asn = vpnSample.ipAsn || "Unknown";
+                const countryCode = vpnSample.ipCountryCode || vpnSample.ipCountry || "US";
+                const isResidentialIsp = isResidential(companyName);
+                return { countryCode, city: "N/A", asn, companyName, companyType: isResidentialIsp ? "isp" : "business", cidr: "N/A", isResidentialIsp };
+            }
+        } catch {}
 
-        const companyName = rawData.company?.name || rawData.asn?.name || rawData.as_name || rawData.org || "Unknown Network";
-        const companyType = (rawData.company?.type || rawData.asn?.type || "unknown").toLowerCase();
-        const cidr = rawData.asn?.route || rawData.network?.route || "N/A";
-        const asnRaw = typeof rawData.asn === "object" ? (rawData.asn?.asn || "Unknown") : (rawData.asn || "Unknown");
-        const asn = String(asnRaw);
-        const countryCode = rawData.country_code || cached?.countryCode || "Unknown";
-        const city = rawData.city || cached?.city || "N/A";
+        // 3. Ultra-Fast Zero-Cost Reverse DNS (PTR) Resolution (Resolves Verizon Fios, Spectrum, Comcast, Frontier, Cox, AT&T)
+        try {
+            const ptrs = await dns.promises.reverse(ip).catch(() => []);
+            const ptr = ptrs[0] || "";
+            if (ptr) {
+                for (const p of REVERSE_DNS_ISP_PATTERNS) {
+                    if (p.match.test(ptr)) {
+                        await prisma.ipLookupCache.upsert({
+                            where: { ip },
+                            update: { countryCode: "US", rawJson: JSON.stringify({ company: { name: p.name, type: "isp" }, asn: { asn: p.asn, name: p.name } }) },
+                            create: { ip, countryCode: "US", rawJson: JSON.stringify({ company: { name: p.name, type: "isp" }, asn: { asn: p.asn, name: p.name } }) }
+                        }).catch(() => {});
+                        return { countryCode: "US", city: "N/A", asn: p.asn, companyName: p.name, companyType: "isp", cidr: "N/A", isResidentialIsp: true };
+                    }
+                }
+            }
+        } catch {}
 
-        const cleanComp = companyName.toLowerCase();
-        const isResidentialIsp =
-            companyType === "isp" ||
-            cleanComp.includes("comcast") ||
-            cleanComp.includes("verizon") ||
-            cleanComp.includes("at&t") ||
-            cleanComp.includes("charter") ||
-            cleanComp.includes("spectrum") ||
-            cleanComp.includes("optimum") ||
-            cleanComp.includes("cablevision") ||
-            cleanComp.includes("cox ") ||
-            cleanComp.includes("t-mobile") ||
-            cleanComp.includes("telecom") ||
-            cleanComp.includes("broadband") ||
-            cleanComp.includes("communications") ||
-            cleanComp.includes("cable");
+        // 4. IPInfo Lite Fallback (using separate IPINFO_TOKEN quota)
+        if (process.env.IPINFO_TOKEN) {
+            try {
+                const token = process.env.IPINFO_TOKEN;
+                const res = await axios.get(`https://api.ipinfo.io/lite/${ip}?token=${token}`, { timeout: 2500 });
+                if (res.data?.as_name) {
+                    const companyName = res.data.as_name;
+                    const asn = res.data.asn || "Unknown";
+                    const countryCode = res.data.country_code || "US";
+                    await prisma.ipLookupCache.upsert({
+                        where: { ip },
+                        update: { countryCode, rawJson: JSON.stringify({ company: { name: companyName, type: "isp" }, asn: { asn, name: companyName } }) },
+                        create: { ip, countryCode, rawJson: JSON.stringify({ company: { name: companyName, type: "isp" }, asn: { asn, name: companyName } }) }
+                    }).catch(() => {});
+                    const isResidentialIsp = isResidential(companyName);
+                    return { countryCode, city: "N/A", asn, companyName, companyType: isResidentialIsp ? "isp" : "business", cidr: "N/A", isResidentialIsp };
+                }
+            } catch {}
+        }
 
-        return {
-            countryCode,
-            city,
-            asn,
-            companyName,
-            companyType,
-            cidr,
-            isResidentialIsp,
-        };
+        // 5. On-demand explicit lookup via IPLocate if specifically requested
+        if (allowExternalLookup && process.env.IPLOCATE_API_KEY) {
+            try {
+                const apiKey = process.env.IPLOCATE_API_KEY;
+                const res = await axios.get(`https://www.iplocate.io/api/lookup/${ip}`, {
+                    headers: { "X-API-KEY": apiKey },
+                    timeout: 4000,
+                });
+                if (res.data) {
+                    const rawData = res.data;
+                    const companyName = rawData.company?.name || rawData.asn?.name || rawData.as_name || rawData.org || "Unknown Network";
+                    const companyType = (rawData.company?.type || rawData.asn?.type || "unknown").toLowerCase();
+                    const cidr = rawData.asn?.route || rawData.network?.route || "N/A";
+                    const asnRaw = typeof rawData.asn === "object" ? (rawData.asn?.asn || "Unknown") : (rawData.asn || "Unknown");
+                    const asn = String(asnRaw);
+                    const countryCode = rawData.country_code || "US";
+                    const city = rawData.city || "N/A";
+                    const isResidentialIsp = isResidential(companyName);
+
+                    await prisma.ipLookupCache.upsert({
+                        where: { ip },
+                        update: { latitude: rawData.latitude || null, longitude: rawData.longitude || null, countryCode, city, subdivision: rawData.subdivision || null, rawJson: JSON.stringify(rawData) },
+                        create: { ip, latitude: rawData.latitude || null, longitude: rawData.longitude || null, countryCode, city, subdivision: rawData.subdivision || null, rawJson: JSON.stringify(rawData) },
+                    }).catch(() => {});
+
+                    return { countryCode, city, asn, companyName, companyType, cidr, isResidentialIsp };
+                }
+            } catch {}
+        }
+
+        return fallback;
     } catch {
         return fallback;
     }
@@ -1850,10 +1890,31 @@ export async function runCitrixLoginAutoShunCycle(options?: {
                 }
             }).catch(() => {});
         } else {
-            // Low-and-Slow Attack / Failed Ingress -> Ingest with Appropriate Strike Level
-            const strikeCount = (ipEval.isFullyShunned || totalFails >= 3 || uList.length >= 3) ? 3 : (totalFails >= 2 || isMultiUser ? 2 : 1);
-            const status = strikeCount === 3 ? "QUARANTINED" : (strikeCount === 2 ? "ENFORCED" : "WATCHING");
-            const holdDays = strikeCount === 3 ? 90 : (strikeCount === 2 ? 7 : 14);
+            // Low-and-Slow Attack vs Employee Friction Ingestion
+            const isSingleCorp = uList.length === 1 && isCorporateUsernameFormat(uList[0]);
+            let strikeCount = 1;
+            let status = "WATCHING";
+            let holdDays = 14;
+
+            if (ipEval.isFullyShunned || ipEval.verdict === "ABUSIVE_BLOCK" || matchesBlacklistedAsnRule) {
+                strikeCount = 3;
+                status = "QUARANTINED";
+                holdDays = 90;
+            } else if (isMultiUser || (uList.length >= 2)) {
+                // Multi-user spray
+                strikeCount = 2;
+                status = "ENFORCED";
+                holdDays = 7;
+            } else if (isSingleCorp) {
+                // Valid corporate employee connection experiencing mistyped password or policy failure
+                strikeCount = 1;
+                status = "WATCHING";
+                holdDays = 14;
+            } else {
+                strikeCount = totalFails >= 3 ? 3 : (totalFails >= 2 ? 2 : 1);
+                status = strikeCount === 3 ? "QUARANTINED" : (strikeCount === 2 ? "ENFORCED" : "WATCHING");
+                holdDays = strikeCount === 3 ? 90 : (strikeCount === 2 ? 7 : 14);
+            }
 
             prisma.residentialStrikeLedger.upsert({
                 where: { ip: ipEval.ip },
