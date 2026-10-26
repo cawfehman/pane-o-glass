@@ -336,7 +336,7 @@ export function SecurityIntelligenceTab() {
 
                 {/* FMC Sync Countdown & Queue Status Banner */}
                 <div className="mt-4 pt-4 border-t border-border-color grid grid-cols-1 md:grid-cols-3 gap-3">
-                    <div className="flex items-center gap-3 bg-bg-surface/50 border border-border-color rounded-lg p-2.5 text-xs">
+                    <div className="flex items-center gap-3 bg-bg-surface/50 border border-border-color rounded-lg p-2.5 text-xs cursor-help" title="Cisco FMC Polling Interval: Cisco FMC polls Pane-o-Glass every 15 minutes to refresh perimeter IP blocklists. Ephemeral bridge shuns protect against active bursts until FMC completes this pull.">
                         <Clock className="w-4 h-4 text-accent-primary" />
                         <div>
                             <span className="text-text-muted">FMC Sync (15m): </span>
@@ -348,7 +348,7 @@ export function SecurityIntelligenceTab() {
                         </div>
                     </div>
 
-                    <div className="flex items-center gap-3 bg-bg-surface/50 border border-border-color rounded-lg p-2.5 text-xs">
+                    <div className="flex items-center gap-3 bg-bg-surface/50 border border-border-color rounded-lg p-2.5 text-xs cursor-help" title="Why Interface Shuns? Cisco FMC Security Intelligence only inspects transit (thru-the-box) traffic like Citrix. AnyConnect VPN terminates on the firewall outside socket (to-the-box), which bypasses Snort/SI. Direct firewall shuns (shun <ip>) are mandatory to drop AnyConnect VPN attacks.">
                         <Server className="w-4 h-4 text-emerald-400" />
                         <div>
                             <span className="text-text-muted">VPN Control-Plane Shuns: </span>
@@ -356,7 +356,7 @@ export function SecurityIntelligenceTab() {
                         </div>
                     </div>
 
-                    <div className="flex items-center justify-between bg-bg-surface/50 border border-border-color rounded-lg p-2.5 text-xs">
+                    <div className="flex items-center justify-between bg-bg-surface/50 border border-border-color rounded-lg p-2.5 text-xs cursor-help" title="Dynamic Hold Timing: Holds temporary SSH bridge shuns until the next FMC poll + 5 minute push buffer (10 to 20 minutes total). Once expired, un-shun commands are queued so firewall RAM is cleaned automatically.">
                         <div className="flex items-center gap-2">
                             <Zap className="w-4 h-4 text-amber-400" />
                             <div>
@@ -388,7 +388,7 @@ export function SecurityIntelligenceTab() {
                     onClick={() => handleStatusFilterChange(statusFilter === "STRIKE_1" ? "ALL" : "STRIKE_1")}
                     className={`bg-bg-card border rounded-xl p-4 shadow-sm relative overflow-hidden cursor-pointer transition-all ${
                         statusFilter === "STRIKE_1" ? "border-amber-500 ring-1 ring-amber-500" : "border-border-color hover:border-amber-500/40"
-                    }`}
+                    }`} title="Strike 1 (Watchlist): Single-account password failures on home residential ISPs (Comcast, Verizon, etc.). 14-day observation hold. NOT blocked in SI feed to prevent locking out Cooper doctors and employees."
                 >
                     <div className="text-xs font-semibold text-amber-400 uppercase tracking-wider flex items-center gap-1.5">
                         <Clock className="w-3.5 h-3.5" /> Strike 1: Naughty List
@@ -407,7 +407,7 @@ export function SecurityIntelligenceTab() {
                     onClick={() => handleStatusFilterChange(statusFilter === "STRIKE_2" ? "ALL" : "STRIKE_2")}
                     className={`bg-bg-card border rounded-xl p-4 shadow-sm relative overflow-hidden cursor-pointer transition-all ${
                         statusFilter === "STRIKE_2" ? "border-orange-500 ring-1 ring-orange-500" : "border-border-color hover:border-orange-500/40"
-                    }`}
+                    }`} title="Strike 2 (Enforced): Residential connections exhibiting multi-user password spraying, honeypot username probing, or 10+ consecutive failures. Blocked in the SI feed for 7 days + temporary 15-minute bridge shun."
                 >
                     <div className="text-xs font-semibold text-orange-400 uppercase tracking-wider flex items-center gap-1.5">
                         <Flame className="w-3.5 h-3.5" /> Strike 2: Enforced
@@ -426,7 +426,7 @@ export function SecurityIntelligenceTab() {
                     onClick={() => handleStatusFilterChange(statusFilter === "STRIKE_3" ? "ALL" : "STRIKE_3")}
                     className={`bg-bg-card border rounded-xl p-4 shadow-sm relative overflow-hidden cursor-pointer transition-all ${
                         statusFilter === "STRIKE_3" ? "border-red-500 ring-1 ring-red-500" : "border-border-color hover:border-red-500/40"
-                    }`}
+                    }`} title="Strike 3 (Quarantined): Habitual residential botnet zombies targeting 5+ corporate usernames or multiple honeypot accounts. Quarantined in the SI feed for 90 days."
                 >
                     <div className="text-xs font-semibold text-red-400 uppercase tracking-wider flex items-center gap-1.5">
                         <ShieldAlert className="w-3.5 h-3.5" /> Strike 3: Quarantined
@@ -441,7 +441,7 @@ export function SecurityIntelligenceTab() {
                 </div>
 
                 {/* Cloud VPS Card */}
-                <div className="bg-bg-card border border-border-color rounded-xl p-4 shadow-sm relative overflow-hidden">
+                <div className="bg-bg-card border border-border-color rounded-xl p-4 shadow-sm relative overflow-hidden cursor-help" title="Cloud / VPS Datacenter Ranges: Hosting providers, VPS infrastructure, VPN exit nodes, and Tor exit relays (AWS, DigitalOcean, OVH, etc.). Zero tolerance policy — retained and blocked indefinitely in the SI feed.">
                     <div className="text-xs font-semibold text-purple-400 uppercase tracking-wider flex items-center gap-1.5">
                         <Server className="w-3.5 h-3.5" /> Cloud VPS / Hosting
                     </div>
@@ -459,7 +459,7 @@ export function SecurityIntelligenceTab() {
                     onClick={() => handleStatusFilterChange(statusFilter === "PARDONED" ? "ALL" : "PARDONED")}
                     className={`bg-bg-card border rounded-xl p-4 shadow-sm relative overflow-hidden cursor-pointer transition-all ${
                         statusFilter === "PARDONED" ? "border-emerald-500 ring-1 ring-emerald-500" : "border-border-color hover:border-emerald-500/40"
-                    }`}
+                    }`} title="4-Pillar MFA Auto-Pardon: When a legitimate employee completes a verified MFA login from an evaluated residential IP, the IP is instantly pardoned across the entire perimeter."
                 >
                     <div className="text-xs font-semibold text-emerald-400 uppercase tracking-wider flex items-center gap-1.5">
                         <UserCheck className="w-3.5 h-3.5" /> Auto-Pardoned
@@ -530,13 +530,13 @@ export function SecurityIntelligenceTab() {
                         <table className="w-full text-xs text-left border-collapse">
                             <thead className="bg-bg-surface text-text-muted border-b border-border-color sticky top-0 z-10 shadow-sm backdrop-blur-md">
                                 <tr>
-                                    <th className="py-2.5 px-3 font-semibold">IP Address</th>
-                                    <th className="py-2.5 px-3 font-semibold">ISP / ASN</th>
-                                    <th className="py-2.5 px-3 font-semibold">Reputation Status</th>
-                                    <th className="py-2.5 px-3 font-semibold">Attempted Accounts</th>
-                                    <th className="py-2.5 px-3 font-semibold">Platform</th>
-                                    <th className="py-2.5 px-3 font-semibold">Expires At</th>
-                                    <th className="py-2.5 px-3 font-semibold text-right">Actions</th>
+                                    <th className="py-2.5 px-3 font-semibold" title="IPv4 address evaluated by the reputation engine">IP Address</th>
+                                    <th className="py-2.5 px-3 font-semibold" title="Enriched Autonomous System (ASN) and ISP organization (e.g. Comcast Cable vs AWS Cloud)">ISP / ASN</th>
+                                    <th className="py-2.5 px-3 font-semibold" title="Current 3-Strike posture: Watchlist (unblocked), Enforced (7d block), Quarantined (90d botnet), or Pardoned (MFA OK)">Reputation Status</th>
+                                    <th className="py-2.5 px-3 font-semibold" title="Corporate usernames or honeypot probe accounts targeted by this IP">Attempted Accounts</th>
+                                    <th className="py-2.5 px-3 font-semibold" title="Perimeter entrypoint targeted: Citrix NetScaler Gateway vs Cisco AnyConnect VPN">Platform</th>
+                                    <th className="py-2.5 px-3 font-semibold" title="Timestamp when this strike tier or quarantine automatically expires and demotes">Expires At</th>
+                                    <th className="py-2.5 px-3 font-semibold text-right" title="Manual intervention tools (e.g. Force Pardon & Unblock)">Actions</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-border-color">
