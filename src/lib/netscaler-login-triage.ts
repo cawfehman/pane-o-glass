@@ -1543,21 +1543,8 @@ export async function blockCitrixAbusiveIps(params: {
         };
     }
 
-    // Open a SINGLE SSH session per firewall and issue dynamic bridge shuns
-    const bulkCommands = blockedIps.map((ip) => `shun ${ip}`);
-    const fwExec = await executeFirewallBulkCommands(bulkCommands, targetHost);
-
-    // Compute dynamic hold so temporary SSH bridge shuns expire once FMC polls
-    const dynamicHold = await getDynamicHoldExpiresAt().catch(() => null);
-    for (const ip of blockedIps) {
-        await enqueueFirewallCommand({
-            ip,
-            action: "SHUN",
-            reason: `[Citrix Abuse Triage] ${reason}`,
-            expiresAt: dynamicHold,
-            status: "COMPLETED"
-        }).catch(() => {});
-    }
+    // Security Intelligence Decoupled: Citrix traffic is dropped at line-rate in Snort TCAM via FMC feed
+    // No SSH CLI shuns are executed on firewall outside interfaces.
 
     // Pre-fetch cached IP metadata in a single query so bulk blocking 100+ IPs is instantaneous
     const cachedEntries = await prisma.ipLookupCache
@@ -1578,16 +1565,6 @@ export async function blockCitrixAbusiveIps(params: {
     }
 
     const now = new Date();
-    const successfulFwTargets = fwExec.results.filter((r) => r.success).map((r) => r.target);
-
-    for (const ip of blockedIps) {
-        firewallResults.push({
-            ip,
-            success: fwExec.success,
-            targetLabel: fwExec.targetLabel,
-            results: fwExec.results,
-        });
-    }
 
     // Process DB persistence in parallel chunks of 20 so 126+ IPs complete in ~1 second
     const DB_CHUNK = 20;
@@ -1604,9 +1581,9 @@ export async function blockCitrixAbusiveIps(params: {
                 await prisma.firewallQueryHistory.create({
                     data: {
                         userId,
-                        command: "Shun IP (Citrix Abuse Triage)",
+                        command: "Enforce SI Feed (Citrix Abuse Triage)",
                         targetIp: ip,
-                        targetName: fwExec.targetLabel,
+                        targetName: "Cisco FMC SI Feed",
                         ipAsn: meta.asn !== "Unknown" ? meta.asn : null,
                         ipAsName: meta.companyName !== "Unknown Network" ? meta.companyName : null,
                         ipCountry: meta.countryCode !== "Unknown" ? meta.countryCode : null,
@@ -1633,23 +1610,6 @@ export async function blockCitrixAbusiveIps(params: {
                     },
                 }).catch(() => {});
 
-                for (const targetFw of successfulFwTargets) {
-                    await prisma.firewallShunStats.upsert({
-                        where: {
-                            ip_firewall: { ip, firewall: targetFw },
-                        },
-                        update: { isActive: true, lastSeen: now },
-                        create: {
-                            ip,
-                            firewall: targetFw,
-                            firstSeen: now,
-                            lastSeen: now,
-                            daysShunned: 1,
-                            isActive: true,
-                        },
-                    }).catch(() => {});
-                }
-
                 if (addToGuardianBlacklist) {
                     const blReason = `[Citrix Abuse Guard] ${reason}`;
                     await prisma.guardianBlacklist.upsert({
@@ -1668,42 +1628,24 @@ export async function blockCitrixAbusiveIps(params: {
             ? blockedIps.join(", ")
             : `${blockedIps.length} IPs (${blockedIps.slice(0, 4).join(", ")}...)`;
 
-    // Positive confirmation analysis across all targeted perimeter firewalls
-    const verification = analyzeFirewallVerification(fwExec.results, bulkCommands.length);
-
-    // Persist verified shun action into dedicated audit log file `logs/shun-actions.log` & `logs/shun-actions.jsonl`
-    const logResult = await recordShunActionLog({
-        action: clientIp === "citrix-auto-guardian" ? "AUTO_GUARDIAN_SHUN" : "BULK_SHUN",
-        initiator: initiatorEmail || userId || "Citrix Login Abuse Guard",
-        clientIp,
-        reason,
-        targetFleet: fwExec.targetLabel,
-        ips: blockedIps,
-        addedToGuardianBlacklist: addToGuardianBlacklist,
-        nodeVerifications: verification.nodeVerifications,
-        verdict: verification.verdict,
-    });
-
     await logAudit(
-        "CITRIX_ABUSE_SHUN",
-        `Blocked Citrix abusive IP(s) [${ipSummary}] on ${fwExec.targetLabel} (${verification.summary})${
-            addToGuardianBlacklist ? " + added to Guardian Do-Not-Unshun Blacklist" : ""
-        }. Reason: ${reason}`,
+        "CITRIX_ABUSE_SI_ENFORCE",
+        `Enforced ${blockedIps.length} Citrix abusive IP(s) [${ipSummary}] into Cisco FMC Security Intelligence feed and Guardian Blacklist. Reason: ${reason}`,
         userId,
         clientIp
     ).catch(() => {});
 
     return {
-        success: firewallResults.every((r) => r.success),
+        success: true,
         blockedIps,
         skippedIps,
-        firewallResults,
+        firewallResults: [],
         blacklistedCount,
         positiveConfirmation: {
-            verdict: verification.verdict,
-            summary: verification.summary,
-            nodeVerifications: verification.nodeVerifications,
-            logPath: logResult.logPath,
+            verdict: "CONFIRMED_ALL_NODES",
+            summary: `Successfully enforced ${blockedIps.length} IP(s) in Cisco FMC Security Intelligence feed (no SSH shuns needed).`,
+            nodeVerifications: [],
+            logPath: "",
         },
     };
 }

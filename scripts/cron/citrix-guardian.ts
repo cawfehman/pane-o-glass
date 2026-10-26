@@ -39,21 +39,7 @@ console.error = (...args) => {
 };
 
 async function executeOnce(forceRun = false) {
-    const res = await runCitrixLoginAutoShunCycle({ forceRun });
-    if (!res.executed) {
-        console.log("Citrix Login Auto-Shun Guardian is currently PAUSED via configuration. Skipping cycle.");
-        return;
-    }
-    console.log(
-        `Cycle complete -> Evaluated: ${res.evaluatedIps} IPs | Newly Shunned: ${res.newlyShunned.length} | Protected: ${res.protectedCount} | Summary: ${res.summary}`
-    );
-    for (const item of res.newlyShunned) {
-        console.log(
-            `>>> [AUTO-SHUNNED] ${item.ip} (${item.countryCode} / ${item.asn} ${item.companyName}) | Reason: ${item.reason}`
-        );
-    }
-
-    // Automatically check for expired bridge shuns and drain queue
+    // Automatically check for expired bridge shuns and drain queue on every tick
     try {
         const drainRes = await drainFirewallQueue(100);
         if (drainRes.executed > 0) {
@@ -61,6 +47,19 @@ async function executeOnce(forceRun = false) {
         }
     } catch (e: any) {
         console.error("[CITRIX-GUARDIAN][QUEUE-DRAIN] Drain error:", e.message);
+    }
+
+    const res = await runCitrixLoginAutoShunCycle({ forceRun });
+    if (!res.executed) {
+        return;
+    }
+    console.log(
+        `Cycle complete -> Evaluated: ${res.evaluatedIps} IPs | Newly Enforced (SI): ${res.newlyShunned.length} | Protected: ${res.protectedCount} | Summary: ${res.summary}`
+    );
+    for (const item of res.newlyShunned) {
+        console.log(
+            `>>> [SI-ENFORCED] ${item.ip} (${item.countryCode} / ${item.asn} ${item.companyName}) | Reason: ${item.reason}`
+        );
     }
 }
 

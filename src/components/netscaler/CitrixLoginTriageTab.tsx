@@ -80,9 +80,7 @@ export default function CitrixLoginTriageTab({
 
     const [eventPage, setEventPage] = useState<number>(1);
     const [eventLimit, setEventLimit] = useState<number>(50);
-    const [autoShunToggling, setAutoShunToggling] = useState<boolean>(false);
-    const [autoShunRunningCycle, setAutoShunRunningCycle] = useState<boolean>(false);
-    const [cycleFeedback, setCycleFeedback] = useState<string | null>(null);
+    // Automated Guardian now syncs directly to Security Intelligence Feed (no SSH auto-shun controls)
 
     // Positive Confirmation Shun Action Audit Log
     const [showShunLogModal, setShowShunLogModal] = useState<boolean>(false);
@@ -328,58 +326,7 @@ export default function CitrixLoginTriageTab({
         }
     };
 
-    const handleToggleAutoShun = async () => {
-        const currentEnabled = Boolean(data?.autoShunConfig?.enabled);
-        setAutoShunToggling(true);
-        setCycleFeedback(null);
-        try {
-            const res = await fetch("/api/netscaler/login-triage", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    action: "update_auto_shun_config",
-                    enabled: !currentEnabled,
-                }),
-            });
-            const json = await res.json();
-            if (res.ok && json.autoShunConfig) {
-                setData((prev) => (prev ? { ...prev, autoShunConfig: json.autoShunConfig } : prev));
-                setCycleFeedback(
-                    json.autoShunConfig.enabled
-                        ? "Automated Citrix Login Shunning ENABLED."
-                        : "Automated Citrix Login Shunning PAUSED."
-                );
-            }
-        } catch (e) {
-            console.error("Failed to toggle Citrix Auto-Shun:", e);
-        } finally {
-            setAutoShunToggling(false);
-        }
-    };
-
-    const handleRunAutoShunCycle = async () => {
-        setAutoShunRunningCycle(true);
-        setCycleFeedback(null);
-        try {
-            const res = await fetch("/api/netscaler/login-triage", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    action: "run_auto_shun_cycle",
-                }),
-            });
-            const json = await res.json();
-            if (res.ok && json.cycleResult) {
-                setCycleFeedback(json.cycleResult.summary);
-                await fetchTriage();
-            }
-        } catch (e) {
-            console.error("Failed to run ad-hoc Citrix Auto-Shun cycle:", e);
-        } finally {
-            setAutoShunRunningCycle(false);
-        }
-    };
-
+    
     const executeBlockAction = async () => {
         if (!blockModal) return;
         setBlockModal((prev) => (prev ? { ...prev, loading: true, error: null, result: null } : null));
@@ -638,7 +585,7 @@ export default function CitrixLoginTriageTab({
                                     error: null,
                                 })
                             }
-                            title={`Multiplexes a single SSH session per firewall to issue 'shun <ip>' for all ${unshunnedAbusiveIps.length} un-shunned Abusive IPs at once, and adds them to Guardian Blacklist.`}
+                            title={`Enforces all ${unshunnedAbusiveIps.length} unblocked Abusive IPs into Cisco FMC Security Intelligence feed and Guardian Do-Not-Unshun Blacklist.`}
                             className="flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-semibold bg-red-600 hover:bg-red-500 text-white shadow-lg shadow-red-600/20 transition-all"
                         >
                             <Flame className="w-4 h-4" />
@@ -698,102 +645,6 @@ export default function CitrixLoginTriageTab({
                     >
                         <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin text-indigo-400" : ""}`} />
                         Refresh
-                    </button>
-                </div>
-            </div>
-
-            {/* Automated Citrix Login Guardian Control Bar */}
-            <div
-                className={`rounded-xl border p-4 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 transition-all ${
-                    data?.autoShunConfig?.enabled
-                        ? "bg-emerald-950/20 border-emerald-500/35"
-                        : "bg-slate-900/60 border-amber-500/25"
-                }`}
-            >
-                <div className="flex items-start gap-3">
-                    <div
-                        className={`p-2 rounded-lg border mt-0.5 ${
-                            data?.autoShunConfig?.enabled
-                                ? "bg-emerald-500/15 border-emerald-500/30 text-emerald-400"
-                                : "bg-amber-500/15 border-amber-500/30 text-amber-400"
-                        }`}
-                    >
-                        <Shield className="w-4 h-4" />
-                    </div>
-                    <div>
-                        <div className="flex flex-wrap items-center gap-2">
-                            <span className="text-xs font-bold uppercase tracking-wider text-slate-200">
-                                Automated Citrix Login Guardian
-                            </span>
-                            {data?.autoShunConfig?.enabled ? (
-                                <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
-                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                                    ACTIVE — AUTO-SHUNNING
-                                </span>
-                            ) : (
-                                <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-amber-500/20 text-amber-300 border border-amber-500/40">
-                                    <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
-                                    PAUSED (MANUAL MODE)
-                                </span>
-                            )}
-                            {data?.autoShunConfig?.lastRunAt && (
-                                <span className="text-[11px] text-slate-400">
-                                    • Last scan: {new Date(data.autoShunConfig.lastRunAt).toLocaleTimeString()}
-                                    {data.autoShunConfig.lastRunSummary ? ` (${data.autoShunConfig.lastRunSummary})` : ""}
-                                </span>
-                            )}
-                        </div>
-                        <p className="text-xs text-slate-400 mt-1">
-                            Rule:{" "}
-                            <span className="text-slate-200 font-medium">
-                                ≥{data?.autoShunConfig?.minAuthFailuresIn10m ?? 3} failed auth attempts within{" "}
-                                {Math.round((data?.autoShunConfig?.windowSeconds ?? 600) / 60)} minutes
-                            </span>{" "}
-                            OR{" "}
-                            <span className="text-slate-200 font-medium">
-                                ≥1 failed attempt from a Blacklisted ASN
-                            </span>{" "}
-                            → Shuns across all perimeter firewalls + adds to Guardian Blacklist (protects verified AD users on US ISPs & Imprivata MFA push timeouts).
-                        </p>
-                        {cycleFeedback && (
-                            <p className="text-xs text-indigo-300 font-medium mt-1">
-                                ↳ {cycleFeedback}
-                            </p>
-                        )}
-                    </div>
-                </div>
-
-                <div className="flex flex-wrap items-center gap-2 shrink-0">
-                    <button
-                        onClick={handleRunAutoShunCycle}
-                        disabled={autoShunRunningCycle}
-                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 disabled:opacity-50"
-                        title="Execute an immediate 10-minute Citrix Login Guardian scan & auto-shun cycle"
-                    >
-                        <RefreshCw className={`w-3.5 h-3.5 ${autoShunRunningCycle ? "animate-spin text-indigo-400" : "text-indigo-400"}`} />
-                        {autoShunRunningCycle ? "Scanning 10m Window..." : "Run 10m Scan Now"}
-                    </button>
-
-                    <button
-                        onClick={handleToggleAutoShun}
-                        disabled={autoShunToggling}
-                        className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold border transition-all disabled:opacity-50 ${
-                            data?.autoShunConfig?.enabled
-                                ? "bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border-amber-500/40"
-                                : "bg-emerald-600 hover:bg-emerald-500 text-white border-emerald-500 shadow-lg shadow-emerald-600/20"
-                        }`}
-                    >
-                        {data?.autoShunConfig?.enabled ? (
-                            <>
-                                <Lock className="w-3.5 h-3.5" />
-                                Pause Auto-Shun
-                            </>
-                        ) : (
-                            <>
-                                <ShieldCheck className="w-3.5 h-3.5" />
-                                Enable Auto-Shun
-                            </>
-                        )}
                     </button>
                 </div>
             </div>
@@ -1345,11 +1196,11 @@ export default function CitrixLoginTriageTab({
                                             {/* Actions */}
                                             <td className="py-3.5 px-4 text-right">
                                                 <div className="flex flex-col items-end gap-1.5">
-                                                    {item.isCurrentlyShunned ? (
+                                                    {item.isCurrentlyShunned || item.isOnGuardianBlacklist ? (
                                                         <div className="flex items-center gap-1.5">
                                                             <span
                                                                 className="px-2.5 py-1 rounded bg-red-950/70 border border-red-500/40 text-red-300 font-semibold text-[11px] flex items-center gap-1 shadow-sm"
-                                                                title={`Confirmed shunned across perimeter firewall fleet: ${item.shunnedFirewalls?.join(", ") || "All firewalls"}`}
+                                                                title="Enforced in Cisco FMC Security Intelligence feed and Guardian Do-Not-Unshun Blacklist."
                                                             >
                                                                 <ShieldAlert className="w-3.5 h-3.5 text-red-400" />
                                                                 Enforced (SI)
@@ -1357,7 +1208,7 @@ export default function CitrixLoginTriageTab({
                                                             <button
                                                                 onClick={() => handleUnshunIp(item.ip)}
                                                                 disabled={unshunLoadingIp === item.ip}
-                                                                title="Removes the shun from all 4 perimeter firewalls (executes 'no shun <ip>')"
+                                                                title="Removes the IP from Guardian Blacklist and un-shuns across firewalls"
                                                                 className="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 text-[11px] font-medium flex items-center gap-1 transition-all"
                                                             >
                                                                 <Unlock className="w-3 h-3 text-emerald-400" />
@@ -1377,15 +1228,15 @@ export default function CitrixLoginTriageTab({
                                                                     error: null,
                                                                 })
                                                             }
-                                                            title="Immediately executes 'shun <ip>' on all 4 perimeter firewalls AND adds the IP to Guardian Do-Not-Unshun Blacklist."
+                                                            title="Enforces this IP into Cisco FMC Security Intelligence feed and locks it into Guardian Do-Not-Unshun Blacklist."
                                                             className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all ${
                                                                 item.verdict === "LEGIT_USER_ISSUE"
                                                                     ? "bg-slate-800 hover:bg-red-950/60 text-slate-300 hover:text-red-300 border border-slate-700"
                                                                     : "bg-red-600 hover:bg-red-500 text-white shadow-sm"
                                                             }`}
                                                         >
-                                                            <Flame className="w-3.5 h-3.5" />
-                                                            Shun & Blacklist
+                                                            <ShieldAlert className="w-3.5 h-3.5" />
+                                                            Enforce in SI Feed
                                                         </button>
                                                     )}
 
@@ -1831,20 +1682,9 @@ export default function CitrixLoginTriageTab({
                                 </div>
                             </div>
 
-                            <div>
-                                <label className="block text-slate-400 font-semibold mb-1">Target Perimeter Firewall</label>
-                                <select
-                                    value={blockModal.targetHost}
-                                    onChange={(e) => setBlockModal({ ...blockModal, targetHost: e.target.value })}
-                                    className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-white"
-                                >
-                                    <option value="all">All Firewalls (Perimeter Fleet)</option>
-                                    {firewallHosts.map((fw) => (
-                                        <option key={fw.id} value={fw.id}>
-                                            {fw.name}
-                                        </option>
-                                    ))}
-                                </select>
+                            <div className="p-2.5 rounded-lg bg-indigo-950/30 border border-indigo-500/30 text-indigo-300 text-xs flex items-center gap-2">
+                                <Shield className="w-4 h-4 shrink-0 text-indigo-400" />
+                                <span>Enforces line-rate drop across Cisco FMC Security Intelligence feed (no SSH interface shuns needed).</span>
                             </div>
 
                             <div>
@@ -1888,7 +1728,7 @@ export default function CitrixLoginTriageTab({
                                         <div className="font-semibold flex items-center gap-2">
                                             <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
                                             <span>
-                                                Perimeter shun executed on {blockModal.result.blockedIps?.length || 0} IP(s)
+                                                Security Intelligence enforcement active for {blockModal.result.blockedIps?.length || 0} IP(s)
                                                 {blockModal.result.blacklistedCount
                                                     ? ` and locked ${blockModal.result.blacklistedCount} in Guardian Blacklist.`
                                                     : "."}
@@ -2519,7 +2359,7 @@ export default function CitrixLoginTriageTab({
                             <div className="flex items-center gap-2">
                                 {reevaluateData?.evaluation && (
                                     <>
-                                        {reevaluateData.evaluation.isCurrentlyShunned ? (
+                                        {reevaluateData.evaluation.isCurrentlyShunned || reevaluateData.evaluation.isOnGuardianBlacklist ? (
                                             <button
                                                 onClick={() => {
                                                     handleUnshunIp(reevaluateData.evaluation.ip);
@@ -2528,7 +2368,7 @@ export default function CitrixLoginTriageTab({
                                                 className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-white font-medium flex items-center gap-1.5 border border-slate-700"
                                             >
                                                 <Unlock className="w-3.5 h-3.5 text-emerald-400" />
-                                                Unshun IP
+                                                Pardon / Remove from SI
                                             </button>
                                         ) : (
                                             <button
@@ -2545,8 +2385,8 @@ export default function CitrixLoginTriageTab({
                                                 }}
                                                 className="px-3 py-1.5 rounded-lg bg-red-600 hover:bg-red-500 text-white font-semibold flex items-center gap-1.5 shadow-sm shadow-red-600/30"
                                             >
-                                                <Flame className="w-3.5 h-3.5" />
-                                                Shun & Blacklist
+                                                <ShieldAlert className="w-3.5 h-3.5" />
+                                                Enforce in SI Feed
                                             </button>
                                         )}
 
