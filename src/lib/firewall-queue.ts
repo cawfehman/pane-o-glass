@@ -103,8 +103,12 @@ export async function enqueueFirewallCommand(options: QueueEnqueueOptions) {
 /**
  * Drain and execute pending commands in the queue inside a single batched SSH connection per firewall node.
  */
-export async function drainFirewallQueue(batchLimit: number = 50) {
-    // 1. Check for expired bridge shuns and enqueue their UNSHUN automatically
+/**
+ * Automatically find expired temporary bridge shuns and enqueue their UNSHUN command
+ * with status 'PENDING' so they are batched together on the next planned SSH session.
+ * Does NOT initiate any SSH connections to the firewalls.
+ */
+export async function enqueueExpiredBridgeUnshuns(limit: number = 100): Promise<number> {
     const now = new Date();
     const expiredBridges = await prisma.firewallCommandQueue.findMany({
         where: {
@@ -112,24 +116,30 @@ export async function drainFirewallQueue(batchLimit: number = 50) {
             status: "COMPLETED",
             expiresAt: { lte: now }
         },
-        take: 100
+        take: limit
     });
 
     for (const exp of expiredBridges) {
-        // Enqueue UNSHUN
         await enqueueFirewallCommand({
             ip: exp.ip,
             action: "UNSHUN",
             targetHost: exp.targetHost,
-            reason: `Dynamic bridge hold expired (was shunned until ${exp.expiresAt?.toISOString()})`
+            reason: `Dynamic bridge hold expired (was shunned until ${exp.expiresAt?.toISOString()})`,
+            status: "PENDING"
         });
 
-        // Clear expiresAt so we don't re-trigger
         await prisma.firewallCommandQueue.update({
             where: { id: exp.id },
             data: { expiresAt: null }
         });
     }
+
+    return expiredBridges.length;
+}
+
+export async function drainFirewallQueue(batchLimit: number = 50) {
+    // 1. Check for expired bridge shuns and enqueue their UNSHUN commands first
+    await enqueueExpiredBridgeUnshuns(100);
 
     // 2. Fetch pending items to execute
     const pendingItems = await prisma.firewallCommandQueue.findMany({

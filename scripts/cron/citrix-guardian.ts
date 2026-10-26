@@ -4,7 +4,7 @@ import dotenv from "dotenv";
 dotenv.config({ path: path.resolve(__dirname, "../../.env") });
 
 import { runCitrixLoginAutoShunCycle } from "../../src/lib/netscaler-login-triage";
-import { drainFirewallQueue } from "../../src/lib/firewall-queue";
+import { enqueueExpiredBridgeUnshuns } from "../../src/lib/firewall-queue";
 import { prisma } from "../../src/lib/prisma";
 
 const originalLog = console.log;
@@ -39,14 +39,14 @@ console.error = (...args) => {
 };
 
 async function executeOnce(forceRun = false) {
-    // Automatically check for expired bridge shuns and drain queue on every tick
+    // Check for expired bridge shuns and queue their 'no shun' commands for the next bulk SSH session (no SSH traffic now)
     try {
-        const drainRes = await drainFirewallQueue(100);
-        if (drainRes.executed > 0) {
-            console.log(`[CITRIX-GUARDIAN][QUEUE-DRAIN] Cleaned ${drainRes.executed} expired bridge shuns from firewall fleet.`);
+        const queuedCount = await enqueueExpiredBridgeUnshuns(100);
+        if (queuedCount > 0) {
+            console.log(`[CITRIX-GUARDIAN][QUEUE] Queued ${queuedCount} expired bridge unshun commands for the next scheduled bulk SSH session.`);
         }
     } catch (e: any) {
-        console.error("[CITRIX-GUARDIAN][QUEUE-DRAIN] Drain error:", e.message);
+        console.error("[CITRIX-GUARDIAN][QUEUE] Enqueue error:", e.message);
     }
 
     const res = await runCitrixLoginAutoShunCycle({ forceRun });
