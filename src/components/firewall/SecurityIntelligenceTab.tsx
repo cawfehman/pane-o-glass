@@ -302,7 +302,7 @@ export function SecurityIntelligenceTab() {
                                     </span>
                                 </h2>
                                 <p className="text-sm text-text-muted mt-0.5">
-                                    Dynamic FMC hourly synchronization, 3-strike residential reputation ledger, and AnyConnect VPN control-plane shunning.
+                                    Dynamic FMC 15-minute synchronization, 3-strike residential reputation ledger, and AnyConnect VPN control-plane shunning.
                                 </p>
                             </div>
                         </div>
@@ -339,11 +339,11 @@ export function SecurityIntelligenceTab() {
                     <div className="flex items-center gap-3 bg-bg-surface/50 border border-border-color rounded-lg p-2.5 text-xs">
                         <Clock className="w-4 h-4 text-accent-primary" />
                         <div>
-                            <span className="text-text-muted">FMC Hourly Sync: </span>
+                            <span className="text-text-muted">FMC Sync (15m): </span>
                             <span className="font-semibold text-text-primary">
                                 {fmcSync?.secondsUntilNextPoll !== null && fmcSync?.secondsUntilNextPoll !== undefined
-                                    ? `Next in ~${Math.round(fmcSync.secondsUntilNextPoll / 60)} mins`
-                                    : "Polling Hourly (Standard)"}
+                                    ? `Next in ~${Math.max(1, Math.round(fmcSync.secondsUntilNextPoll / 60))} min${Math.round(fmcSync.secondsUntilNextPoll / 60) === 1 ? '' : 's'}`
+                                    : "Polling Every 15m"}
                             </span>
                         </div>
                     </div>

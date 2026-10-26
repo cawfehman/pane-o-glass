@@ -46,7 +46,11 @@ export async function GET(req: NextRequest) {
         let secondsUntilNextPoll: number | null = null;
 
         if (lastPollDate && !isNaN(lastPollDate.getTime())) {
-            const nextPollMs = lastPollDate.getTime() + 60 * 60 * 1000;
+            const intervalMins = Math.max(5, parseInt(process.env.FMC_POLL_INTERVAL_MINUTES || "15", 10));
+            const intervalMs = intervalMins * 60 * 1000;
+            const elapsed = Date.now() - lastPollDate.getTime();
+            const cyclesPassed = Math.max(0, Math.floor(elapsed / intervalMs));
+            const nextPollMs = lastPollDate.getTime() + (cyclesPassed + 1) * intervalMs;
             nextPollExpected = new Date(nextPollMs).toISOString();
             secondsUntilNextPoll = Math.max(0, Math.round((nextPollMs - Date.now()) / 1000));
         }
