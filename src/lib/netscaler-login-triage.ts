@@ -1911,6 +1911,41 @@ export async function runCitrixLoginAutoShunCycle(options?: {
                         details: `[Citrix Auto-Guardian] Shunned & blacklisted ${ipEval.ip}: ${triggerReason}`,
                     },
                 }).catch(() => {});
+
+                // Mirror to ResidentialStrikeLedger as Strike 3 Quarantined
+                const uList = ipEval.targetedUsers.map((u) => u.username);
+                await prisma.residentialStrikeLedger.upsert({
+                    where: { ip: ipEval.ip },
+                    update: {
+                        strikeCount: 3,
+                        status: "QUARANTINED",
+                        targetPlatform: "CITRIX",
+                        attemptedUsers: uList,
+                        distinctUserCount: uList.length,
+                        isSpraySuspect: uList.length >= 2,
+                        lastSeen: new Date(),
+                        ispOrg: ipEval.companyName,
+                        asn: ipEval.asn ? String(ipEval.asn).replace(/^AS/, '') : null,
+                        country: ipEval.countryCode,
+                        city: ipEval.cityName
+                    },
+                    create: {
+                        ip: ipEval.ip,
+                        strikeCount: 3,
+                        status: "QUARANTINED",
+                        targetPlatform: "CITRIX",
+                        attemptedUsers: uList,
+                        distinctUserCount: uList.length,
+                        isSpraySuspect: uList.length >= 2,
+                        firstSeen: new Date(),
+                        lastSeen: new Date(),
+                        expiresAt: new Date(Date.now() + 90 * 24 * 3600 * 1000),
+                        ispOrg: ipEval.companyName,
+                        asn: ipEval.asn ? String(ipEval.asn).replace(/^AS/, '') : null,
+                        country: ipEval.countryCode,
+                        city: ipEval.cityName
+                    }
+                }).catch(() => {});
             }
         }
     }

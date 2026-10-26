@@ -68,7 +68,7 @@ export async function GET(req: NextRequest) {
             },
         });
 
-        // 2. Fetch Active Ledger Strikes andpardons
+        // 2. Fetch Active Ledger Strikes and pardons
         const ledgerEntries = await prisma.residentialStrikeLedger.findMany({
             select: {
                 ip: true,
@@ -79,6 +79,10 @@ export async function GET(req: NextRequest) {
                 country: true,
                 city: true,
                 targetPlatform: true,
+                attemptedUsers: true,
+                distinctUserCount: true,
+                lastSeen: true,
+                firstSeen: true,
             },
         });
         const ledgerMap = new Map(ledgerEntries.map((l) => [l.ip, l]));
@@ -140,7 +144,7 @@ export async function GET(req: NextRequest) {
         const gatewayBreakdown: Record<string, number> = {
             "WDC-FTD": 0,
             "Kel-3140": 0,
-            "NetScaler Gateway": graylogDeduplicatedFailures,
+            "NetScaler Gateway": Math.max(graylogDeduplicatedFailures, ledgerEntries.filter((l) => l.targetPlatform === "CITRIX" || l.targetPlatform === "BOTH").length),
             Other: 0,
         };
 
@@ -266,14 +270,14 @@ export async function GET(req: NextRequest) {
         const hostileRatio = totalDeduplicated > 0 ? (hostileFailures / totalDeduplicated) * 100 : 0;
         const staffFrictionRatio = totalDeduplicated > 0 ? (staffFrictionFailures / totalDeduplicated) * 100 : 0;
 
-        // Top 10 Hostile Attackers
-        const topHostileIps = Array.from(ipStats.values())
-            .filter((d) => hostileIpSet.has(d.ip))
-            .sort((a, b) => b.count - a.count)
-            .slice(0, 10)
-            .map((d) => {
+        // Top Hostile Attackers (merging active ledger threats and recent VPN probers)
+        const allHostileCandidates = new Map<string, any>();
+
+        // 1. From live VPN session evaluations
+        for (const d of ipStats.values()) {
+            if (hostileIpSet.has(d.ip)) {
                 const ledger = ledgerMap.get(d.ip);
-                return {
+                allHostileCandidates.set(d.ip, {
                     ip: d.ip,
                     count: d.count,
                     distinctUserCount: d.users.size,
@@ -285,14 +289,70 @@ export async function GET(req: NextRequest) {
                     asn: ledger?.asn || null,
                     country: ledger?.country || "US",
                     city: ledger?.city || "Unknown",
-                    lastSeen: d.lastSeen.toISOString(),
-                };
-            });
+                    lastSeen: d.lastSeen,
+                });
+            }
+        }
 
-        // Top 10 Targeted Corporate Accounts
-        const topTargetedUsers = Array.from(userStats.entries())
-            .sort((a, b) => b[1].count - a[1].count)
-            .slice(0, 10)
+        // 2. From ResidentialStrikeLedger (active in window or elevated strikes)
+        for (const l of ledgerEntries) {
+            if (l.status !== "PARDONED" && (l.lastSeen >= sinceDate || l.strikeCount >= 2)) {
+                const existing = allHostileCandidates.get(l.ip);
+                if (existing) {
+                    existing.strikeCount = Math.max(existing.strikeCount, l.strikeCount);
+                    if (l.status === "QUARANTINED") existing.status = "QUARANTINED";
+                    if (!existing.gateways.includes(l.targetPlatform)) existing.gateways.push(l.targetPlatform);
+                } else {
+                    allHostileCandidates.set(l.ip, {
+                        ip: l.ip,
+                        count: l.distinctUserCount > 1 ? l.distinctUserCount : 1,
+                        distinctUserCount: l.distinctUserCount,
+                        sampleUsers: l.attemptedUsers.slice(0, 3),
+                        gateways: [l.targetPlatform],
+                        strikeCount: l.strikeCount,
+                        status: l.status,
+                        ispOrg: l.ispOrg || "Unknown ISP",
+                        asn: l.asn || null,
+                        country: l.country || "US",
+                        city: l.city || "Unknown",
+                        lastSeen: l.lastSeen,
+                    });
+                }
+            }
+        }
+
+        const topHostileIps = Array.from(allHostileCandidates.values())
+            .sort((a, b) => b.distinctUserCount - a.distinctUserCount || b.strikeCount - a.strikeCount || b.count - a.count)
+            .slice(0, 15)
+            .map((d) => ({
+                ...d,
+                lastSeen: d.lastSeen.toISOString(),
+            }));
+
+        // Aggregate all targeted users across VPN and Citrix Ledger
+        const userAggMap = new Map<string, { count: number; ips: Set<string> }>();
+        for (const [u, d] of userStats.entries()) {
+            userAggMap.set(u, { count: d.count, ips: new Set(d.ips) });
+        }
+        for (const l of ledgerEntries) {
+            if (l.status !== "PARDONED" && (l.lastSeen >= sinceDate || l.strikeCount >= 2)) {
+                for (const u of l.attemptedUsers) {
+                    if (u && u !== "anonymous") {
+                        const cleanU = u.toLowerCase().trim();
+                        if (!userAggMap.has(cleanU)) {
+                            userAggMap.set(cleanU, { count: 0, ips: new Set() });
+                        }
+                        const cur = userAggMap.get(cleanU)!;
+                        cur.count++;
+                        cur.ips.add(l.ip);
+                    }
+                }
+            }
+        }
+
+        const topTargetedUsers = Array.from(userAggMap.entries())
+            .sort((a, b) => b[1].ips.size - a[1].ips.size || b[1].count - a[1].count)
+            .slice(0, 15)
             .map(([username, data]) => ({
                 username,
                 attempts: data.count,
@@ -318,8 +378,8 @@ export async function GET(req: NextRequest) {
                 staffFrictionFailures,
                 hostileRatio: Math.round(hostileRatio * 10) / 10,
                 staffFrictionRatio: Math.round(staffFrictionRatio * 10) / 10,
-                uniqueAttackingIps: hostileIpSet.size,
-                uniqueAccountsTargeted: userStats.size,
+                uniqueAttackingIps: allHostileCandidates.size,
+                uniqueAccountsTargeted: userAggMap.size,
                 quarantinedEntities: ledgerStats.quarantined,
                 enforcedEntities: ledgerStats.enforced,
                 watchingEntities: ledgerStats.watching,
