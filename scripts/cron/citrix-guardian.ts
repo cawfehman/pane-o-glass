@@ -4,6 +4,7 @@ import dotenv from "dotenv";
 dotenv.config({ path: path.resolve(__dirname, "../../.env") });
 
 import { runCitrixLoginAutoShunCycle } from "../../src/lib/netscaler-login-triage";
+import { drainFirewallQueue } from "../../src/lib/firewall-queue";
 import { prisma } from "../../src/lib/prisma";
 
 const originalLog = console.log;
@@ -50,6 +51,16 @@ async function executeOnce(forceRun = false) {
         console.log(
             `>>> [AUTO-SHUNNED] ${item.ip} (${item.countryCode} / ${item.asn} ${item.companyName}) | Reason: ${item.reason}`
         );
+    }
+
+    // Automatically check for expired bridge shuns and drain queue
+    try {
+        const drainRes = await drainFirewallQueue(100);
+        if (drainRes.executed > 0) {
+            console.log(`[CITRIX-GUARDIAN][QUEUE-DRAIN] Cleaned ${drainRes.executed} expired bridge shuns from firewall fleet.`);
+        }
+    } catch (e: any) {
+        console.error("[CITRIX-GUARDIAN][QUEUE-DRAIN] Drain error:", e.message);
     }
 }
 

@@ -8,6 +8,7 @@ export interface QueueEnqueueOptions {
     targetHost?: string;
     reason: string;
     expiresAt?: Date | null;
+    status?: "PENDING" | "PROCESSING" | "COMPLETED" | "FAILED";
 }
 
 /**
@@ -93,7 +94,7 @@ export async function enqueueFirewallCommand(options: QueueEnqueueOptions) {
             action,
             targetHost,
             reason,
-            status: "PENDING",
+            status: options.status || "PENDING",
             expiresAt: expiresAt || null
         }
     });

@@ -1554,7 +1554,8 @@ export async function blockCitrixAbusiveIps(params: {
             ip,
             action: "SHUN",
             reason: `[Citrix Abuse Triage] ${reason}`,
-            expiresAt: dynamicHold
+            expiresAt: dynamicHold,
+            status: "COMPLETED"
         }).catch(() => {});
     }
 
