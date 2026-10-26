@@ -56,7 +56,7 @@ export function computeDynamicHoldExpiresAt(lastFmcPollDate?: Date | null): Date
  */
 export async function getDynamicHoldExpiresAt(): Promise<Date> {
     try {
-        const lastPollState = await prisma.systemState.findUnique({
+        const lastPollState = await prisma.netscalerCveSetting.findUnique({
             where: { key: "LAST_FMC_SI_POLL" }
         });
         const lastPoll = lastPollState?.value ? new Date(lastPollState.value) : null;
