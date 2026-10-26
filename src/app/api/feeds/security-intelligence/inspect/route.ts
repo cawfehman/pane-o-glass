@@ -4,7 +4,7 @@ import { auth } from "@/lib/auth";
 import { hasPermission } from "@/app/actions/permissions";
 import { logAudit } from "@/lib/audit";
 import { getSecurityIntelligenceFeed, invalidateFeedCache } from "../route";
-import { executeFirewallBulkCommands } from "@/lib/netscaler-auto-shun";
+import { enqueueFirewallCommand, drainFirewallQueue } from "@/lib/firewall-queue";
 
 export const dynamic = "force-dynamic";
 
@@ -347,18 +347,26 @@ export async function POST(req: NextRequest) {
         // 6. Invalidate in-memory feed cache so subsequent downloads reflect removal instantly
         invalidateFeedCache();
 
-        // 7. Execute LIVE direct "no shun" on the perimeter ASA firewalls
-        const fwExec = await executeFirewallBulkCommands([`no shun ${cleanIp}`], "all");
+        // 7. Enqueue UNSHUN into FirewallCommandQueue (ensures proper auditing, deduping & lifecycle)
+        await enqueueFirewallCommand({
+            ip: cleanIp,
+            action: "UNSHUN",
+            targetHost: "all",
+            reason: `SOC Manual Pardon & Feed Removal by ${userId}: ${reason || "User unblock request"}`
+        });
 
-        // 8. Log Audit
+        // 8. Drain the queue immediately so the analyst gets instant execution across the firewalls
+        const drainResult = await drainFirewallQueue(25);
+
+        // 9. Log Audit
         await logAudit(
             "SOC_FEED_REMOVAL_PARDON",
-            `SOC analyst ${userId} pardoned and removed ${cleanIp} from Security Intelligence Feed & Perimeter Firewalls. Reason: ${reason || "SOC manual unblock"}`,
+            `SOC analyst ${userId} pardoned and queued unblock for ${cleanIp}. Queue execution: ${drainResult.executed} executed (${drainResult.successes} OK, ${drainResult.failures} failed). Reason: ${reason || "SOC manual unblock"}`,
             userId,
             cleanIp
         );
 
-        // 9. Fetch FMC sync timing for propagation SLA
+        // 10. Fetch FMC sync timing for propagation SLA
         const lastPollSetting = await prisma.netscalerCveSetting.findUnique({
             where: { key: "LAST_FMC_SI_POLL" }
         });
@@ -381,12 +389,8 @@ export async function POST(req: NextRequest) {
             ip: cleanIp,
             databaseReset: true,
             removedFromFeed: true,
-            perimeterShunExecuted: fwExec.success,
-            firewallsUpdated: fwExec.results.map(r => ({
-                node: r.target,
-                success: r.success,
-                status: r.success ? "UNSHUN_APPLIED" : (r.stderr || "Error")
-            })),
+            perimeterShunExecuted: drainResult.successes > 0 || drainResult.executed > 0,
+            drainResult,
             fmcSync: {
                 lastPoll: lastPollSetting?.value || null,
                 nextPollExpected,
