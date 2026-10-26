@@ -323,7 +323,7 @@ export async function GET(req: NextRequest) {
             },
             ftdDropCount24h: ftdDropCount,
             vpnHistory: {
-                hasRecentSuccess,
+                hasRecentSuccess: hasVpnSuccess,
                 successfulLogins: vpnSuccesses.length,
                 failedLogins: vpnFailures.length,
                 users: uniqueVpnSuccessUsers,
