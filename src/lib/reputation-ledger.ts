@@ -474,6 +474,7 @@ export async function getReputationMetrics(options: ReputationQueryOptions = {})
         pardonedCount,
         pendingQueueCount,
         cloudVpsCount,
+        vpnActiveShunsCount,
         filteredTotal,
         entries
     ] = await Promise.all([
@@ -484,6 +485,7 @@ export async function getReputationMetrics(options: ReputationQueryOptions = {})
         prisma.residentialStrikeLedger.count({ where: { ...baseTfClause, status: "PARDONED" } }),
         prisma.firewallCommandQueue.count({ where: { status: "PENDING" } }),
         prisma.guardianBlacklist.count(),
+        prisma.firewallShunStats.count({ where: { isActive: true } }),
         prisma.residentialStrikeLedger.count({ where: whereClause }),
         prisma.residentialStrikeLedger.findMany({
             where: whereClause,
@@ -505,7 +507,8 @@ export async function getReputationMetrics(options: ReputationQueryOptions = {})
             strike3Quarantined,
             pardonedCount,
             pendingQueueCount,
-            cloudVpsCount
+            cloudVpsCount,
+            vpnActiveShunsCount
         },
         pagination: {
             page,

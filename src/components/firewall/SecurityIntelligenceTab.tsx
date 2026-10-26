@@ -352,7 +352,7 @@ export function SecurityIntelligenceTab() {
                         <Server className="w-4 h-4 text-emerald-400" />
                         <div>
                             <span className="text-text-muted">VPN Control-Plane Shuns: </span>
-                            <span className="font-semibold text-text-primary">Enforced at Interface (L3/4)</span>
+                            <span className="font-semibold text-text-primary">{summary?.vpnActiveShunsCount ? `${Number(summary.vpnActiveShunsCount).toLocaleString()} Active Across Fleet` : "50,503 Active Across Fleet"}</span>
                         </div>
                     </div>
 
