@@ -41,7 +41,8 @@ export default NextAuth(authConfig).auth((req) => {
     const isAuthRoute = req.nextUrl.pathname.startsWith('/api/auth');
 
     // Allow public access to health check, auth callbacks, and public routes
-    if (isHealthCheck || isPublicRoute || isAuthRoute) return;
+    const isFeedRoute = req.nextUrl.pathname.startsWith('/api/feeds/');
+    if (isHealthCheck || isPublicRoute || isAuthRoute || isFeedRoute) return;
 
     if (isOnLoginPage) {
         if (isLoggedIn) {

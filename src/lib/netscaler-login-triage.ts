@@ -1,3 +1,4 @@
+import { enqueueFirewallCommand, getDynamicHoldExpiresAt } from "@/lib/firewall-queue";
 import https from "https";
 import axios from "axios";
 import { prisma } from "@/lib/prisma";
@@ -1542,9 +1543,20 @@ export async function blockCitrixAbusiveIps(params: {
         };
     }
 
-    // Open a SINGLE SSH session per firewall and issue all `shun <ip>` commands inside that single session
+    // Open a SINGLE SSH session per firewall and issue dynamic bridge shuns
     const bulkCommands = blockedIps.map((ip) => `shun ${ip}`);
     const fwExec = await executeFirewallBulkCommands(bulkCommands, targetHost);
+
+    // Compute dynamic hold so temporary SSH bridge shuns expire once FMC polls
+    const dynamicHold = await getDynamicHoldExpiresAt().catch(() => null);
+    for (const ip of blockedIps) {
+        await enqueueFirewallCommand({
+            ip,
+            action: "SHUN",
+            reason: `[Citrix Abuse Triage] ${reason}`,
+            expiresAt: dynamicHold
+        }).catch(() => {});
+    }
 
     // Pre-fetch cached IP metadata in a single query so bulk blocking 100+ IPs is instantaneous
     const cachedEntries = await prisma.ipLookupCache
