@@ -40,7 +40,7 @@ const RESIDENTIAL_ISP_KEYWORDS = [
     "telecom"
 ];
 
-function isResidential(org?: string | null): boolean {
+export function isResidential(org?: string | null): boolean {
     if (!org) return false;
     const lower = org.toLowerCase();
     return RESIDENTIAL_ISP_KEYWORDS.some(kw => lower.includes(kw));

@@ -260,6 +260,39 @@ export function isCorporateUsernameFormat(username: string): boolean {
     return CORPORATE_USERNAME_REGEX.test(clean);
 }
 
+export function isResidential(org?: string | null): boolean {
+    if (!org) return false;
+    const clean = org.toLowerCase();
+    return (
+        clean.includes("comcast") ||
+        clean.includes("charter") ||
+        clean.includes("spectrum") ||
+        clean.includes("verizon") ||
+        clean.includes("at&t") ||
+        clean.includes("att") ||
+        clean.includes("cox") ||
+        clean.includes("optimum") ||
+        clean.includes("cablevision") ||
+        clean.includes("centurylink") ||
+        clean.includes("frontier") ||
+        clean.includes("t-mobile") ||
+        clean.includes("sprint") ||
+        clean.includes("broadband") ||
+        clean.includes("cable") ||
+        clean.includes("telecom") ||
+        clean.includes("fiber") ||
+        clean.includes("wireless") ||
+        clean.includes("ezee") ||
+        clean.includes("northland") ||
+        clean.includes("blue stream") ||
+        clean.includes("altafiber") ||
+        clean.includes("spacex") ||
+        clean.includes("starlink") ||
+        clean.includes("tds") ||
+        clean.includes("penteledata") ||
+        clean.includes("liveoak")
+    );
+}
 
 const REVERSE_DNS_ISP_PATTERNS = [
     { match: /comcast|hsd1/i, name: "Comcast Cable Communications", asn: "AS7922" },
@@ -284,7 +317,7 @@ interface IpMetaInfo {
     isResidentialIsp: boolean;
 }
 
-async function enrichIpMetadata(ip: string, allowExternalLookup: boolean = false): Promise<IpMetaInfo> {
+async function enrichIpMetadata(ip: string, allowExternalLookup: boolean = true): Promise<IpMetaInfo> {
     const fallback: IpMetaInfo = {
         countryCode: "US",
         city: "N/A",
@@ -724,7 +757,7 @@ export async function analyzeCitrixLoginTriage(
     // Enrich all external IPs with IPLocate/Cache, Shun DB, Guardian Blacklist, Guardian Watchlist, and VPN History
     const externalIps = Array.from(uniqueExternalIpsSet);
     const ipMetaEntries: { ip: string; meta: IpMetaInfo }[] = await Promise.all(
-        externalIps.map(async (ip) => ({ ip, meta: await enrichIpMetadata(ip) }))
+        externalIps.map(async (ip) => ({ ip, meta: await enrichIpMetadata(ip, true) }))
     );
 
     const [
@@ -1876,7 +1909,13 @@ export async function runCitrixLoginAutoShunCycle(options?: {
             let status = "WATCHING";
             let holdDays = 14;
 
-            if (ipEval.isFullyShunned || ipEval.verdict === "ABUSIVE_BLOCK" || matchesBlacklistedAsnRule) {
+            if (isSingleCorp && !matchesBlacklistedAsnRule && !ipEval.isOnGuardianBlacklist) {
+                // Valid corporate employee connection experiencing mistyped password or policy failure
+                // Strict corporate staff immunity: NEVER assign Strike 3 Quarantine to a single employee account
+                strikeCount = 1;
+                status = "WATCHING";
+                holdDays = 14;
+            } else if (ipEval.isFullyShunned || ipEval.verdict === "ABUSIVE_BLOCK" || matchesBlacklistedAsnRule) {
                 strikeCount = 3;
                 status = "QUARANTINED";
                 holdDays = 90;
@@ -1885,11 +1924,6 @@ export async function runCitrixLoginAutoShunCycle(options?: {
                 strikeCount = 2;
                 status = "ENFORCED";
                 holdDays = 7;
-            } else if (isSingleCorp) {
-                // Valid corporate employee connection experiencing mistyped password or policy failure
-                strikeCount = 1;
-                status = "WATCHING";
-                holdDays = 14;
             } else {
                 strikeCount = totalFails >= 3 ? 3 : (totalFails >= 2 ? 2 : 1);
                 status = strikeCount === 3 ? "QUARANTINED" : (strikeCount === 2 ? "ENFORCED" : "WATCHING");
