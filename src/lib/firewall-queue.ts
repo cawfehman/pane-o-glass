@@ -11,36 +11,38 @@ export interface QueueEnqueueOptions {
 }
 
 /**
- * Calculates dynamic hold expiration timestamp based on FMC hourly poll intervals.
- * Next Poll = Last Poll + 60 mins.
- * Hold Time = Time to Next Poll + 10 min FMC push buffer.
- * Minimum: 15 minutes, Maximum: 70 minutes.
+ * Calculates dynamic hold expiration timestamp based on FMC poll intervals.
+ * Supports sub-hourly intervals (e.g. 15 mins, 30 mins) via FMC_POLL_INTERVAL_MINUTES.
+ * Hold Time = Time to Next FMC Poll + push buffer.
  */
 export function computeDynamicHoldExpiresAt(lastFmcPollDate?: Date | null): Date {
     const now = Date.now();
+    const intervalMins = Math.max(5, parseInt(process.env.FMC_POLL_INTERVAL_MINUTES || "15", 10));
+    const intervalMs = intervalMins * 60 * 1000;
+    const pushBufferMs = Math.min(5, Math.ceil(intervalMins / 3)) * 60 * 1000; // 5 min push buffer for 15m, 10 min for 60m
+
     let nextPollMs: number;
 
     if (lastFmcPollDate && !isNaN(lastFmcPollDate.getTime())) {
         const lastPollMs = lastFmcPollDate.getTime();
         const elapsedSinceLast = now - lastPollMs;
-        const hourMs = 60 * 60 * 1000;
-        // Project to the upcoming hourly cycle
-        const cyclesPassed = Math.floor(elapsedSinceLast / hourMs);
-        nextPollMs = lastPollMs + (cyclesPassed + 1) * hourMs;
+        // Project to the upcoming poll cycle
+        const cyclesPassed = Math.floor(elapsedSinceLast / intervalMs);
+        nextPollMs = lastPollMs + (cyclesPassed + 1) * intervalMs;
     } else {
-        // Fallback: assume top of the hour
+        // Fallback: project to the next clean interval boundary
         const date = new Date(now);
-        date.setMinutes(0, 0, 0);
-        date.setHours(date.getHours() + 1);
+        const currentMins = date.getMinutes();
+        const nextIntervalMin = Math.ceil((currentMins + 1) / intervalMins) * intervalMins;
+        date.setMinutes(nextIntervalMin, 0, 0);
         nextPollMs = date.getTime();
     }
 
-    const pushBufferMs = 10 * 60 * 1000; // 10 minutes FMC compile and deployment buffer
     let targetExpiryMs = nextPollMs + pushBufferMs;
 
-    // Constrain: minimum 15 mins from now, maximum 70 mins from now
-    const minExpiryMs = now + 15 * 60 * 1000;
-    const maxExpiryMs = now + 70 * 60 * 1000;
+    // Constrain: minimum 10 mins, maximum (interval + 15 mins)
+    const minExpiryMs = now + 10 * 60 * 1000;
+    const maxExpiryMs = now + (intervalMins + 15) * 60 * 1000;
 
     if (targetExpiryMs < minExpiryMs) targetExpiryMs = minExpiryMs;
     if (targetExpiryMs > maxExpiryMs) targetExpiryMs = maxExpiryMs;
