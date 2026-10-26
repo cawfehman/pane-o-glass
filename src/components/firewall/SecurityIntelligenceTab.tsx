@@ -285,7 +285,7 @@ export function SecurityIntelligenceTab() {
     const totalPages = pagination?.totalPages || 1;
 
     return (
-        <div className="space-y-6">
+        <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar pr-2 pb-16 space-y-6">
             {/* Top Header & Timeframe Bar */}
             <div className="bg-bg-card border border-border-color rounded-xl p-5 shadow-sm">
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
