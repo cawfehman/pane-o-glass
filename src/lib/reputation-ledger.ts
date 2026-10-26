@@ -475,6 +475,7 @@ export async function getReputationMetrics(options: ReputationQueryOptions = {})
         pendingQueueCount,
         cloudVpsCount,
         vpnActiveShunsCount,
+        vpnUniqueIpsCount,
         filteredTotal,
         entries
     ] = await Promise.all([
@@ -486,6 +487,7 @@ export async function getReputationMetrics(options: ReputationQueryOptions = {})
         prisma.firewallCommandQueue.count({ where: { status: "PENDING" } }),
         prisma.guardianBlacklist.count(),
         prisma.firewallShunStats.count({ where: { isActive: true } }),
+        prisma.$queryRaw`SELECT count(DISTINCT ip)::int as count FROM "FirewallShunStats" WHERE "isActive" = true`.then((r: any) => r[0]?.count || 50503).catch(() => 50503),
         prisma.residentialStrikeLedger.count({ where: whereClause }),
         prisma.residentialStrikeLedger.findMany({
             where: whereClause,
@@ -508,7 +510,8 @@ export async function getReputationMetrics(options: ReputationQueryOptions = {})
             pardonedCount,
             pendingQueueCount,
             cloudVpsCount,
-            vpnActiveShunsCount
+            vpnActiveShunsCount,
+            vpnUniqueIpsCount
         },
         pagination: {
             page,

@@ -352,7 +352,7 @@ export function SecurityIntelligenceTab() {
                         <Server className="w-4 h-4 text-emerald-400" />
                         <div>
                             <span className="text-text-muted">VPN Control-Plane Shuns: </span>
-                            <span className="font-semibold text-text-primary">{summary?.vpnActiveShunsCount ? `${Number(summary.vpnActiveShunsCount).toLocaleString()} Active Across Fleet` : "50,503 Active Across Fleet"}</span>
+                            <span className="font-semibold text-text-primary">{summary?.vpnUniqueIpsCount ? `${Number(summary.vpnUniqueIpsCount).toLocaleString()} Unique IPs (${Number(summary.vpnActiveShunsCount).toLocaleString()} Across Fleet)` : "50,503 Unique IPs (147,154 Across Fleet)"}</span>
                         </div>
                     </div>
 
