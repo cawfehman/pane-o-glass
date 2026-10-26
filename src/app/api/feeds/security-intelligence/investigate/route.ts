@@ -177,15 +177,66 @@ export async function GET(req: NextRequest) {
         // 2. IP ADDRESS INVESTIGATION MODE
         // ==========================================
         const ipToInspect = cleanTarget;
+        const forceEnrich = url.searchParams.get("enrich") === "true";
 
-        const [blacklisted, activeShunStats, cveRecord, cacheInfo, residentialRecord, pendingCommands] = await Promise.all([
+        let cacheInfo = await prisma.ipLookupCache.findUnique({ where: { ip: ipToInspect } });
+
+        // On-the-spot Live Threat Intel Enrichment (Analyst requested via button)
+        if (forceEnrich && !isPrivateIp(ipToInspect)) {
+            const apiKey = process.env.IPLOCATE_API_KEY;
+            if (apiKey) {
+                try {
+                    const res = await axios.get(`https://www.iplocate.io/api/lookup/${ipToInspect}`, {
+                        headers: { "X-API-KEY": apiKey },
+                        timeout: 5000
+                    });
+                    if (res.data) {
+                        const d = res.data;
+                        cacheInfo = await prisma.ipLookupCache.upsert({
+                            where: { ip: ipToInspect },
+                            update: {
+                                latitude: d.latitude || null,
+                                longitude: d.longitude || null,
+                                countryCode: d.country_code || null,
+                                city: d.city || null,
+                                subdivision: d.subdivision || null,
+                                rawJson: JSON.stringify(d)
+                            },
+                            create: {
+                                ip: ipToInspect,
+                                latitude: d.latitude || null,
+                                longitude: d.longitude || null,
+                                countryCode: d.country_code || null,
+                                city: d.city || null,
+                                subdivision: d.subdivision || null,
+                                rawJson: JSON.stringify(d)
+                            }
+                        });
+
+                        // Also update ResidentialStrikeLedger if present
+                        await prisma.residentialStrikeLedger.updateMany({
+                            where: { ip: ipToInspect },
+                            data: {
+                                ispOrg: d.company?.name || d.asn?.name || d.org || undefined,
+                                asn: d.asn?.asn ? String(d.asn.asn).replace(/^AS/, '') : (d.asn ? String(d.asn).replace(/^AS/, '') : undefined),
+                                country: d.country_code || undefined,
+                                city: d.city || undefined
+                            }
+                        }).catch(() => {});
+                    }
+                } catch (e: any) {
+                    console.error("[Investigate] On-the-spot IPLocate enrichment failed:", e.message);
+                }
+            }
+        }
+
+        const [blacklisted, activeShunStats, cveRecord, residentialRecord, pendingCommands] = await Promise.all([
             prisma.guardianBlacklist.findUnique({ where: { ip: ipToInspect } }),
             prisma.firewallShunStats.findMany({
                 where: { ip: ipToInspect, isActive: true },
                 include: { shunIp: true }
             }),
             prisma.netscalerCveShun.findUnique({ where: { ip: ipToInspect } }),
-            prisma.ipLookupCache.findUnique({ where: { ip: ipToInspect } }),
             prisma.residentialStrikeLedger.findUnique({ where: { ip: ipToInspect } }),
             prisma.firewallCommandQueue.findMany({ where: { ip: ipToInspect, status: "PENDING" } })
         ]);

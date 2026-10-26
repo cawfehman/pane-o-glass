@@ -5,7 +5,7 @@ import {
     Shield, Search, AlertTriangle, CheckCircle2, ShieldAlert, 
     RefreshCw, Trash2, Plus, ExternalLink, Activity, Network, ArrowRight,
     Copy, Check, Clock, UserCheck, Flame, Server, Zap, ShieldCheck,
-    ChevronLeft, ChevronRight, Filter, Ban, Unlock, Lock
+    ChevronLeft, ChevronRight, Filter, Ban, Unlock, Lock, Sparkles
 } from "lucide-react";
 import { SmartSearchBar } from "@/components/common/SmartSearchBar";
 
@@ -31,6 +31,7 @@ export function SecurityIntelligenceTab() {
     // Investigation State
     const [searchQuery, setSearchQuery] = useState("");
     const [investigating, setInvestigating] = useState(false);
+    const [enriching, setEnriching] = useState(false);
     const [investigateResult, setInvestigateResult] = useState<any | null>(null);
     const [investigateError, setInvestigateError] = useState("");
 
@@ -171,19 +172,23 @@ export function SecurityIntelligenceTab() {
     };
 
     // Execute False-Positive Investigation
-    const executeInvestigate = async (overrideTarget?: string) => {
+    const executeInvestigate = async (overrideTarget?: string, forceEnrich: boolean = false) => {
         const cleanQuery = (overrideTarget || searchQuery).trim();
         if (!cleanQuery) return;
         if (overrideTarget) setSearchQuery(overrideTarget);
 
-        setInvestigating(true);
+        if (forceEnrich) {
+            setEnriching(true);
+        } else {
+            setInvestigating(true);
+        }
         setInvestigateError("");
-        setInvestigateResult(null);
         setUnblockMessage(null);
         setBlacklistActionMessage(null);
 
         try {
-            const res = await fetch(`/api/feeds/security-intelligence/investigate?target=${encodeURIComponent(cleanQuery)}`);
+            const url = `/api/feeds/security-intelligence/investigate?target=${encodeURIComponent(cleanQuery)}${forceEnrich ? "&enrich=true" : ""}`;
+            const res = await fetch(url);
             const data = await res.json();
 
             if (!res.ok) {
@@ -195,6 +200,7 @@ export function SecurityIntelligenceTab() {
             setInvestigateError(err.message || "Failed to contact investigation endpoint.");
         } finally {
             setInvestigating(false);
+            setEnriching(false);
         }
     };
 
@@ -918,20 +924,47 @@ export function SecurityIntelligenceTab() {
                                         </>
                                     ) : (
                                         <>
-                                            <div className="text-text-muted">
-                                                ISP / Org: <span className="text-text-primary">{investigateResult.ipInfo?.as_name || "Unknown"}</span> (
-                                                {investigateResult.ipInfo?.asn && investigateResult.ipInfo.asn !== "Unknown" && investigateResult.ipInfo.asn !== "Unenriched" ? (
+                                            <div className="text-text-muted flex items-center justify-between gap-2 flex-wrap">
+                                                <div>
+                                                    ISP / Org: <span className="text-text-primary font-medium">{investigateResult.ipInfo?.as_name || "Unknown"}</span> (
+                                                    {investigateResult.ipInfo?.asn && investigateResult.ipInfo.asn !== "Unknown" && investigateResult.ipInfo.asn !== "Unenriched" ? (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => executeInvestigate(investigateResult.ipInfo.asn)}
+                                                            className="text-accent-primary hover:underline font-mono inline-flex items-center gap-0.5 cursor-pointer font-semibold"
+                                                            title={`Investigate ASN ${investigateResult.ipInfo.asn}`}
+                                                        >
+                                                            {investigateResult.ipInfo.asn} <ExternalLink className="w-3 h-3 inline" />
+                                                        </button>
+                                                    ) : (
+                                                        <span className="text-amber-400 font-medium">{investigateResult.ipInfo?.asn || "N/A"}</span>
+                                                    )}) • {investigateResult.ipInfo?.country || "US"}
+                                                </div>
+                                                {investigateResult.type === "IP" && (
                                                     <button
                                                         type="button"
-                                                        onClick={() => executeInvestigate(investigateResult.ipInfo.asn)}
-                                                        className="text-accent-primary hover:underline font-mono inline-flex items-center gap-0.5 cursor-pointer font-semibold"
-                                                        title={`Investigate ASN ${investigateResult.ipInfo.asn}`}
+                                                        onClick={() => executeInvestigate(investigateResult.target, true)}
+                                                        disabled={enriching || investigating}
+                                                        className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-semibold border transition-all cursor-pointer ${
+                                                            investigateResult.ipInfo?.as_name === "Unenriched" || investigateResult.ipInfo?.as_name === "Unknown" || !investigateResult.ipInfo?.asn || investigateResult.ipInfo?.asn === "Unenriched"
+                                                                ? "bg-amber-500/20 text-amber-300 border-amber-500/40 hover:bg-amber-500/30 animate-pulse shadow-sm"
+                                                                : "bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700"
+                                                        }`}
+                                                        title="Perform live IPLocate geo/ASN lookup (uses 1 API credit)"
                                                     >
-                                                        {investigateResult.ipInfo.asn} <ExternalLink className="w-3 h-3 inline" />
+                                                        {enriching ? (
+                                                            <>
+                                                                <RefreshCw className="w-3 h-3 animate-spin text-amber-400" />
+                                                                <span>Enriching...</span>
+                                                            </>
+                                                        ) : (
+                                                            <>
+                                                                <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                                                                <span>{investigateResult.ipInfo?.as_name === "Unenriched" ? "Enrich on the Spot" : "Re-enrich IP"}</span>
+                                                            </>
+                                                        )}
                                                     </button>
-                                                ) : (
-                                                    investigateResult.ipInfo?.asn || "N/A"
-                                                )}) • {investigateResult.ipInfo?.country || "US"}
+                                                )}
                                             </div>
                                             {investigateResult.details?.asnBlacklisted && (
                                                 <div className="p-2 rounded bg-red-500/10 border border-red-500/25 text-red-300 flex items-center justify-between gap-2">
