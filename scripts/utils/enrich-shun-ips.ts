@@ -79,6 +79,39 @@ async function main() {
             console.log(`Enriched ${privateCount} private RFC 1918 IP(s) locally.`);
         }
 
+        // Check local IpLookupCache first (0 external API calls)
+        const stillUnenriched = await prisma.shunDatabaseIp.findMany({
+            where: { enrichedAt: null },
+            select: { ip: true }
+        });
+        if (stillUnenriched.length > 0) {
+            const cached = await prisma.ipLookupCache.findMany({
+                where: { ip: { in: stillUnenriched.map(p => p.ip) } }
+            });
+            for (const c of cached) {
+                try {
+                    const d = JSON.parse(c.rawJson);
+                    const asnString = typeof d.asn === "object" ? d.asn?.asn : d.asn;
+                    const orgString = typeof d.asn === "object" ? (d.asn?.name || d.asn?.org || d.org) : d.org;
+                    await prisma.shunDatabaseIp.update({
+                        where: { ip: c.ip },
+                        data: {
+                            ipAsn: asnString ? String(asnString) : null,
+                            org: orgString ? String(orgString) : null,
+                            ipCountry: d.country || null,
+                            ipCountryCode: d.country_code || c.countryCode || null,
+                            city: d.city || c.city || null,
+                            continent: d.continent || null,
+                            enrichedAt: new Date()
+                        }
+                    });
+                } catch {}
+            }
+            if (cached.length > 0) {
+                console.log(`Enriched ${cached.length} shun IPs directly from local IpLookupCache (0 API calls).`);
+            }
+        }
+
         // 2. Determine quota
         const startOfUtcDay = new Date();
         startOfUtcDay.setUTCHours(0, 0, 0, 0);
@@ -167,6 +200,27 @@ async function main() {
                             enrichedAt: new Date()
                         }
                     });
+
+                    await prisma.ipLookupCache.upsert({
+                        where: { ip },
+                        create: {
+                            ip,
+                            latitude: data.latitude || null,
+                            longitude: data.longitude || null,
+                            countryCode: data.country_code || null,
+                            city: data.city || null,
+                            subdivision: data.subdivision || null,
+                            rawJson: JSON.stringify(data)
+                        },
+                        update: {
+                            latitude: data.latitude || null,
+                            longitude: data.longitude || null,
+                            countryCode: data.country_code || null,
+                            city: data.city || null,
+                            subdivision: data.subdivision || null,
+                            rawJson: JSON.stringify(data)
+                        }
+                    }).catch(() => {});
                     enrichedCount++;
                 }
             }

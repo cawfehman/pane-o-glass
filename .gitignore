@@ -67,3 +67,6 @@ __pycache__/
 logs/
 *.log
 
+# Scratch scripts
+scratch/
+

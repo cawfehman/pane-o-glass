@@ -210,6 +210,31 @@ export const helpData: Record<string, TooltipDetails> = {
                 title: "Blacklist & Catch-Up Operations",
                 detail: "Maintain a persistent blacklist of IP addresses and ASNs barred from auto-unshunning. Execute manual catch-up recovery scans with customizable minute ranges (--range <minutes>).",
                 tag: "Admin Controls"
+            },
+            {
+                title: "Cisco FMC Security Intelligence (SI) Dynamic Feed",
+                detail: "Serves an automated, high-speed flat-text dynamic feed consumed hourly by Cisco Firepower Management Center (FMC). Offloads perimeter blocking to FTD hardware TCAM / Snort 3 data-plane pre-filters with zero Lina connection state memory overhead.",
+                tag: "Security Intelligence"
+            },
+            {
+                title: "3-Strike Progressive Residential Reputation Ledger",
+                detail: "Categorizes inbound residential IP authentication attempts: Strike 1 (14-day silent watchlist, 0 shuns, zero false-positive disruption), Strike 2 (7-day rolling SI block + dynamic bridge shun on repeat failures or multi-user sprays), and Strike 3 (90-day extended botnet quarantine).",
+                tag: "Reputation Engine"
+            },
+            {
+                title: "4-Pillar Multi-Factor Auto-Pardon Correlation",
+                detail: "Evaluates Single-User Integrity, Multi-IP Spray Collisions, Dual-Platform (Citrix + AnyConnect) History, and AD health. Automatically expunges strikes and un-shuns legitimate remote employees upon verified MFA login.",
+                tag: "Auto-Pardon"
+            },
+            {
+                title: "Firewall Command Queue & Ephemeral Shun Bridge",
+                detail: "Batches all CLI shun and unshun operations into a single SSH session per firewall node to eliminate Cisco VTY line exhaustion. Applies an instant 15–40m dynamic hold bridge during active attack bursts until FMC hourly ingestion completes.",
+                tag: "Queue & Bridge"
+            },
+            {
+                title: "Protected Legacy Shun Drain Utility",
+                detail: "Safely drains legacy shuns in throttled batches while permanently locking all AnyConnect VPN attack IPs (2,192 IPs) and Cloud VPS/Hosting/Tor ASNs (13,345 IPs) on the firewalls.",
+                tag: "Drain Utility"
             }
         ],
         colors: [

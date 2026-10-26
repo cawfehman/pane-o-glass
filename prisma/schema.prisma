@@ -630,3 +630,64 @@ model AccountLifecycleEvent {
   @@index([eventId])
 }
 
+model ResidentialStrikeLedger {
+  id                String    @id @default(cuid())
+  ip                String    @unique
+  strikeCount       Int       @default(1) // 1 = Watchlist (14d), 2 = Enforced (7d), 3 = Quarantine (90d)
+  status            String    @default("WATCHING") // "WATCHING", "ENFORCED", "QUARANTINED", "PARDONED", "WHITELISTED"
+  
+  firstSeen         DateTime  @default(now())
+  lastSeen          DateTime  @default(now())
+  expiresAt         DateTime  // Strike 1 = +14d, Strike 2 = +7d, Strike 3 = +90d
+  
+  targetPlatform    String    @default("CITRIX") // "CITRIX", "VPN", "BOTH"
+  attemptedUsers    String[]  // Array of distinct usernames attempted
+  distinctUserCount Int       @default(1)
+  
+  // 4-Pillar Correlation Fields
+  isSpraySuspect    Boolean   @default(false)
+  hasVpnSuccess     Boolean   @default(false)
+  hasCitrixSuccess  Boolean   @default(false)
+  lastSuccessAt     DateTime?
+  
+  // Geolocation & ISP
+  ispOrg            String?   // e.g. "Comcast Cable Communications"
+  asn               String?   // e.g. "AS7922"
+  country           String?   // e.g. "US"
+  city              String?
+  
+  // Execution Tracking
+  shunPushedAt      DateTime?
+  siPushedAt        DateTime?
+  pardonReason      String?
+
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@index([status])
+  @@index([expiresAt])
+  @@index([strikeCount])
+  @@index([createdAt])
+  @@index([lastSeen])
+}
+
+model FirewallCommandQueue {
+  id          String    @id @default(cuid())
+  ip          String
+  action      String    // "SHUN", "UNSHUN"
+  targetHost  String    @default("all") // "all" or specific firewall ID
+  reason      String
+  status      String    @default("PENDING") // "PENDING", "PROCESSING", "COMPLETED", "FAILED"
+  expiresAt   DateTime? // For dynamic bridge shuns, when the unshun should trigger
+  attempts    Int       @default(0)
+  lastError   String?
+  executedAt  DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([status])
+  @@index([action])
+  @@index([expiresAt])
+  @@index([createdAt])
+}
+

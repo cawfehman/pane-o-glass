@@ -40,14 +40,15 @@ function isPrivateIp(ip: string) {
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 async function backfillVpnIpEnrichment() {
+    const isCacheOnly = process.argv.includes('--cache-only');
     // Parse limit from CLI args (e.g. node script.js --limit 20000)
     const limitArgIndex = process.argv.indexOf('--limit');
     const targetLimit = (limitArgIndex !== -1 && process.argv[limitArgIndex + 1])
         ? parseInt(process.argv[limitArgIndex + 1], 10)
-        : 20000;
+        : (isCacheOnly ? 100000 : 20000);
 
     console.log("==================================================================");
-    console.log(`[IP-BACKFILL] Starting VPN IP Enrichment for Most Recent ${targetLimit.toLocaleString()} IPs...`);
+    console.log(`[IP-BACKFILL] Starting VPN IP Enrichment (${isCacheOnly ? "CACHE-ONLY MODE (0 external API calls)" : `Most Recent ${targetLimit.toLocaleString()} IPs`})...`);
     console.log("==================================================================");
 
     const apiKey = process.env.IPLOCATE_API_KEY;
@@ -99,20 +100,36 @@ async function backfillVpnIpEnrichment() {
 
     // Backfill cached IPs into VpnEvent rows immediately
     let cacheApplied = 0;
-    for (const [ip, data] of cachedMap.entries()) {
-        const ipAsn = data.asn?.asn || data.asn || null;
-        const ipAsName = data.asn?.name || data.company?.name || data.org || null;
-        const ipAsDomain = data.asn?.domain || data.company?.domain || null;
-        const ipCountry = data.country || null;
-        const ipCountryCode = data.country_code || null;
+    const entries = Array.from(cachedMap.entries());
+    const UPDATE_BATCH = 50;
 
-        await prisma.vpnEvent.updateMany({
-            where: { sourceIp: ip },
-            data: { ipAsn, ipAsName, ipAsDomain, ipCountry, ipCountryCode }
-        });
-        cacheApplied++;
+    for (let i = 0; i < entries.length; i += UPDATE_BATCH) {
+        const slice = entries.slice(i, i + UPDATE_BATCH);
+        await Promise.all(slice.map(async ([ip, data]) => {
+            const ipAsn = data.asn?.asn || data.asn || null;
+            const ipAsName = data.asn?.name || data.company?.name || data.org || null;
+            const ipAsDomain = data.asn?.domain || data.company?.domain || null;
+            const ipCountry = data.country || null;
+            const ipCountryCode = data.country_code || null;
+
+            await prisma.vpnEvent.updateMany({
+                where: { sourceIp: ip },
+                data: { ipAsn, ipAsName, ipAsDomain, ipCountry, ipCountryCode }
+            });
+        }));
+        cacheApplied += slice.length;
+        if (cacheApplied % 500 === 0 || cacheApplied === entries.length) {
+            console.log(`[IP-BACKFILL] Applied cache to ${cacheApplied.toLocaleString()} / ${entries.length.toLocaleString()} unique IP groups...`);
+        }
     }
-    console.log(`[IP-BACKFILL] Applied local cache data to ${cacheApplied.toLocaleString()} IP event groups.`);
+    console.log(`[IP-BACKFILL] Successfully applied local cache data to ${cacheApplied.toLocaleString()} IP event groups.`);
+
+    if (isCacheOnly) {
+        console.log("==================================================================");
+        console.log(`[IP-BACKFILL] Cache-only run complete. Enriched ${cacheApplied.toLocaleString()} IP groups from local cache with 0 API calls.`);
+        console.log("==================================================================");
+        return;
+    }
 
     // 2. Identify remaining uncached IPs
     const uncachedIps = publicIps.filter(ip => !cachedMap.has(ip));

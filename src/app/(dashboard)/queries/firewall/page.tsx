@@ -4,12 +4,13 @@ import { useState, useEffect } from "react";
 import { QueryHeader } from "@/components/queries/QueryHeader";
 import { Shield, ExternalLink } from "lucide-react";
 import { ShunDatabaseTab } from "@/components/firewall/ShunDatabaseTab";
+import { SecurityIntelligenceTab } from "@/components/firewall/SecurityIntelligenceTab";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { PaginationControls } from "@/components/common/PaginationControls";
 import { SmartSearchBar } from "@/components/common/SmartSearchBar";
 
 export default function CiscoFirewallPage() {
-    const [activeTab, setActiveTab] = useState<"manual" | "guardian" | "blacklist" | "database">("manual");
+    const [activeTab, setActiveTab] = useState<"manual" | "guardian" | "blacklist" | "database" | "security-intelligence">("manual");
     const [ipAddress, setIpAddress] = useState("");
     const [availableHosts, setAvailableHosts] = useState<{ id: string, name: string }[]>([]);
     const [targetHost, setTargetHost] = useState("");
@@ -412,7 +413,7 @@ export default function CiscoFirewallPage() {
                     >
                         Guardian Blacklist
                     </button>
-                    <button
+                                        <button
                         onClick={() => setActiveTab("database")}
                         className="px-4 py-2 border-none font-semibold cursor-pointer"
                         style={{
@@ -422,6 +423,18 @@ export default function CiscoFirewallPage() {
                         }}
                     >
                         Shun Database
+                    </button>
+                    <button
+                        onClick={() => setActiveTab("security-intelligence")}
+                        className="px-4 py-2 border-none font-semibold cursor-pointer flex items-center gap-1.5"
+                        style={{
+                            background: activeTab === "security-intelligence" ? 'rgba(59, 130, 246, 0.1)' : 'transparent',
+                            borderBottom: activeTab === "security-intelligence" ? '2px solid var(--accent-primary)' : '2px solid transparent',
+                            color: activeTab === "security-intelligence" ? 'var(--text-primary)' : 'var(--text-secondary)',
+                        }}
+                    >
+                        <Shield className="w-4 h-4 text-accent-primary" />
+                        Security Intelligence (SI)
                     </button>
                 </div>
 
@@ -1040,6 +1053,8 @@ export default function CiscoFirewallPage() {
             </div>
         ) : activeTab === "database" ? (
             <ShunDatabaseTab />
+        ) : activeTab === "security-intelligence" ? (
+            <SecurityIntelligenceTab />
         ) : null}
             </div>
 

@@ -627,5 +627,39 @@ export class FmcClient {
             }
         ];
     }
+
+    /**
+     * Retrieve all Security Intelligence Network Lists (SINetworkList) from FMC.
+     */
+    public async getSecurityIntelligenceLists(): Promise<any[]> {
+        if (!this.isConfigured) {
+            return [];
+        }
+        try {
+            const client = await this.getAxios();
+            const res = await client.get(`/api/fmc_config/v1/domain/${this.domainUuid}/object/sinetworklists?expanded=true`);
+            return res.data?.items || [];
+        } catch (error: any) {
+            console.error(`[FMC] Failed to fetch Security Intelligence lists: ${error.message}`);
+            return [];
+        }
+    }
+
+    /**
+     * Retrieve the Security Intelligence policy details for a given Access Control Policy.
+     */
+    public async getSecurityIntelligencePolicy(policyId: string, siPolicyId: string): Promise<any | null> {
+        if (!this.isConfigured) {
+            return null;
+        }
+        try {
+            const client = await this.getAxios();
+            const res = await client.get(`/api/fmc_config/v1/domain/${this.domainUuid}/policy/accesspolicies/${policyId}/securityintelligencepolicies/${siPolicyId}`);
+            return res.data || null;
+        } catch (error: any) {
+            console.error(`[FMC] Failed to fetch SI policy for ACP ${policyId}: ${error.message}`);
+            return null;
+        }
+    }
 }
 

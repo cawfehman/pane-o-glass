@@ -241,6 +241,39 @@ async function run() {
             console.log(`Enriched ${localPrivateCount} RFC 1918 private IP(s) locally.`);
         }
 
+        // Always check local IpLookupCache first (0 API credits)
+        const pendingForCache = await prisma.shunDatabaseIp.findMany({
+            where: { enrichedAt: null },
+            select: { ip: true }
+        });
+        if (pendingForCache.length > 0) {
+            const cachedRecords = await prisma.ipLookupCache.findMany({
+                where: { ip: { in: pendingForCache.map(p => p.ip) } }
+            });
+            for (const cached of cachedRecords) {
+                try {
+                    const data = JSON.parse(cached.rawJson);
+                    const asnString = typeof data.asn === "object" ? data.asn?.asn : data.asn;
+                    const orgString = typeof data.asn === "object" ? (data.asn?.name || data.asn?.org || data.org) : data.org;
+                    await prisma.shunDatabaseIp.update({
+                        where: { ip: cached.ip },
+                        data: {
+                            ipAsn: asnString ? String(asnString) : null,
+                            org: orgString ? String(orgString) : null,
+                            ipCountry: data.country || null,
+                            ipCountryCode: data.country_code || cached.countryCode || null,
+                            city: data.city || cached.city || null,
+                            continent: data.continent || null,
+                            enrichedAt: new Date()
+                        }
+                    });
+                } catch {}
+            }
+            if (cachedRecords.length > 0) {
+                console.log(`[cron] Enriched ${cachedRecords.length} pending shun IPs directly from local IpLookupCache (0 API calls).`);
+            }
+        }
+
         const startOfUtcDay = new Date();
         startOfUtcDay.setUTCHours(0, 0, 0, 0);
 
@@ -320,6 +353,27 @@ async function run() {
                                     enrichedAt: new Date()
                                 }
                             });
+
+                            await prisma.ipLookupCache.upsert({
+                                where: { ip },
+                                create: {
+                                    ip,
+                                    latitude: data.latitude || null,
+                                    longitude: data.longitude || null,
+                                    countryCode: data.country_code || null,
+                                    city: data.city || null,
+                                    subdivision: data.subdivision || null,
+                                    rawJson: JSON.stringify(data)
+                                },
+                                update: {
+                                    latitude: data.latitude || null,
+                                    longitude: data.longitude || null,
+                                    countryCode: data.country_code || null,
+                                    city: data.city || null,
+                                    subdivision: data.subdivision || null,
+                                    rawJson: JSON.stringify(data)
+                                }
+                            }).catch(() => {});
                             enrichedCount++;
                         }
                     }

@@ -165,6 +165,34 @@ export async function enrichPendingShunIps(maxPublicToEnrich?: number): Promise<
         }
     }
 
+    // Check local IpLookupCache first for pending shun IPs (0 external API calls)
+    const pendingRemaining = pendingIpsAll.filter(p => !isPrivateShunIp(p.ip));
+    if (pendingRemaining.length > 0) {
+        const cachedShuns = await prisma.ipLookupCache.findMany({
+            where: { ip: { in: pendingRemaining.map(p => p.ip) } }
+        });
+        for (const cached of cachedShuns) {
+            try {
+                const data = JSON.parse(cached.rawJson);
+                const asnString = typeof data.asn === "object" ? data.asn?.asn : data.asn;
+                const orgString = typeof data.asn === "object" ? (data.asn?.name || data.asn?.org || data.org) : data.org;
+                await prisma.shunDatabaseIp.update({
+                    where: { ip: cached.ip },
+                    data: {
+                        ipAsn: asnString ? String(asnString) : null,
+                        org: orgString ? String(orgString) : null,
+                        ipCountry: data.country || null,
+                        ipCountryCode: data.country_code || cached.countryCode || null,
+                        city: data.city || cached.city || null,
+                        continent: data.continent || null,
+                        enrichedAt: new Date()
+                    }
+                });
+                enrichedCount++;
+            } catch {}
+        }
+    }
+
     const startOfUtcDay = new Date();
     startOfUtcDay.setUTCHours(0, 0, 0, 0);
 
@@ -238,6 +266,28 @@ export async function enrichPendingShunIps(maxPublicToEnrich?: number): Promise<
                                 enrichedAt: new Date()
                             }
                         });
+
+                        // Cache in IpLookupCache for other modules
+                        await prisma.ipLookupCache.upsert({
+                            where: { ip },
+                            create: {
+                                ip,
+                                latitude: data.latitude || null,
+                                longitude: data.longitude || null,
+                                countryCode: data.country_code || null,
+                                city: data.city || null,
+                                subdivision: data.subdivision || null,
+                                rawJson: JSON.stringify(data)
+                            },
+                            update: {
+                                latitude: data.latitude || null,
+                                longitude: data.longitude || null,
+                                countryCode: data.country_code || null,
+                                city: data.city || null,
+                                subdivision: data.subdivision || null,
+                                rawJson: JSON.stringify(data)
+                            }
+                        }).catch(() => {});
                         enrichedCount++;
                     }
                 }

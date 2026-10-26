@@ -1,3 +1,5 @@
+import { prisma } from "./prisma";
+
 /**
  * Utility for interacting with the ipinfo.io Lite API.
  * Includes RFC1918 (private) IP address validation to avoid unnecessary lookups.
@@ -52,6 +54,33 @@ export async function getIpInfoLite(ip: string): Promise<IpInfoLiteResponse | nu
         return null;
     }
 
+    // Always check local IpLookupCache first (0 external API credits)
+    try {
+        const cached = await prisma.ipLookupCache.findUnique({ where: { ip } });
+        if (cached) {
+            try {
+                const raw = JSON.parse(cached.rawJson);
+                return {
+                    ip,
+                    asn: raw.asn?.asn || raw.asn || raw.as_number || undefined,
+                    as_name: raw.asn?.name || raw.company?.name || raw.org || raw.as_name || undefined,
+                    as_domain: raw.asn?.domain || raw.company?.domain || raw.as_domain || undefined,
+                    country_code: raw.country_code || cached.countryCode || undefined,
+                    country: raw.country || undefined
+                };
+            } catch {
+                if (cached.countryCode) {
+                    return {
+                        ip,
+                        country_code: cached.countryCode
+                    };
+                }
+            }
+        }
+    } catch {
+        // Non-blocking database cache read failure, continue to external API
+    }
+
     const token = process.env.IPINFO_TOKEN;
     if (!token) {
         console.warn("IPINFO_TOKEN is missing in environment variables.");
@@ -68,6 +97,23 @@ export async function getIpInfoLite(ip: string): Promise<IpInfoLiteResponse | nu
         }
 
         const data = await response.json();
+
+        // Persist to local IpLookupCache so subsequent lookups hit cache
+        try {
+            await prisma.ipLookupCache.upsert({
+                where: { ip },
+                create: {
+                    ip,
+                    countryCode: data.country_code || null,
+                    rawJson: JSON.stringify(data)
+                },
+                update: {
+                    countryCode: data.country_code || null,
+                    rawJson: JSON.stringify(data)
+                }
+            });
+        } catch {}
+
         return data as IpInfoLiteResponse;
     } catch (error) {
         console.error(`Failed to fetch ipinfo.io data for ${ip}:`, error);

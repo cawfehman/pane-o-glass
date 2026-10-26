@@ -10,6 +10,117 @@ dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 import { runCitrixLoginAutoShunCycle } from '../../src/lib/netscaler-login-triage';
 import { getAdaptiveSearchWindow } from '../../src/lib/graylog-backlog-guardian';
 import { replicateShunToFleet } from '../../src/lib/universal-shun-sync';
+import { isPrivateIp } from '../../src/lib/ipinfo';
+
+async function checkCitrixSuccessHistory(ip: string, username?: string): Promise<{ hasCitrixSuccess: boolean; exactUserMatch: boolean }> {
+    const rawUrl = process.env.GRAYLOG_URL || process.env.OG_GRAYLOG_URL;
+    const rawToken = process.env.GRAYLOG_API_TOKEN || process.env.OG_GRAYLOG_API_TOKEN;
+    if (!rawUrl || !rawToken) return { hasCitrixSuccess: false, exactUserMatch: false };
+
+    const url = rawUrl.replace(/^"|"$/g, '').endsWith('/') ? rawUrl.replace(/^"|"$/g, '').slice(0, -1) : rawUrl.replace(/^"|"$/g, '');
+    const token = rawToken.replace(/^"|"$/g, '');
+    const authHeader = token.includes(":") 
+        ? `Basic ${Buffer.from(token).toString("base64")}`
+        : `Basic ${Buffer.from(`${token}:token`).toString("base64")}`;
+    
+    const agent = new https.Agent({ rejectUnauthorized: false });
+    const baseSuccessQuery = `(client_ip:"${ip}" OR source_ip:"${ip}") AND (ns_action:(LOGIN OR ICASTART) OR "response-200")`;
+    
+    try {
+        const res = await axios.get(`${url}/api/search/universal/relative`, {
+            params: {
+                query: baseSuccessQuery,
+                range: 604800, // 7-day lookback matching residential DHCP lease
+                limit: 50,
+                fields: "username,ns_username,client_ip,source_ip,timestamp"
+            },
+            headers: {
+                Authorization: authHeader,
+                Accept: "application/json",
+                "X-Requested-By": "guardian-auto-unshun"
+            },
+            httpsAgent: agent,
+            timeout: 10000
+        });
+
+        const messages = res.data?.messages || [];
+        const hasCitrixSuccess = messages.length > 0;
+        let exactUserMatch = false;
+
+        if (username && hasCitrixSuccess) {
+            const cleanU = username.toLowerCase().endsWith("@cooperhealth.edu") ? username.slice(0, -17).toLowerCase() : username.toLowerCase();
+            exactUserMatch = messages.some((m: any) => {
+                const msgU = (m.message?.username || m.message?.ns_username || "").toLowerCase();
+                return msgU === cleanU || msgU.startsWith(`${cleanU}@`);
+            });
+        }
+
+        return { hasCitrixSuccess, exactUserMatch };
+    } catch (e: any) {
+        return { hasCitrixSuccess: false, exactUserMatch: false };
+    }
+}
+
+async function isAccountUnderMultiIpSpray(username: string, lookbackMinutes: number = 60): Promise<boolean> {
+    const cleanU = username.toLowerCase().endsWith("@cooperhealth.edu") ? username.slice(0, -17).toLowerCase() : username.toLowerCase();
+    const cutoff = new Date(Date.now() - lookbackMinutes * 60 * 1000);
+
+    try {
+        const vpnDistinct = await prisma.vpnEvent.findMany({
+            where: {
+                username: { contains: cleanU, mode: "insensitive" },
+                status: "FAILURE",
+                createdAt: { gte: cutoff }
+            },
+            select: { sourceIp: true },
+            distinct: ["sourceIp"]
+        });
+
+        if (vpnDistinct.length >= 2) {
+            return true;
+        }
+
+        const rawUrl = process.env.GRAYLOG_URL || process.env.OG_GRAYLOG_URL;
+        const rawToken = process.env.GRAYLOG_API_TOKEN || process.env.OG_GRAYLOG_API_TOKEN;
+        if (rawUrl && rawToken) {
+            const url = rawUrl.replace(/^"|"$/g, '').endsWith('/') ? rawUrl.replace(/^"|"$/g, '').slice(0, -1) : rawUrl.replace(/^"|"$/g, '');
+            const token = rawToken.replace(/^"|"$/g, '');
+            const authHeader = token.includes(":") 
+                ? `Basic ${Buffer.from(token).toString("base64")}`
+                : `Basic ${Buffer.from(`${token}:token`).toString("base64")}`;
+            
+            const agent = new https.Agent({ rejectUnauthorized: false });
+            const res = await axios.get(`${url}/api/search/universal/relative`, {
+                params: {
+                    query: `(username:"${cleanU}" OR ns_username:"${cleanU}") AND (ns_action:LOGIN_FAILED OR LOGIN_FAILED OR "Failed policy")`,
+                    range: lookbackMinutes * 60,
+                    limit: 50,
+                    fields: "client_ip,source_ip,src_ip"
+                },
+                headers: {
+                    Authorization: authHeader,
+                    Accept: "application/json",
+                    "X-Requested-By": "guardian-auto-unshun"
+                },
+                httpsAgent: agent,
+                timeout: 8000
+            });
+
+            const messages = res.data?.messages || [];
+            const ipSet = new Set<string>();
+            for (const m of messages) {
+                const srcIp = m.message?.client_ip || m.message?.source_ip || m.message?.src_ip;
+                if (srcIp && !isPrivateIp(srcIp)) ipSet.add(srcIp);
+            }
+
+            if (ipSet.size >= 2) {
+                return true;
+            }
+        }
+    } catch {}
+
+    return false;
+}
 
 
 async function crossReplicateShun(ip: string, reason: string) {
@@ -124,6 +235,28 @@ const prisma = new PrismaClient();
 
 // Standalone IP Metadata Lookup
 async function getIpInfo(ip: any) {
+    if (!ip) return null;
+    try {
+        const cached = await prisma.ipLookupCache.findUnique({ where: { ip } });
+        if (cached) {
+            try {
+                const d = JSON.parse(cached.rawJson);
+                return {
+                    asn: d.asn?.asn || d.asn || d.as_number || null,
+                    as_name: d.asn?.name || d.company?.name || d.org || d.as_name || null,
+                    as_domain: d.asn?.domain || d.company?.domain || d.as_domain || null,
+                    country: d.country || null,
+                    country_code: d.country_code || cached.countryCode || null
+                };
+            } catch {
+                if (cached.countryCode) {
+                    return {
+                        asn: null, as_name: null, as_domain: null, country: null, country_code: cached.countryCode
+                    };
+                }
+            }
+        }
+    } catch {}
     try {
         const response = await axios.get(`https://ipapi.co/${ip}/json/`, { timeout: 5000 });
         const d = response.data;
@@ -576,9 +709,11 @@ async function runAutoUnshun() {
                 let shouldBlacklist = false;
                 let blacklistReason = "";
 
-                if (hasVpnHistory) {
+                const { hasCitrixSuccess } = await checkCitrixSuccessHistory(ip);
+
+                if (hasVpnHistory || hasCitrixSuccess) {
                     matchesUnshunCriteria = true;
-                    matchReason = "VPN_HISTORY";
+                    matchReason = hasVpnHistory ? "VPN_HISTORY" : "CITRIX_HISTORY";
                 } else if (isIsp) {
                     const failedVpnEvents = await prisma.vpnEvent.findMany({
                         where: {
@@ -600,25 +735,64 @@ async function runAutoUnshun() {
                             shouldBlacklist = true;
                             blacklistReason = `Blocked: IP is an ISP with ${failedVpnEvents.length} failed login attempts, but none match the corporate username format (name-name or name-name-name).`;
                         } else {
-                            console.log(`[GUARDIAN] Verifying ${corporateFailures.length} corporate-formatted usernames against Active Directory for ISP IP ${ip}...`);
-                            let hasRealUser = false;
-                            for (const failure of corporateFailures) {
-                                const isValid = await isAdUserValid(failure.username);
-                                if (isValid) {
-                                    hasRealUser = true;
-                                    console.log(`[GUARDIAN] AD check PASSED for username: ${failure.username}`);
-                                    break;
-                                } else {
-                                    console.log(`[GUARDIAN] AD check FAILED for username: ${failure.username}`);
-                                }
-                            }
+                            // Pillar 1: Single User Integrity Check (Did this IP attempt multiple different corporate accounts?)
+                            const distinctUsernames = new Set(corporateFailures.map(f => {
+                                return f.username.toLowerCase().endsWith("@cooperhealth.edu")
+                                    ? f.username.slice(0, -17).toLowerCase()
+                                    : f.username.toLowerCase();
+                            }));
 
-                            if (hasRealUser) {
-                                matchesUnshunCriteria = true;
-                                matchReason = "ISP_WITH_VALID_USER";
-                            } else {
+                            if (distinctUsernames.size > 1) {
                                 shouldBlacklist = true;
-                                blacklistReason = `Blocked: Corporate-formatted usernames were tried but none exist in Active Directory.`;
+                                blacklistReason = `Blocked: Residential IP attempted ${distinctUsernames.size} different corporate accounts (${Array.from(distinctUsernames).slice(0, 3).join(", ")}). Classified as credential stuffing spray.`;
+                            } else {
+                                const targetFailure = corporateFailures[0];
+                                const targetUsername = targetFailure.username;
+                                const cleanU = (distinctUsernames.values().next().value || "") as string;
+                                if (!cleanU) continue;
+
+                                console.log(`[GUARDIAN] Verifying corporate account ${cleanU} against Active Directory for ISP IP ${ip}...`);
+                                const isValid = await isAdUserValid(targetUsername);
+
+                                if (!isValid) {
+                                    shouldBlacklist = true;
+                                    blacklistReason = `Blocked: Corporate-formatted username (${targetUsername}) does not exist in Active Directory.`;
+                                } else {
+                                    // Pillar 2: Active Multi-IP Spray Collision Detector
+                                    const isUnderActiveSpray = await isAccountUnderMultiIpSpray(cleanU, 60);
+
+                                    if (isUnderActiveSpray) {
+                                        // SUPPRESS AUTO-UNSHUN: Account is actively under multi-proxy spray
+                                        matchesUnshunCriteria = false;
+                                        shouldBlacklist = false; // Don't permanently blacklist the home IP, but RETAIN shun
+                                        console.log(`[GUARDIAN] AUTO-UNSHUN SUPPRESSED: Corporate account ${cleanU} is actively under multi-IP spray. Retaining shun on ${ip}.`);
+                                    } else {
+                                        // Pillar 3: Cross-Platform User/IP Correlation
+                                        const vpnExactSuccess = await prisma.vpnEvent.count({
+                                            where: {
+                                                sourceIp: ip,
+                                                username: { contains: cleanU, mode: "insensitive" },
+                                                status: "SUCCESS"
+                                            }
+                                        });
+
+                                        const { exactUserMatch: citrixExactMatch } = await checkCitrixSuccessHistory(ip, targetUsername);
+
+                                        if (vpnExactSuccess > 0 || citrixExactMatch) {
+                                            matchesUnshunCriteria = true;
+                                            matchReason = vpnExactSuccess > 0 ? "KNOWN_VPN_USER_IP_PAIR" : "KNOWN_CITRIX_USER_IP_PAIR";
+                                            console.log(`[GUARDIAN] Exact user/IP pairing verified on ${matchReason} for ${cleanU} at ${ip}. Auto-unshun approved.`);
+                                        } else if (corporateFailures.length <= 2) {
+                                            // Pillar 4: Grace Period for Single-User Mistype (0 spray, valid AD user, max 2 failures)
+                                            matchesUnshunCriteria = true;
+                                            matchReason = "NEW_RESIDENTIAL_IP_SINGLE_USER_GRACE";
+                                            console.log(`[GUARDIAN] Single-user residential grace period approved for valid account ${cleanU} at ${ip}.`);
+                                        } else {
+                                            shouldBlacklist = true;
+                                            blacklistReason = `Blocked: Residential IP logged ${corporateFailures.length} failures for ${cleanU} with zero prior VPN or Citrix success history.`;
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
