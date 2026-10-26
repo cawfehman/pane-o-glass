@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getIpInfoLite } from "@/lib/ipinfo";
+
 import { getUserDetails, getBulkUserAdStatus } from "@/lib/ldap";
-import { enrichIp, isStandardUsIsp } from "@/lib/iplocate";
+import { getIpEnrichment, enrichIp, isStandardUsIsp } from "@/lib/iplocate";
 import axios from "axios";
 import https from "https";
 import { auth } from "@/lib/auth";
@@ -330,7 +330,7 @@ export async function syncFromGraylog(rangeSeconds = 1800): Promise<{ count: num
             let ipInfo = null;
             let finalFailureReason = failureReason;
             try {
-                ipInfo = await getIpInfoLite(sourceIp);
+                ipInfo = await getIpEnrichment(sourceIp);
                 
                 // If it is a failed VPN connection attempt, evaluate threat risk
                 if (status === "FAILURE" && ipInfo) {

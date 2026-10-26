@@ -188,7 +188,7 @@ export const helpData: Record<string, TooltipDetails> = {
             },
             {
                 title: "On-Demand Shun Database Sync ('Sync Live Firewalls Now')",
-                detail: "Trigger an immediate SSH 'show shun' sweep across all 4 perimeter firewalls at any time between daily cron runs. Reconciles active vs. historical shun counts, enriches up to 75 new IPs inline via IPinfo, and records a full sync summary banner.",
+                detail: "Trigger an immediate SSH 'show shun' sweep across all 4 perimeter firewalls at any time between daily cron runs. Reconciles active vs. historical shun counts, enriches up to 75 new IPs inline via IPLocate, and records a full sync summary banner.",
                 tag: "Manual Sync"
             },
             {
@@ -755,7 +755,7 @@ export const helpData: Record<string, TooltipDetails> = {
         title: "NetScaler Gateway & ADC Telemetry",
         version: "2.6.0",
         category: "Citrix Gateway Auth, Imprivata RADIUS Correlation, Smart Guardian Abuse Triage & Zero-Day Threat Hunting",
-        description: "Comprehensive Citrix NetScaler Gateway command center featuring 3rd-party Citrix syslog feed normalization, Imprivata Confirm ID RADIUS correlation, Smart Guardian Login & Abuse Triage with Active Directory & IPinfo ASN intelligence, Foreign Geo-Access monitoring, CISA KEV Zero-Day IOC hunting (CVE-2026-88771/88772), and 1-click All-Firewalls Perimeter Shun & Guardian Blacklist enforcement.",
+        description: "Comprehensive Citrix NetScaler Gateway command center featuring 3rd-party Citrix syslog feed normalization, Imprivata Confirm ID RADIUS correlation, Smart Guardian Login & Abuse Triage with Active Directory & IPLocate ASN intelligence, Foreign Geo-Access monitoring, CISA KEV Zero-Day IOC hunting (CVE-2026-88771/88772), and 1-click All-Firewalls Perimeter Shun & Guardian Blacklist enforcement.",
         capabilities: [
             {
                 title: "Imprivata Confirm ID RADIUS Correlation & MFA Timeout Shield",
@@ -774,7 +774,7 @@ export const helpData: Record<string, TooltipDetails> = {
             },
             {
                 title: "Active Directory & Residential ISP False-Positive Protection",
-                detail: "Cross-references targeted Citrix usernames against Active Directory LDAP and IPinfo ASN/Company type. Automatically protects legitimate corporate users on domestic residential ISPs (Comcast, Verizon, AT&T) or with prior Citrix/VPN login success ('AUTO_PROTECTED') while flagging foreign origins, hosting/VPS ASNs, non-existent AD user probes, and multi-user password sprays ('ABUSIVE_BLOCK').",
+                detail: "Cross-references targeted Citrix usernames against Active Directory LDAP and IPLocate ASN/Company type. Automatically protects legitimate corporate users on domestic residential ISPs (Comcast, Verizon, AT&T) or with prior Citrix/VPN login success ('AUTO_PROTECTED') while flagging foreign origins, hosting/VPS ASNs, non-existent AD user probes, and multi-user password sprays ('ABUSIVE_BLOCK').",
                 tag: "Smart Guardian"
             },
             {

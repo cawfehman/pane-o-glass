@@ -1,7 +1,7 @@
 import { NodeSSH } from "node-ssh";
 import { prisma } from "@/lib/prisma";
 import { logAudit } from "@/lib/audit";
-import { isPrivateIp, getIpInfoLite } from "@/lib/ipinfo";
+import { isPrivateIp, getIpEnrichment } from "@/lib/iplocate";
 import { NetscalerGraylogClient, DEFAULT_CITRIX_IOC_RULES, NetscalerIocRule, NetscalerMatchedIp } from "@/lib/netscaler-graylog";
 
 export interface AutoShunResult {
@@ -376,7 +376,7 @@ export async function runNetscalerCveAutoShunCycle(
                     `Automated zero-day shun applied for ${ip} matching ${threat.rule.name} (${cveTag}) across ${fwExec.targetLabel}.`
                 ).catch(() => {});
 
-                const ipInfo = await getIpInfoLite(ip).catch(() => null);
+                const ipInfo = await getIpEnrichment(ip).catch(() => null);
                 await prisma.firewallQueryHistory.create({
                     data: {
                         command: "Apply Shun (Auto NetScaler CVE-2026)",

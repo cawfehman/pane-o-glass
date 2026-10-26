@@ -1,5 +1,55 @@
 import { prisma } from "./prisma";
 import { logAudit } from "./audit";
+import axios from "axios";
+
+/**
+ * Non-public IP ranges that should not be queried against external APIs.
+ * This includes RFC 1918, RFC 6598, and other special-purpose ranges.
+ */
+const NON_PUBLIC_RANGES = [
+    { start: "10.0.0.0", end: "10.255.255.255", label: "RFC 1918" },
+    { start: "100.64.0.0", end: "100.127.255.255", label: "RFC 6598 (Shared/CGNAT)" },
+    { start: "127.0.0.0", end: "127.255.255.255", label: "Loopback" },
+    { start: "169.254.0.0", end: "169.254.255.255", label: "Link-local" },
+    // RFC 1918: Only 172.16.0.0 - 172.31.255.255 is private.
+    // 172.0-15 and 172.32-255 are valid public IP spaces.
+    { start: "172.16.0.0", end: "172.31.255.255", label: "RFC 1918" },
+    { start: "192.0.0.0", end: "192.0.0.255", label: "IETF Protocol" },
+    { start: "192.0.2.0", end: "192.0.2.255", label: "TEST-NET-1" },
+    { start: "192.168.0.0", end: "192.168.255.255", label: "RFC 1918" },
+    { start: "198.18.0.0", end: "198.19.255.255", label: "Benchmark" },
+    { start: "198.51.100.0", end: "198.51.100.255", label: "TEST-NET-2" },
+    { start: "203.0.113.0", end: "203.0.113.255", label: "TEST-NET-3" },
+    { start: "224.0.0.0", end: "239.255.255.255", label: "Multicast" },
+    { start: "240.0.0.0", end: "255.255.255.255", label: "Reserved" }
+];
+
+function ipToLong(ip: string): number {
+    return ip.split('.').reduce((long, octet) => (long << 8) + parseInt(octet, 10), 0) >>> 0;
+}
+
+export function isPrivateIp(ip: string): boolean {
+    if (!ip || typeof ip !== "string") return true;
+    try {
+        const ipLong = ipToLong(ip.trim());
+        return NON_PUBLIC_RANGES.some(range => {
+            return ipLong >= ipToLong(range.start) && ipLong <= ipToLong(range.end);
+        });
+    } catch {
+        return true;
+    }
+}
+
+export interface IpEnrichmentResult {
+    ip: string;
+    asn?: string;
+    as_name?: string;
+    as_domain?: string;
+    country_code?: string;
+    country?: string;
+    city?: string;
+    error?: string;
+}
 
 interface IpLocateResponse {
     ip: string;
@@ -286,3 +336,109 @@ export async function enrichIp(ip: string, isAdHoc: boolean = false): Promise<an
     const res = await enrichIpsBatch([ip], isAdHoc);
     return res[ip] || null;
 }
+
+/**
+ * Standard single IP enrichment function backed strictly by IPLocate & local PostgreSQL cache.
+ * Replaces all deprecated IPInfo lookups across the platform.
+ */
+export async function getIpEnrichment(ip: string): Promise<IpEnrichmentResult | null> {
+    if (!ip || isPrivateIp(ip)) {
+        return null;
+    }
+
+    // 1. Check local IpLookupCache first (0 external API credits)
+    try {
+        const cached = await prisma.ipLookupCache.findUnique({ where: { ip } });
+        if (cached?.rawJson) {
+            try {
+                const raw = JSON.parse(cached.rawJson);
+                const asnRaw = typeof raw.asn === "object" ? raw.asn?.asn : (raw.asn || raw.as_number);
+                return {
+                    ip,
+                    asn: asnRaw ? String(asnRaw) : undefined,
+                    as_name: raw.company?.name || raw.asn?.name || raw.as_name || raw.org || undefined,
+                    as_domain: raw.company?.domain || raw.asn?.domain || raw.as_domain || undefined,
+                    country_code: raw.country_code || cached.countryCode || undefined,
+                    country: raw.country || undefined,
+                    city: raw.city || cached.city || undefined
+                };
+            } catch {
+                if (cached.countryCode) {
+                    return {
+                        ip,
+                        country_code: cached.countryCode,
+                        city: cached.city || undefined
+                    };
+                }
+            }
+        }
+    } catch {}
+
+    // 2. Fetch live via iplocate.io API
+    const apiKey = process.env.IPLOCATE_API_KEY;
+    if (!apiKey) {
+        console.warn("[iplocate] IPLOCATE_API_KEY is not configured.");
+        return null;
+    }
+
+    try {
+        const response = await axios.get(`https://www.iplocate.io/api/lookup/${ip}`, {
+            headers: { "X-API-KEY": apiKey },
+            timeout: 5000
+        });
+
+        if (response.data) {
+            const data = response.data;
+            const countryCode = data.country_code || null;
+            const city = data.city || null;
+            const asnRaw = typeof data.asn === "object" ? data.asn?.asn : (data.asn || data.as_number);
+            const asName = data.company?.name || data.asn?.name || data.as_name || data.org || null;
+            const asDomain = data.company?.domain || data.asn?.domain || data.as_domain || null;
+
+            await prisma.ipLookupCache.upsert({
+                where: { ip },
+                create: {
+                    ip,
+                    latitude: data.latitude || null,
+                    longitude: data.longitude || null,
+                    countryCode,
+                    city,
+                    subdivision: data.subdivision || null,
+                    rawJson: JSON.stringify(data)
+                },
+                update: {
+                    latitude: data.latitude || null,
+                    longitude: data.longitude || null,
+                    countryCode,
+                    city,
+                    subdivision: data.subdivision || null,
+                    rawJson: JSON.stringify(data)
+                }
+            }).catch(() => {});
+
+            await logAudit(
+                "IPLOCATE_API_QUERY",
+                `Enriched IP ${ip} via IPLocate (${asName || "Unknown ASN"}).`
+            ).catch(() => {});
+
+            return {
+                ip,
+                asn: asnRaw ? String(asnRaw) : undefined,
+                as_name: asName || undefined,
+                as_domain: asDomain || undefined,
+                country_code: countryCode || undefined,
+                country: data.country || undefined,
+                city: city || undefined
+            };
+        }
+    } catch (err: any) {
+        console.error(`[iplocate] Failed lookup for ${ip}:`, err.message);
+    }
+
+    return null;
+}
+
+// Backward compatibility alias: redirects any residual getIpInfoLite calls directly to IPLocate
+export const getIpInfoLite = getIpEnrichment;
+export type IpInfoLiteResponse = IpEnrichmentResult;
+

@@ -59,7 +59,7 @@ function isPrivateIp(ip: any) {
     }
 }
 
-// IP Enrichment Fetcher (Primary: IPLocate, Fallback: IPInfo Lite)
+// IP Enrichment Fetcher (IPLocate)
 async function getIpInfo(ip: any, eventDate?: Date): Promise<any> {
         if (!ip || isPrivateIp(ip)) {
         return null;
@@ -133,36 +133,7 @@ async function getIpInfo(ip: any, eventDate?: Date): Promise<any> {
                 };
             }
         } catch (e: any) {
-            // iplocate failed/rate limited, try ipinfo.io fallback if IPINFO_TOKEN is set
-            const ipinfoToken = process.env.IPINFO_TOKEN;
-            if (ipinfoToken) {
-                try {
-                    const ipinfoRes = await axios.get(`https://api.ipinfo.io/lite/${ip}?token=${ipinfoToken}`, { timeout: 5000 });
-                    if (ipinfoRes?.data) {
-                        const d = ipinfoRes.data;
-                        const asnStr = d.asn || null;
-                        const orgStr = d.as_name || d.company?.name || null;
-                        const domainStr = d.as_domain || null;
-                        const countryStr = d.country || null;
-                        const countryCodeStr = d.country_code || null;
-
-                        await prisma.ipLookupCache.upsert({
-                            where: { ip },
-                            update: { countryCode: countryCodeStr, rawJson: JSON.stringify(d) },
-                            create: { ip, countryCode: countryCodeStr, rawJson: JSON.stringify(d) }
-                        }).catch(() => {});
-
-                        return {
-                            asn: asnStr,
-                            as_name: orgStr,
-                            as_domain: domainStr,
-                            country: countryStr,
-                            country_code: countryCodeStr,
-                            city: null
-                        };
-                    }
-                } catch (ipinfoErr) {}
-            }
+            // IPLocate failed or timed out
         }
     } catch (e: any) {
         console.error(`[VPN-SYNC] IP enrichment error for ${ip}:`, e.message);
@@ -456,7 +427,7 @@ async function runSync() {
                 }
             }
 
-            // Enrich IPinfo & Point-in-Time Active Directory Identity
+            // Enrich IPLocate & Point-in-Time Active Directory Identity
             const [ipInfo, adMap] = await Promise.all([
                 getIpInfo(sourceIp, logTimestamp),
                 getBulkUserAdStatus([username]).catch(() => ({}))

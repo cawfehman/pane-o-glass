@@ -2,7 +2,7 @@ import axios from "axios";
 import https from "https";
 import { prisma } from "@/lib/prisma";
 import { NetscalerGraylogClient } from "@/lib/netscaler-graylog";
-import { getIpInfoLite, isPrivateIp } from "@/lib/ipinfo";
+import { getIpEnrichment, isPrivateIp } from "@/lib/iplocate";
 import { getAdaptiveSearchWindow } from "@/lib/graylog-backlog-guardian";
 
 const httpsAgent = new https.Agent({
@@ -682,7 +682,7 @@ export async function queryImprivataForUser(
         }
     }
 
-    // Enrich external IPs with IPinfo / IpLookupCache for ISP & Location
+    // Enrich external IPs with IPLocate / IpLookupCache for ISP & Location
     const ipMetaMap = new Map<string, { country: string; city: string; isp: string }>();
     await Promise.all(
         Array.from(externalIpsToEnrich)
@@ -699,7 +699,7 @@ export async function queryImprivataForUser(
                         });
                         return;
                     }
-                    const lite = await getIpInfoLite(ip);
+                    const lite = await getIpEnrichment(ip);
                     if (lite) {
                         ipMetaMap.set(ip, {
                             country: lite.country_code || lite.country || "Unknown",

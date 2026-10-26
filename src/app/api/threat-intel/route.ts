@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { logAudit } from "@/lib/audit";
-import { getIpInfoLite } from "@/lib/ipinfo";
-import { enrichIp } from "@/lib/iplocate";
+
+import { getIpEnrichment, enrichIp } from "@/lib/iplocate";
 import { lookupDomainUmbrella } from "@/lib/umbrella";
 import dns from "dns";
 
@@ -58,7 +58,7 @@ export async function GET(req: NextRequest) {
 
         if (type === "ip") {
             // Geolocation and ASN
-            const geoData = await getIpInfoLite(query);
+            const geoData = await getIpEnrichment(query);
             
             // Build Reputation Analysis
             let status = "clean";

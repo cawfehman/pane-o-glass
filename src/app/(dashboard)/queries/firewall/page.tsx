@@ -628,7 +628,7 @@ export default function CiscoFirewallPage() {
                                                 </td>
                                                 <td style={{ padding: '12px 8px', fontFamily: 'monospace', color: 'var(--accent-primary)' }}>
                                                     <a 
-                                                        href={`https://ipinfo.io/${record.targetIp}?lookup_source=search-bar`}
+                                                        href={`https://www.iplocate.io/ip/${record.targetIp}`}
                                                         target="_blank"
                                                         rel="noopener noreferrer"
                                                         style={{ color: 'inherit', textDecoration: 'none' }}

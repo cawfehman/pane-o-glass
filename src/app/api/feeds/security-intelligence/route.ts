@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { isPrivateIp } from "@/lib/ipinfo";
+import { isPrivateIp } from "@/lib/iplocate";
 import crypto from "crypto";
 
 // Common US consumer residential ISPs for TTL aging calculus

@@ -10,7 +10,7 @@ dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 import { runCitrixLoginAutoShunCycle } from '../../src/lib/netscaler-login-triage';
 import { getAdaptiveSearchWindow } from '../../src/lib/graylog-backlog-guardian';
 import { replicateShunToFleet } from '../../src/lib/universal-shun-sync';
-import { isPrivateIp } from '../../src/lib/ipinfo';
+import { isPrivateIp } from '../../src/lib/iplocate';
 
 async function checkCitrixSuccessHistory(ip: string, username?: string): Promise<{ hasCitrixSuccess: boolean; exactUserMatch: boolean }> {
     const rawUrl = process.env.GRAYLOG_URL || process.env.OG_GRAYLOG_URL;

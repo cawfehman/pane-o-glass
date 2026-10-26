@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { logAudit } from "@/lib/audit";
-import { getIpInfoLite, isPrivateIp } from "@/lib/ipinfo";
+import { getIpEnrichment, isPrivateIp } from "@/lib/iplocate";
 import { execFile } from "child_process";
 import { promisify } from "util";
 import path from "path";
@@ -96,7 +96,7 @@ export async function GET(req: Request) {
             // 2. Correlate with local DB & Geo intelligence
             const [fwResults, geoInfo, vpnSessions, blacklistEntry, guardianHistory] = await Promise.all([
                 fwResultsPromise,
-                getIpInfoLite(ip).catch(() => null),
+                getIpEnrichment(ip).catch(() => null),
                 prisma.vpnEvent.findMany({
                     where: { sourceIp: ip },
                     take: 5,

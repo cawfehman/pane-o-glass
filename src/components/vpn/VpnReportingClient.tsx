@@ -941,7 +941,7 @@ export default function VpnReportingClient() {
                                                     <div className="flex flex-col gap-1">
                                                         <div className="flex items-center gap-1.5 flex-wrap">
                                                             <a
-                                                                href={`https://ipinfo.io/${evt.sourceIp}`}
+                                                                href={`https://www.iplocate.io/ip/${evt.sourceIp}`}
                                                                 target="_blank"
                                                                 rel="noopener noreferrer"
                                                                 className="text-indigo-400 hover:text-indigo-300 font-semibold hover:underline inline-flex items-center gap-1 group whitespace-nowrap"

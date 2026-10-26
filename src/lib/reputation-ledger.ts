@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { isPrivateIp, getIpInfoLite } from "@/lib/ipinfo";
+import { isPrivateIp, getIpEnrichment } from "@/lib/iplocate";
 import { enqueueFirewallCommand, getDynamicHoldExpiresAt } from "@/lib/firewall-queue";
 import { logAudit } from "@/lib/audit";
 import { isCorporateUsernameFormat } from "@/lib/netscaler-login-triage";
@@ -79,8 +79,8 @@ export async function recordAuthFailure(event: AuthFailureEvent) {
         return { action: "IGNORED_PRIVATE_IP", ip: cleanIp };
     }
 
-    // 1. Enrich IP metadata
-    const ipInfo = await getIpInfoLite(cleanIp);
+    // 1. Enrich IP metadata via IPLocate
+    const ipInfo = await getIpEnrichment(cleanIp);
     const org = ipInfo?.as_name || "";
     const asn = ipInfo?.asn || "";
     const country = ipInfo?.country_code || ipInfo?.country || "";

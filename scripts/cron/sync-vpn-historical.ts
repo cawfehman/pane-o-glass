@@ -63,10 +63,10 @@ function getIpInfo(ip: any) {
     return new Promise((resolve: any) => {
         if (isPrivateIp(ip)) return resolve(null);
 
-        const token = process.env.IPINFO_TOKEN!;
+        const token = process.env.IPLOCATE_API_KEY!;
         if (!token) return resolve(null);
 
-        const url = `https://api.ipinfo.io/lite/${ip}?token=${token}`;
+        const url = `https://www.iplocate.io/api/lookup/${ip}?apikey=${token}`;
         https.get(url, (res: any) => {
             if (res.statusCode !== 200) return resolve(null);
 
@@ -74,7 +74,14 @@ function getIpInfo(ip: any) {
             res.on('data', (chunk: any) => { rawData += chunk; });
             res.on('end', () => {
                 try {
-                    resolve(JSON.parse(rawData));
+                    const parsed = JSON.parse(rawData);
+                    resolve({
+                        asn: parsed.asn?.asn || parsed.asn || null,
+                        as_name: parsed.company?.name || parsed.asn?.name || parsed.as_name || parsed.org || null,
+                        as_domain: parsed.company?.domain || parsed.asn?.domain || parsed.as_domain || null,
+                        country: parsed.country || null,
+                        country_code: parsed.country_code || null
+                    });
                 } catch (e: any) {
                     resolve(null);
                 }

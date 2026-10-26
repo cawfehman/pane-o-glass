@@ -4,7 +4,7 @@ import { NodeSSH } from "node-ssh";
 import { logAudit } from "@/lib/audit";
 import { prisma } from "@/lib/prisma";
 import { hasPermission } from "@/app/actions/permissions";
-import { isPrivateIp, getIpInfoLite } from "@/lib/ipinfo";
+import { isPrivateIp, getIpEnrichment } from "@/lib/iplocate";
 import { analyzeFirewallVerification, recordShunActionLog } from "@/lib/shun-logger";
 
 interface FwExecutionResult {
@@ -209,7 +209,7 @@ export async function POST(req: Request) {
         const command = commandLines.join("\n");
 
         // Fetch IP geolocation/enrichment in parallel for first IP if single
-        const ipInfo = targetIps.length === 1 ? await getIpInfoLite(targetIps[0]).catch(() => null) : null;
+        const ipInfo = targetIps.length === 1 ? await getIpEnrichment(targetIps[0]).catch(() => null) : null;
 
         // Execute command across target firewall(s)
         const executionResults: FwExecutionResult[] = await Promise.all(

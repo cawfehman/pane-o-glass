@@ -1,7 +1,7 @@
 import { NodeSSH } from "node-ssh";
 import { prisma } from "@/lib/prisma";
 import { logAudit } from "@/lib/audit";
-import { isPrivateIp, getIpInfoLite } from "@/lib/ipinfo";
+import { isPrivateIp } from "@/lib/iplocate";
 import { recordShunActionLog, ShunNodeVerification } from "@/lib/shun-logger";
 
 export interface FirewallNodeConfig {

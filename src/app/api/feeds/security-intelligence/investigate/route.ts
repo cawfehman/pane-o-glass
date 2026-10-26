@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { hasPermission } from "@/app/actions/permissions";
 import { logAudit } from "@/lib/audit";
-import { isPrivateIp } from "@/lib/ipinfo";
+import { isPrivateIp } from "@/lib/iplocate";
 import axios from "axios";
 import https from "https";
 

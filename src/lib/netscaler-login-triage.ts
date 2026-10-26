@@ -4,7 +4,7 @@ import https from "https";
 import axios from "axios";
 import { prisma } from "@/lib/prisma";
 import { getBulkUserAdStatus } from "@/lib/ldap";
-import { isPrivateIp } from "@/lib/ipinfo";
+import { isPrivateIp } from "@/lib/iplocate";
 import { NetscalerGraylogClient } from "@/lib/netscaler-graylog";
 import { executeFirewallBulkCommands } from "@/lib/netscaler-auto-shun";
 import { getFleetFirewalls } from "@/lib/universal-shun-sync";
@@ -351,27 +351,7 @@ async function enrichIpMetadata(ip: string, allowExternalLookup: boolean = false
             }
         } catch {}
 
-        // 4. IPInfo Lite Fallback (using separate IPINFO_TOKEN quota)
-        if (process.env.IPINFO_TOKEN) {
-            try {
-                const token = process.env.IPINFO_TOKEN;
-                const res = await axios.get(`https://api.ipinfo.io/lite/${ip}?token=${token}`, { timeout: 2500 });
-                if (res.data?.as_name) {
-                    const companyName = res.data.as_name;
-                    const asn = res.data.asn || "Unknown";
-                    const countryCode = res.data.country_code || "US";
-                    await prisma.ipLookupCache.upsert({
-                        where: { ip },
-                        update: { countryCode, rawJson: JSON.stringify({ company: { name: companyName, type: "isp" }, asn: { asn, name: companyName } }) },
-                        create: { ip, countryCode, rawJson: JSON.stringify({ company: { name: companyName, type: "isp" }, asn: { asn, name: companyName } }) }
-                    }).catch(() => {});
-                    const isResidentialIsp = isResidential(companyName);
-                    return { countryCode, city: "N/A", asn, companyName, companyType: isResidentialIsp ? "isp" : "business", cidr: "N/A", isResidentialIsp };
-                }
-            } catch {}
-        }
-
-        // 5. On-demand explicit lookup via IPLocate if specifically requested
+        // 4. On-demand explicit lookup via IPLocate if specifically requested
         if (allowExternalLookup && process.env.IPLOCATE_API_KEY) {
             try {
                 const apiKey = process.env.IPLOCATE_API_KEY;
