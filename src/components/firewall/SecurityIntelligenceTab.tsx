@@ -8,8 +8,12 @@ import {
     ChevronLeft, ChevronRight, Filter, Ban, Unlock, Lock, Sparkles
 } from "lucide-react";
 import { SmartSearchBar } from "@/components/common/SmartSearchBar";
+import { LiveFeedInspector } from "./LiveFeedInspector";
 
 export function SecurityIntelligenceTab() {
+    // Sub-Tab Switcher State (Reputation Ledger vs Live FMC Feed Inspector)
+    const [activeSubTab, setActiveSubTab] = useState<"reputation" | "feedInspector">("reputation");
+
     // Timeframe Filter State
     const [timeframe, setTimeframe] = useState<"1h" | "6h" | "24h" | "7d" | "30d" | "90d" | "all">("24h");
     
@@ -424,6 +428,39 @@ export function SecurityIntelligenceTab() {
 
     return (
         <div className="flex-1 min-h-0 h-full overflow-y-auto custom-scrollbar pr-2 pb-24 space-y-6">
+            {/* Primary Sub-Tab Switcher (Reputation Ledger vs Live FMC Feed Inspector) */}
+            <div className="flex items-center gap-2 border-b border-border-color pb-3">
+                <button
+                    onClick={() => setActiveSubTab("reputation")}
+                    className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
+                        activeSubTab === "reputation"
+                            ? "bg-accent-primary text-white shadow-sm"
+                            : "text-text-muted hover:text-text-primary hover:bg-bg-card border border-border-color/60"
+                    }`}
+                >
+                    <Activity className="w-4 h-4" />
+                    Reputation Ledger & Strikes
+                </button>
+                <button
+                    onClick={() => setActiveSubTab("feedInspector")}
+                    className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
+                        activeSubTab === "feedInspector"
+                            ? "bg-accent-primary text-white shadow-sm"
+                            : "text-text-muted hover:text-text-primary hover:bg-bg-card border border-border-color/60"
+                    }`}
+                >
+                    <Network className="w-4 h-4" />
+                    Live FMC Feed Inspector (POG_SI_Edge_Defense)
+                    <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-emerald-500/20 text-emerald-300 font-mono font-bold">
+                        {feedMetrics?.total ? `${Number(feedMetrics.total).toLocaleString()} IPs` : "Active"}
+                    </span>
+                </button>
+            </div>
+
+            {activeSubTab === "feedInspector" ? (
+                <LiveFeedInspector />
+            ) : (
+                <>
             {/* Top Header & Timeframe Bar */}
             <div className="bg-bg-card border border-border-color rounded-xl p-5 shadow-sm">
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -1212,6 +1249,8 @@ export function SecurityIntelligenceTab() {
                 </div>
 
             </div>
+            </>
+            )}
         </div>
     );
 }

@@ -179,6 +179,10 @@ export interface FeedResult {
 let cachedFeeds: Record<string, { data: FeedResult; timestamp: number }> = {};
 const FEED_CACHE_TTL_MS = 60 * 1000; // 60s TTL ensures FMC MD5 check and feed download receive 100% identical data
 
+export function invalidateFeedCache() {
+    cachedFeeds = {};
+}
+
 export async function getSecurityIntelligenceFeed(tierFilter: string = "all", forceRefresh = false): Promise<FeedResult> {
     const now = Date.now();
     const cached = cachedFeeds[tierFilter];
