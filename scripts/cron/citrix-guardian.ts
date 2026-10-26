@@ -4,7 +4,7 @@ import dotenv from "dotenv";
 dotenv.config({ path: path.resolve(__dirname, "../../.env") });
 
 import { runCitrixLoginAutoShunCycle } from "../../src/lib/netscaler-login-triage";
-import { enqueueExpiredBridgeUnshuns } from "../../src/lib/firewall-queue";
+import { enqueueExpiredBridgeUnshuns, drainFirewallQueue } from "../../src/lib/firewall-queue";
 import { prisma } from "../../src/lib/prisma";
 
 const originalLog = console.log;
@@ -39,16 +39,29 @@ console.error = (...args) => {
 };
 
 async function executeOnce(forceRun = false) {
-    // Check for expired bridge shuns and queue their 'no shun' commands for the next bulk SSH session (no SSH traffic now)
+    // 1. Check for expired bridge shuns and queue their 'no shun' commands
     try {
-        const queuedCount = await enqueueExpiredBridgeUnshuns(100);
+        const queuedCount = await enqueueExpiredBridgeUnshuns(250);
         if (queuedCount > 0) {
-            console.log(`[CITRIX-GUARDIAN][QUEUE] Queued ${queuedCount} expired bridge unshun commands for the next scheduled bulk SSH session.`);
+            console.log(`[CITRIX-GUARDIAN][QUEUE] Queued ${queuedCount} expired bridge unshun commands.`);
         }
     } catch (e: any) {
         console.error("[CITRIX-GUARDIAN][QUEUE] Enqueue error:", e.message);
     }
 
+    // 2. Automatically drain pending firewall commands
+    try {
+        const drainResult = await drainFirewallQueue(250);
+        if (drainResult.executed > 0) {
+            console.log(
+                `[CITRIX-GUARDIAN][QUEUE] Drained ${drainResult.executed} commands (${drainResult.successes} succeeded, ${drainResult.failures} failed, ${drainResult.pendingRemaining} pending).`
+            );
+        }
+    } catch (e: any) {
+        console.error("[CITRIX-GUARDIAN][QUEUE] Drain error:", e.message);
+    }
+
+    // 3. Run Citrix triage & enforcement cycle
     const res = await runCitrixLoginAutoShunCycle({ forceRun });
     if (!res.executed) {
         return;
@@ -65,7 +78,8 @@ async function executeOnce(forceRun = false) {
 
 async function main() {
     const args = process.argv.slice(2);
-    const isLoop = args.includes("--loop") || args.includes("-l");
+    const isOnce = args.includes("--once") || args.includes("-1");
+    const isLoop = !isOnce;
     const forceRun = args.includes("--force");
     const intervalArg = args.find((a) => a.startsWith("--interval="));
     const intervalSec = intervalArg ? parseInt(intervalArg.split("=")[1], 10) || 120 : 120;

@@ -136,7 +136,7 @@ export function SecurityIntelligenceTab() {
             const res = await fetch("/api/feeds/security-intelligence/reputation", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ action: "DRAIN_QUEUE" })
+                body: JSON.stringify({ action: "DRAIN_QUEUE", limit: 500 })
             });
             const data = await res.json();
             if (data.success) {

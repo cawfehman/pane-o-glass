@@ -137,39 +137,110 @@ export async function enqueueExpiredBridgeUnshuns(limit: number = 100): Promise<
     return expiredBridges.length;
 }
 
-export async function drainFirewallQueue(batchLimit: number = 50) {
+export async function drainFirewallQueue(batchLimit: number = 250) {
     // 1. Check for expired bridge shuns and enqueue their UNSHUN commands first
-    await enqueueExpiredBridgeUnshuns(100);
+    await enqueueExpiredBridgeUnshuns(250);
 
     // 2. Fetch pending items to execute
-    const pendingItems = await prisma.firewallCommandQueue.findMany({
+    const rawPending = await prisma.firewallCommandQueue.findMany({
         where: { status: "PENDING" },
         orderBy: { createdAt: "asc" },
         take: batchLimit
     });
 
-    if (pendingItems.length === 0) {
+    if (rawPending.length === 0) {
         return { executed: 0, successes: 0, failures: 0, pendingRemaining: 0 };
     }
 
-    // Mark as PROCESSING
-    const ids = pendingItems.map(p => p.id);
+    // 3. Mark as PROCESSING
+    const rawIds = rawPending.map(p => p.id);
     await prisma.firewallCommandQueue.updateMany({
-        where: { id: { in: ids } },
+        where: { id: { in: rawIds } },
         data: { status: "PROCESSING", attempts: { increment: 1 } }
     });
 
-    // Group by targetHost
-    const byTarget: Record<string, typeof pendingItems> = {};
-    for (const item of pendingItems) {
+    // 4. Deduplicate / Reconcile by IP + targetHost within this batch:
+    // If the same IP appears multiple times, only keep the latest one for execution.
+    // Older entries are marked COMPLETED with note "Superseded by newer queue command".
+    const latestByIpTarget = new Map<string, typeof rawPending[0]>();
+    const supersededIds: string[] = [];
+
+    for (const item of rawPending) {
+        const key = `${item.ip}_${item.targetHost}`;
+        if (latestByIpTarget.has(key)) {
+            const older = latestByIpTarget.get(key)!;
+            supersededIds.push(older.id);
+        }
+        latestByIpTarget.set(key, item);
+    }
+
+    if (supersededIds.length > 0) {
+        await prisma.firewallCommandQueue.updateMany({
+            where: { id: { in: supersededIds } },
+            data: {
+                status: "COMPLETED",
+                executedAt: new Date(),
+                lastError: "Superseded by newer queue command"
+            }
+        });
+    }
+
+    const itemsToEvaluate = Array.from(latestByIpTarget.values());
+
+    // 5. Corporate / Protected User Shield:
+    // For pending SHUN commands, verify against ResidentialStrikeLedger.
+    // If an employee was pardoned, restored to WATCHING, or has strikeCount < 3,
+    // cancel the SHUN to prevent collateral damage.
+    const ipsToLookup = itemsToEvaluate.filter(i => i.action === "SHUN").map(i => i.ip);
+    const protectedIps = new Set<string>();
+
+    if (ipsToLookup.length > 0) {
+        const ledgers = await prisma.residentialStrikeLedger.findMany({
+            where: { ip: { in: ipsToLookup } },
+            select: { ip: true, status: true, strikeCount: true }
+        });
+        for (const l of ledgers) {
+            if (l.status === "PARDONED" || l.status === "WATCHING" || l.strikeCount < 3) {
+                protectedIps.add(l.ip);
+            }
+        }
+    }
+
+    const cancelledIds: string[] = [];
+    const itemsToExecute: typeof rawPending = [];
+
+    for (const item of itemsToEvaluate) {
+        if (item.action === "SHUN" && protectedIps.has(item.ip)) {
+            cancelledIds.push(item.id);
+        } else {
+            itemsToExecute.push(item);
+        }
+    }
+
+    if (cancelledIds.length > 0) {
+        await prisma.firewallCommandQueue.updateMany({
+            where: { id: { in: cancelledIds } },
+            data: {
+                status: "COMPLETED",
+                executedAt: new Date(),
+                lastError: "Cancelled: IP is pardoned or protected corporate employee"
+            }
+        });
+    }
+
+    // 6. Group by targetHost and execute commands
+    const byTarget: Record<string, typeof rawPending> = {};
+    for (const item of itemsToExecute) {
         if (!byTarget[item.targetHost]) byTarget[item.targetHost] = [];
         byTarget[item.targetHost].push(item);
     }
 
-    let successes = 0;
+    let successes = supersededIds.length + cancelledIds.length;
     let failures = 0;
 
     for (const [targetHost, items] of Object.entries(byTarget)) {
+        if (items.length === 0) continue;
+
         const commands = items.map(item => {
             return item.action === "SHUN" ? `shun ${item.ip}` : `no shun ${item.ip}`;
         });
@@ -229,7 +300,7 @@ export async function drainFirewallQueue(batchLimit: number = 50) {
     });
 
     return {
-        executed: pendingItems.length,
+        executed: rawPending.length,
         successes,
         failures,
         pendingRemaining: remaining

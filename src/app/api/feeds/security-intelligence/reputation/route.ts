@@ -83,7 +83,8 @@ export async function POST(req: NextRequest) {
         const userId = (session.user as any)?.id || "admin";
 
         if (action === "DRAIN_QUEUE") {
-            const result = await drainFirewallQueue(50);
+            const limit = Math.min(Math.max(1, body.limit || 500), 1000);
+            const result = await drainFirewallQueue(limit);
             return NextResponse.json({ success: true, action: "DRAIN_QUEUE", result });
         }
 
