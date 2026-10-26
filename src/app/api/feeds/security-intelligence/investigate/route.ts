@@ -29,7 +29,7 @@ export async function GET(req: NextRequest) {
         }
 
         const url = new URL(req.url);
-        const targetIp = url.searchParams.get("ip")?.trim() || "";
+        const targetIp = url.searchParams.get("target")?.trim() || url.searchParams.get("ip")?.trim() || "";
         const targetUser = url.searchParams.get("username")?.trim() || "";
 
         if (!targetIp && !targetUser) {
@@ -63,20 +63,23 @@ export async function GET(req: NextRequest) {
         }
 
         // 1. Check SI Feed & Shun Table Membership
-        const [blacklisted, activeShunStats, cveRecord, cacheInfo] = await Promise.all([
+        const [blacklisted, activeShunStats, cveRecord, cacheInfo, residentialRecord, pendingCommands] = await Promise.all([
             prisma.guardianBlacklist.findUnique({ where: { ip: ipToInspect } }),
             prisma.firewallShunStats.findMany({
                 where: { ip: ipToInspect, isActive: true },
                 include: { shunIp: true }
             }),
             prisma.netscalerCveShun.findUnique({ where: { ip: ipToInspect } }),
-            prisma.ipLookupCache.findUnique({ where: { ip: ipToInspect } })
+            prisma.ipLookupCache.findUnique({ where: { ip: ipToInspect } }),
+            prisma.residentialStrikeLedger.findUnique({ where: { ip: ipToInspect } }),
+            prisma.firewallCommandQueue.findMany({ where: { ip: ipToInspect, status: "PENDING" } })
         ]);
 
+        const inResidentialBlock = Boolean(residentialRecord && (residentialRecord.strikeCount >= 2 || residentialRecord.status === "ENFORCED" || residentialRecord.status === "QUARANTINED"));
         const inBlacklist = Boolean(blacklisted);
         const inActiveShuns = activeShunStats.length > 0;
         const inCveBlock = Boolean(cveRecord && cveRecord.status === "ACTIVE");
-        const isCurrentlyBlocked = inBlacklist || inActiveShuns || inCveBlock;
+        const isCurrentlyBlocked = inBlacklist || inActiveShuns || inCveBlock || inResidentialBlock;
 
         // 2. Query Good Traffic Indicators (AnyConnect VPN Success)
         const [vpnSuccesses, vpnFailures] = await Promise.all([
@@ -179,12 +182,38 @@ export async function GET(req: NextRequest) {
             try { geoData = JSON.parse(cacheInfo.rawJson); } catch {}
         }
 
+        const orgName = cacheInfo ? (geoData?.company?.name || geoData?.asn?.name || geoData?.org || "Unknown") : "Unenriched";
+        const asnStr = cacheInfo ? (geoData?.asn?.asn || "Unknown") : "Unenriched";
+
         return NextResponse.json({
+            target: ipToInspect,
             targetIp: ipToInspect,
             targetUser: targetUser || null,
-            verdict,
-            verdictReason,
+            inSecurityIntelligence: isCurrentlyBlocked,
             isCurrentlyBlocked,
+            verdict: {
+                level: verdict,
+                reason: verdictReason,
+                recommendation: verdict === "FALSE_POSITIVE_LIKELY"
+                    ? "UNBLOCK_IMMEDIATELY: Verified corporate employee activity detected. Recommend pardoning or allowlisting."
+                    : (verdict === "CLEAN_NOT_BLOCKED" 
+                        ? "NONE: IP is clean and not blocked anywhere across perimeter firewalls."
+                        : "MAINTAIN_BLOCK: Confirmed threat with zero legitimate employee login history.")
+            },
+            ipInfo: {
+                ip: ipToInspect,
+                as_name: orgName,
+                asn: asnStr,
+                country: cacheInfo?.countryCode || "Unknown",
+                city: cacheInfo?.city || null
+            },
+            ftdDropCount24h: ftdDropCount,
+            vpnHistory: {
+                hasRecentSuccess,
+                successfulLogins: vpnSuccesses.length,
+                failedLogins: vpnFailures.length,
+                users: uniqueVpnSuccessUsers
+            },
             details: {
                 inBlacklist,
                 blacklistReason: blacklisted?.reason || null,
@@ -192,9 +221,18 @@ export async function GET(req: NextRequest) {
                 activeShunFirewalls: activeShunStats.map(s => s.firewall),
                 inCveBlock,
                 cveTag: cveRecord?.cve || null,
-                org: cacheInfo ? (geoData?.company?.name || geoData?.asn?.name || geoData?.org || "Unknown") : "Unenriched",
-                asn: cacheInfo ? (geoData?.asn?.asn || "Unknown") : "Unenriched",
-                country: cacheInfo?.countryCode || "Unknown"
+                residential: residentialRecord ? {
+                    strikeCount: residentialRecord.strikeCount,
+                    status: residentialRecord.status,
+                    targetPlatform: residentialRecord.targetPlatform,
+                    attemptedUsers: residentialRecord.attemptedUsers,
+                    expiresAt: residentialRecord.expiresAt
+                } : null,
+                pendingQueueCount: pendingCommands.length,
+                org: orgName,
+                asn: asnStr,
+                country: cacheInfo?.countryCode || "Unknown",
+                city: cacheInfo?.city || null
             },
             telemetry: {
                 ftdSecurityIntelligenceDropsPast24h: ftdDropCount,
