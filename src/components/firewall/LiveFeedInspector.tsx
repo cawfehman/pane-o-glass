@@ -18,9 +18,18 @@ export function LiveFeedInspector() {
     const [categoryFilter, setCategoryFilter] = useState<string>("ALL");
 
     // Single IP Checker
+    const [lookupMode, setLookupMode] = useState<"SINGLE" | "BULK">("SINGLE");
     const [checkIpInput, setCheckIpInput] = useState("");
     const [checkingIp, setCheckingIp] = useState(false);
     const [checkResult, setCheckResult] = useState<any | null>(null);
+
+    // Bulk Multi-IP Triage State
+    const [bulkInput, setBulkInput] = useState("");
+    const [bulkLoading, setBulkLoading] = useState(false);
+    const [bulkResults, setBulkResults] = useState<any[]>([]);
+    const [selectedIps, setSelectedIps] = useState<Set<string>>(new Set());
+    const [bulkActionLoading, setBulkActionLoading] = useState(false);
+    const [copiedSummary, setCopiedSummary] = useState(false);
 
     // Lifecycle Action State (4-Step Confirmation)
     const [actionLoading, setActionLoading] = useState(false);
@@ -106,9 +115,122 @@ export function LiveFeedInspector() {
         }
     };
 
-    const copyMd5 = (md5: string) => {
-        navigator.clipboard.writeText(md5);
-        setCopiedMd5(true);
+    // Execute Batch Multi-IP Inspection
+    const handleBatchInspect = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!bulkInput.trim()) return;
+
+        setBulkLoading(true);
+        setSelectedIps(new Set());
+        try {
+            const res = await fetch("/api/feeds/security-intelligence/inspect", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    action: "BATCH_INSPECT",
+                    targets: bulkInput
+                })
+            });
+            const data = await res.json();
+            if (res.ok && data.success) {
+                setBulkResults(data.results);
+                // Auto-select blocked IPs by default
+                const blocked = new Set<string>();
+                for (const r of data.results) {
+                    if (r.isCurrentlyBlocked) blocked.add(r.ip);
+                }
+                setSelectedIps(blocked);
+            } else {
+                alert(`Batch inspection error: ${data.error || "Unknown error"}`);
+            }
+        } catch (err: any) {
+            alert(`Inspection failure: ${err.message}`);
+        } finally {
+            setBulkLoading(false);
+        }
+    };
+
+    // Execute Bulk Unblock & Pardon on Selected IPs
+    const handleBulkUnblock = async () => {
+        if (selectedIps.size === 0) return;
+        const ipsToPardon = Array.from(selectedIps);
+
+        if (!confirm(`Are you sure you want to unblock & pardon all ${ipsToPardon.length} selected IPs across the perimeter firewalls and FMC feed?`)) {
+            return;
+        }
+
+        setBulkActionLoading(true);
+        try {
+            const res = await fetch("/api/feeds/security-intelligence/inspect", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    action: "BATCH_REMOVE_AND_PARDON",
+                    ips: ipsToPardon,
+                    reason: `Bulk analyst unblock of ${ipsToPardon.length} IPs via Live Feed Inspector`
+                })
+            });
+
+            const data = await res.json();
+            if (res.ok && data.success) {
+                setLifecycleResult(data);
+                // Refresh batch inspection
+                handleBatchInspect({ preventDefault: () => {} } as any);
+                fetchFeedInspector();
+            } else {
+                alert(`Error executing bulk unblock: ${data.error || "Unknown error"}`);
+            }
+        } catch (err: any) {
+            alert(`Execution failure: ${err.message}`);
+        } finally {
+            setBulkActionLoading(false);
+        }
+    };
+
+    // Toggle Select All
+    const toggleSelectAll = () => {
+        if (selectedIps.size === bulkResults.length) {
+            setSelectedIps(new Set());
+        } else {
+            setSelectedIps(new Set(bulkResults.map(r => r.ip)));
+        }
+    };
+
+    // Select Only Blocked
+    const selectOnlyBlocked = () => {
+        const blocked = new Set<string>();
+        for (const r of bulkResults) {
+            if (r.isCurrentlyBlocked) blocked.add(r.ip);
+        }
+        setSelectedIps(blocked);
+    };
+
+    // Toggle Single Row Selection
+    const toggleSelectRow = (ip: string) => {
+        const next = new Set(selectedIps);
+        if (next.has(ip)) next.delete(ip);
+        else next.add(ip);
+        setSelectedIps(next);
+    };
+
+    // Copy Ticket Summary
+    const copyTicketSummary = () => {
+        if (bulkResults.length === 0) return;
+        const lines = [
+            `Cooper InfoSec Perimeter Triage Summary (${new Date().toLocaleString()}):`,
+            `Total Evaluated IPs: ${bulkResults.length}`,
+            `Blocked: ${bulkResults.filter(r => r.isCurrentlyBlocked).length} | Clean: ${bulkResults.filter(r => !r.isCurrentlyBlocked).length}`,
+            ``,
+            `IP Breakdown:`
+        ];
+        for (const r of bulkResults) {
+            const status = r.isCurrentlyBlocked ? `BLOCKED (${r.activeCategory})` : `CLEAN`;
+            lines.push(`- ${r.ip}: ${status} | Geo: ${r.networkProfile?.city}, ${r.networkProfile?.countryCode} | ISP: ${r.networkProfile?.isp}`);
+        }
+        navigator.clipboard.writeText(lines.join("\n"));
+        setCopiedSummary(true);
+        setTimeout(() => setCopiedSummary(false), 2000);
+    };
         setTimeout(() => setCopiedMd5(false), 2000);
     };
 
@@ -233,203 +355,232 @@ export function LiveFeedInspector() {
                 )}
             </div>
 
-            {/* 2. Instant IP Presence Verification Bar */}
-            <div className="bg-bg-card border border-border-color rounded-xl p-5 shadow-sm space-y-3">
-                <div className="flex items-center justify-between">
-                    <h4 className="text-sm font-bold text-text-primary flex items-center gap-2">
-                        <Search className="w-4 h-4 text-accent-primary" />
-                        Positive Feed Verification: Is this IP in the Feed?
-                    </h4>
+            {/* 2. Presence Verification: Single IP or Bulk Multi-IP Triage */}
+            <div className="bg-bg-card border border-border-color rounded-xl p-5 shadow-sm space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-border-color pb-3">
+                    <div className="flex items-center gap-2">
+                        <button
+                            type="button"
+                            onClick={() => setLookupMode("SINGLE")}
+                            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                                lookupMode === "SINGLE"
+                                    ? "bg-accent-primary text-white shadow-sm"
+                                    : "text-text-muted hover:text-text-primary hover:bg-bg-surface"
+                            }`}
+                        >
+                            <Search className="w-3.5 h-3.5" />
+                            Single IP 360° Lookup
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setLookupMode("BULK")}
+                            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                                lookupMode === "BULK"
+                                    ? "bg-accent-primary text-white shadow-sm"
+                                    : "text-text-muted hover:text-text-primary hover:bg-bg-surface"
+                            }`}
+                        >
+                            <Filter className="w-3.5 h-3.5" />
+                            Bulk Multi-IP Triage
+                            {bulkResults.length > 0 && (
+                                <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-emerald-500/20 text-emerald-300 font-mono font-bold">
+                                    {bulkResults.length}
+                                </span>
+                            )}
+                        </button>
+                    </div>
                     <span className="text-xs text-text-muted">
-                        Zero guesswork — checks the exact byte snapshot currently being enforced.
+                        {lookupMode === "SINGLE" ? "Inspect all perimeter defense layers for one IP" : "Paste, evaluate, and bulk unblock up to 100 IPs simultaneously"}
                     </span>
                 </div>
 
-                <form onSubmit={handleCheckIp} className="flex gap-2">
-                    <input
-                        type="text"
-                        placeholder="Enter IPv4 address to verify (e.g. 73.150.121.81 or 198.51.100.4)..."
-                        value={checkIpInput}
-                        onChange={(e) => setCheckIpInput(e.target.value)}
-                        className="flex-1 bg-bg-surface border border-border-color rounded-lg px-3 py-2 text-xs font-mono text-text-primary placeholder:text-text-muted focus:outline-none focus:border-accent-primary"
-                    />
-                    <button
-                        type="submit"
-                        disabled={checkingIp || !checkIpInput.trim()}
-                        className="px-4 py-2 bg-accent-primary hover:bg-accent-hover disabled:opacity-50 text-white rounded-lg text-xs font-bold transition-colors cursor-pointer flex items-center gap-1.5"
-                    >
-                        {checkingIp ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Search className="w-3.5 h-3.5" />}
-                        Check IP Presence
-                    </button>
-                </form>
+                {lookupMode === "SINGLE" ? (
+                    <>
+                        <form onSubmit={handleCheckIp} className="flex gap-2">
+                            <input
+                                type="text"
+                                placeholder="Enter IPv4 address to verify (e.g. 73.150.121.81 or 198.51.100.4)..."
+                                value={checkIpInput}
+                                onChange={(e) => setCheckIpInput(e.target.value)}
+                                className="flex-1 bg-bg-surface border border-border-color rounded-lg px-3 py-2 text-xs font-mono text-text-primary placeholder:text-text-muted focus:outline-none focus:border-accent-primary"
+                            />
+                            <button
+                                type="submit"
+                                disabled={checkingIp || !checkIpInput.trim()}
+                                className="px-4 py-2 bg-accent-primary hover:bg-accent-hover disabled:opacity-50 text-white rounded-lg text-xs font-bold transition-colors cursor-pointer flex items-center gap-1.5"
+                            >
+                                {checkingIp ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Search className="w-3.5 h-3.5" />}
+                                Check IP Presence
+                            </button>
+                        </form>
 
-                {/* 360° Diagnostic & Verification Profile */}
-                {checkResult && (
-                    <div className="bg-bg-surface border border-border-color rounded-xl p-5 space-y-4 text-xs shadow-inner">
-                        {/* Header: IP, Overall Verdict, and Action Button */}
-                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pb-3 border-b border-border-color">
-                            <div className="space-y-1">
-                                <div className="flex items-center gap-2 flex-wrap">
-                                    <span className="font-mono text-base font-extrabold text-text-primary">{checkResult.ip}</span>
-                                    {checkResult.isCurrentlyBlocked ? (
-                                        <span className="px-2.5 py-1 rounded-full bg-red-500/20 text-red-300 border border-red-500/40 font-bold uppercase text-[11px] flex items-center gap-1">
-                                            <ShieldAlert className="w-3.5 h-3.5" /> ACTIVE PERIMETER BLOCK DETECTED
-                                        </span>
-                                    ) : (
-                                        <span className="px-2.5 py-1 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 font-bold uppercase text-[11px] flex items-center gap-1">
-                                            <ShieldCheck className="w-3.5 h-3.5" /> ALL PERIMETER CHECKS CLEAR
-                                        </span>
+                        {/* 360° Diagnostic & Verification Profile */}
+                        {checkResult && (
+                            <div className="bg-bg-surface border border-border-color rounded-xl p-5 space-y-4 text-xs shadow-inner">
+                                {/* Header: IP, Overall Verdict, and Action Button */}
+                                <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pb-3 border-b border-border-color">
+                                    <div className="space-y-1">
+                                        <div className="flex items-center gap-2 flex-wrap">
+                                            <span className="font-mono text-base font-extrabold text-text-primary">{checkResult.ip}</span>
+                                            {checkResult.isCurrentlyBlocked ? (
+                                                <span className="px-2.5 py-1 rounded-full bg-red-500/20 text-red-300 border border-red-500/40 font-bold uppercase text-[11px] flex items-center gap-1">
+                                                    <ShieldAlert className="w-3.5 h-3.5" /> ACTIVE PERIMETER BLOCK DETECTED
+                                                </span>
+                                            ) : (
+                                                <span className="px-2.5 py-1 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 font-bold uppercase text-[11px] flex items-center gap-1">
+                                                    <ShieldCheck className="w-3.5 h-3.5" /> ALL PERIMETER CHECKS CLEAR
+                                                </span>
+                                            )}
+                                        </div>
+                                        <p className="text-text-muted text-xs">
+                                            {checkResult.reason}
+                                        </p>
+                                    </div>
+
+                                    {checkResult.isCurrentlyBlocked && (
+                                        <button
+                                            onClick={() => handleRemoveAndPardon(checkResult.ip, "Manual universal unblock via 360° Inspector")}
+                                            disabled={actionLoading}
+                                            className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-xs font-bold transition-all cursor-pointer shrink-0 flex items-center gap-2 shadow-md hover:scale-[1.02]"
+                                        >
+                                            <Zap className="w-4 h-4" />
+                                            {actionLoading ? "Executing Unblock..." : "⚡ Universal Unblock & Pardon"}
+                                        </button>
                                     )}
                                 </div>
-                                <p className="text-text-muted text-xs">
-                                    {checkResult.reason}
-                                </p>
-                            </div>
 
-                            {checkResult.isCurrentlyBlocked && (
-                                <button
-                                    onClick={() => handleRemoveAndPardon(checkResult.ip, "Manual universal unblock via 360° Inspector")}
-                                    disabled={actionLoading}
-                                    className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-xs font-bold transition-all cursor-pointer shrink-0 flex items-center gap-2 shadow-md hover:scale-[1.02]"
-                                >
-                                    <Zap className="w-4 h-4" />
-                                    {actionLoading ? "Executing Unblock..." : "⚡ Universal Unblock & Pardon"}
-                                </button>
-                            )}
-                        </div>
-
-                        {/* Five-Pillar Perimeter Block Posture */}
-                        <div>
-                            <span className="text-[11px] font-bold text-text-muted uppercase tracking-wider block mb-2">
-                                Perimeter Defense Posture (All Layers)
-                            </span>
-                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2.5">
-                                {/* 1. FMC SI Feed */}
-                                <div className={`p-2.5 rounded-lg border ${
-                                    checkResult.blockPosture?.inFmcFeed
-                                        ? "bg-red-500/10 border-red-500/30 text-red-200"
-                                        : "bg-bg-card border-border-color text-text-muted"
-                                }`}>
-                                    <span className="text-[10px] uppercase font-bold block mb-1">1. FMC Threat Feed</span>
-                                    <span className="font-bold text-xs flex items-center gap-1">
-                                        {checkResult.blockPosture?.inFmcFeed ? "🔴 IN FEED (Blocked)" : "🟢 Clean / Not in Feed"}
+                                {/* Five-Pillar Perimeter Block Posture */}
+                                <div>
+                                    <span className="text-[11px] font-bold text-text-muted uppercase tracking-wider block mb-2">
+                                        Perimeter Defense Posture (All Layers)
                                     </span>
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2.5">
+                                        {/* 1. FMC SI Feed */}
+                                        <div className={`p-2.5 rounded-lg border ${
+                                            checkResult.blockPosture?.inFmcFeed
+                                                ? "bg-red-500/10 border-red-500/30 text-red-200"
+                                                : "bg-bg-card border-border-color text-text-muted"
+                                        }`}>
+                                            <span className="text-[10px] uppercase font-bold block mb-1">1. FMC Threat Feed</span>
+                                            <span className="font-bold text-xs flex items-center gap-1">
+                                                {checkResult.blockPosture?.inFmcFeed ? "🔴 IN FEED (Blocked)" : "🟢 Clean / Not in Feed"}
+                                            </span>
+                                        </div>
+
+                                        {/* 2. Perimeter VPN / ASA Shun */}
+                                        <div className={`p-2.5 rounded-lg border ${
+                                            checkResult.blockPosture?.inPerimeterVpnShun
+                                                ? "bg-red-500/10 border-red-500/30 text-red-200"
+                                                : "bg-bg-card border-border-color text-text-muted"
+                                        }`}>
+                                            <span className="text-[10px] uppercase font-bold block mb-1">2. Perimeter ASA Shun</span>
+                                            <span className="font-bold text-xs flex items-center gap-1">
+                                                {checkResult.blockPosture?.inPerimeterVpnShun 
+                                                    ? `🔴 SHUNNED (${checkResult.blockPosture.activeShunNodes?.length || 1} node${checkResult.blockPosture.activeShunNodes?.length === 1 ? '' : 's'})` 
+                                                    : "🟢 Not Shunned"}
+                                            </span>
+                                        </div>
+
+                                        {/* 3. Progressive Strikes */}
+                                        <div className={`p-2.5 rounded-lg border ${
+                                            checkResult.blockPosture?.strikeCount >= 2
+                                                ? "bg-orange-500/10 border-orange-500/30 text-orange-200"
+                                                : checkResult.blockPosture?.strikeCount === 1
+                                                    ? "bg-amber-500/10 border-amber-500/30 text-amber-200"
+                                                    : "bg-bg-card border-border-color text-text-muted"
+                                        }`}>
+                                            <span className="text-[10px] uppercase font-bold block mb-1">3. Citrix Strike Ledger</span>
+                                            <span className="font-bold text-xs flex items-center gap-1">
+                                                {checkResult.blockPosture?.strikeCount > 0 
+                                                    ? `Strike ${checkResult.blockPosture.strikeCount} (${checkResult.blockPosture.strikeStatus})` 
+                                                    : "🟢 Strike 0 (Pardoned/Clean)"}
+                                            </span>
+                                        </div>
+
+                                        {/* 4. FMC ACP Geo-Fence */}
+                                        <div className={`p-2.5 rounded-lg border ${
+                                            checkResult.blockPosture?.fmcGeoStatus?.fmcGeoBlocked
+                                                ? "bg-amber-500/10 border-amber-500/30 text-amber-200"
+                                                : "bg-bg-card border-border-color text-text-muted"
+                                        }`}>
+                                            <span className="text-[10px] uppercase font-bold block mb-1">4. FMC Geo-Fence</span>
+                                            <span className="font-bold text-xs flex items-center gap-1">
+                                                {checkResult.blockPosture?.fmcGeoStatus?.isUsGeo 
+                                                    ? "🟢 Domestic US (Rule 2)" 
+                                                    : `⚠️ Non-US (${checkResult.blockPosture?.fmcGeoStatus?.countryCode})`}
+                                            </span>
+                                        </div>
+
+                                        {/* 5. Permanent Blacklist */}
+                                        <div className={`p-2.5 rounded-lg border ${
+                                            checkResult.blockPosture?.isBlacklisted || checkResult.blockPosture?.isAsnBlacklisted
+                                                ? "bg-red-500/10 border-red-500/30 text-red-200"
+                                                : "bg-bg-card border-border-color text-text-muted"
+                                        }`}>
+                                            <span className="text-[10px] uppercase font-bold block mb-1">5. Guardian Blacklist</span>
+                                            <span className="font-bold text-xs flex items-center gap-1">
+                                                {checkResult.blockPosture?.isBlacklisted 
+                                                    ? "🔴 IP Blacklisted" 
+                                                    : checkResult.blockPosture?.isAsnBlacklisted
+                                                        ? "🔴 ASN Blacklisted"
+                                                        : "🟢 Clean"}
+                                            </span>
+                                        </div>
+                                    </div>
                                 </div>
 
-                                {/* 2. Perimeter VPN / ASA Shun */}
-                                <div className={`p-2.5 rounded-lg border ${
-                                    checkResult.blockPosture?.inPerimeterVpnShun
-                                        ? "bg-red-500/10 border-red-500/30 text-red-200"
-                                        : "bg-bg-card border-border-color text-text-muted"
-                                }`}>
-                                    <span className="text-[10px] uppercase font-bold block mb-1">2. Perimeter ASA Shun</span>
-                                    <span className="font-bold text-xs flex items-center gap-1">
-                                        {checkResult.blockPosture?.inPerimeterVpnShun 
-                                            ? `🔴 SHUNNED (${checkResult.blockPosture.activeShunNodes?.length || 1} node${checkResult.blockPosture.activeShunNodes?.length === 1 ? '' : 's'})` 
-                                            : "🟢 Not Shunned"}
-                                    </span>
+                                {/* Network Metadata & Telecom Identity */}
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
+                                    <div className="bg-bg-card border border-border-color rounded-lg p-3 space-y-1.5">
+                                        <span className="text-[11px] font-bold text-text-muted uppercase tracking-wider block">
+                                            Network & ISP Identity
+                                        </span>
+                                        <div className="text-text-muted">
+                                            ISP / Provider: <strong className="text-text-primary">{checkResult.networkProfile?.isp}</strong>
+                                        </div>
+                                        <div className="text-text-muted">
+                                            Autonomous System: <strong className="text-accent-primary font-mono">{checkResult.networkProfile?.asn}</strong>
+                                        </div>
+                                        <div className="text-text-muted">
+                                            Geolocation: <strong className="text-text-primary">{checkResult.networkProfile?.city}, {checkResult.networkProfile?.countryCode}</strong>
+                                        </div>
+                                    </div>
+
+                                    <div className="bg-bg-card border border-border-color rounded-lg p-3 space-y-1.5">
+                                        <span className="text-[11px] font-bold text-text-muted uppercase tracking-wider block">
+                                            Firewall Nodes & Telemetry
+                                        </span>
+                                        <div className="text-text-muted">
+                                            Active Shuns on Nodes: <strong className="text-text-primary">{checkResult.blockPosture?.activeShunNodes?.length > 0 ? checkResult.blockPosture.activeShunNodes.join(", ") : "None"}</strong>
+                                        </div>
+                                        <div className="text-text-muted">
+                                            Historical Shun Records: <strong className="text-text-primary">{checkResult.shunHistory?.nodes?.length || 0} event(s) logged</strong>
+                                        </div>
+                                        <div className="text-text-muted">
+                                            Pending Queue Commands: <strong className="text-text-primary">{checkResult.pendingCommandsCount || 0}</strong>
+                                        </div>
+                                    </div>
                                 </div>
 
-                                {/* 3. Progressive Strikes */}
-                                <div className={`p-2.5 rounded-lg border ${
-                                    checkResult.blockPosture?.strikeCount >= 2
-                                        ? "bg-orange-500/10 border-orange-500/30 text-orange-200"
-                                        : checkResult.blockPosture?.strikeCount === 1
-                                            ? "bg-amber-500/10 border-amber-500/30 text-amber-200"
-                                            : "bg-bg-card border-border-color text-text-muted"
-                                }`}>
-                                    <span className="text-[10px] uppercase font-bold block mb-1">3. Citrix Strike Ledger</span>
-                                    <span className="font-bold text-xs flex items-center gap-1">
-                                        {checkResult.blockPosture?.strikeCount > 0 
-                                            ? `Strike ${checkResult.blockPosture.strikeCount} (${checkResult.blockPosture.strikeStatus})` 
-                                            : "🟢 Strike 0 (Pardoned/Clean)"}
-                                    </span>
-                                </div>
-
-                                {/* 4. FMC ACP Geo-Fence */}
-                                <div className={`p-2.5 rounded-lg border ${
-                                    checkResult.blockPosture?.fmcGeoStatus?.fmcGeoBlocked
-                                        ? "bg-amber-500/10 border-amber-500/30 text-amber-200"
-                                        : "bg-bg-card border-border-color text-text-muted"
-                                }`}>
-                                    <span className="text-[10px] uppercase font-bold block mb-1">4. FMC Geo-Fence</span>
-                                    <span className="font-bold text-xs flex items-center gap-1">
-                                        {checkResult.blockPosture?.fmcGeoStatus?.isUsGeo 
-                                            ? "🟢 Domestic US (Rule 2)" 
-                                            : `⚠️ Non-US (${checkResult.blockPosture?.fmcGeoStatus?.countryCode})`}
-                                    </span>
-                                </div>
-
-                                {/* 5. Permanent Blacklist */}
-                                <div className={`p-2.5 rounded-lg border ${
-                                    checkResult.blockPosture?.isBlacklisted || checkResult.blockPosture?.isAsnBlacklisted
-                                        ? "bg-red-500/10 border-red-500/30 text-red-200"
-                                        : "bg-bg-card border-border-color text-text-muted"
-                                }`}>
-                                    <span className="text-[10px] uppercase font-bold block mb-1">5. Guardian Blacklist</span>
-                                    <span className="font-bold text-xs flex items-center gap-1">
-                                        {checkResult.blockPosture?.isBlacklisted 
-                                            ? "🔴 IP Blacklisted" 
-                                            : checkResult.blockPosture?.isAsnBlacklisted
-                                                ? "🔴 ASN Blacklisted"
-                                                : "🟢 Clean"}
-                                    </span>
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* Network Metadata & Telecom Identity */}
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
-                            <div className="bg-bg-card border border-border-color rounded-lg p-3 space-y-1.5">
-                                <span className="text-[11px] font-bold text-text-muted uppercase tracking-wider block">
-                                    Network & ISP Identity
-                                </span>
-                                <div className="text-text-muted">
-                                    ISP / Provider: <strong className="text-text-primary">{checkResult.networkProfile?.isp}</strong>
-                                </div>
-                                <div className="text-text-muted">
-                                    Autonomous System: <strong className="text-accent-primary font-mono">{checkResult.networkProfile?.asn}</strong>
-                                </div>
-                                <div className="text-text-muted">
-                                    Geolocation: <strong className="text-text-primary">{checkResult.networkProfile?.city}, {checkResult.networkProfile?.countryCode}</strong>
-                                </div>
-                            </div>
-
-                            <div className="bg-bg-card border border-border-color rounded-lg p-3 space-y-1.5">
-                                <span className="text-[11px] font-bold text-text-muted uppercase tracking-wider block">
-                                    Firewall Nodes & Telemetry
-                                </span>
-                                <div className="text-text-muted">
-                                    Active Shuns on Nodes: <strong className="text-text-primary">{checkResult.blockPosture?.activeShunNodes?.length > 0 ? checkResult.blockPosture.activeShunNodes.join(", ") : "None"}</strong>
-                                </div>
-                                <div className="text-text-muted">
-                                    Historical Shun Records: <strong className="text-text-primary">{checkResult.shunHistory?.nodes?.length || 0} event(s) logged</strong>
-                                </div>
-                                <div className="text-text-muted">
-                                    Pending Queue Commands: <strong className="text-text-primary">{checkResult.pendingCommandsCount || 0}</strong>
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* Recent VPN / Citrix Sessions */}
-                        {checkResult.vpnTelemetry?.recentSessions?.length > 0 && (
-                            <div className="pt-2">
-                                <span className="text-[11px] font-bold text-text-muted uppercase tracking-wider block mb-1.5">
-                                    Recent AnyConnect VPN Sessions from this IP
-                                </span>
-                                <div className="overflow-x-auto rounded border border-border-color">
-                                    <table className="w-full text-[11px] text-left">
-                                        <thead className="bg-bg-card text-text-muted border-b border-border-color">
-                                            <tr>
-                                                <th className="py-1.5 px-2.5">User</th>
-                                                <th className="py-1.5 px-2.5">Status</th>
-                                                <th className="py-1.5 px-2.5">Gateway Stream</th>
-                                                <th className="py-1.5 px-2.5">Type</th>
-                                                <th className="py-1.5 px-2.5">Time</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody className="divide-y divide-border-color font-mono">
-                                            {checkResult.vpnTelemetry.recentSessions.slice(0, 5).map((s: any, idx: number) => (
+                                {/* Recent VPN / Citrix Sessions */}
+                                {checkResult.vpnTelemetry?.recentSessions?.length > 0 && (
+                                    <div className="pt-2">
+                                        <span className="text-[11px] font-bold text-text-muted uppercase tracking-wider block mb-1.5">
+                                            Recent AnyConnect VPN Sessions from this IP
+                                        </span>
+                                        <div className="overflow-x-auto rounded border border-border-color">
+                                            <table className="w-full text-[11px] text-left">
+                                                <thead className="bg-bg-card text-text-muted border-b border-border-color">
+                                                    <tr>
+                                                        <th className="py-1.5 px-2.5">User</th>
+                                                        <th className="py-1.5 px-2.5">Status</th>
+                                                        <th className="py-1.5 px-2.5">Gateway Stream</th>
+                                                        <th className="py-1.5 px-2.5">Type</th>
+                                                        <th className="py-1.5 px-2.5">Time</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody className="divide-y divide-border-color font-mono">
+                                                    {checkResult.vpnTelemetry.recentSessions.slice(0, 5).map((s: any, idx: number) => (
                                                 <tr key={idx} className="hover:bg-bg-card/50">
                                                     <td className="py-1 px-2.5 font-semibold text-text-primary">{s.username}</td>
                                                     <td className="py-1 px-2.5">
@@ -444,6 +595,183 @@ export function LiveFeedInspector() {
                                                     <td className="py-1 px-2.5 text-text-muted">{new Date(s.timestamp).toLocaleString()}</td>
                                                 </tr>
                                             ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                )}
+                    </>
+                ) : (
+                    /* Bulk Multi-IP Triage Workspace */
+                    <div className="space-y-4">
+                        <form onSubmit={handleBatchInspect} className="space-y-2">
+                            <textarea
+                                rows={4}
+                                placeholder="Paste list of IPv4 addresses (comma-separated, space-separated, or one per line)..."
+                                value={bulkInput}
+                                onChange={(e) => setBulkInput(e.target.value)}
+                                className="w-full bg-bg-surface border border-border-color rounded-lg p-3 text-xs font-mono text-text-primary placeholder:text-text-muted focus:outline-none focus:border-accent-primary"
+                            />
+                            <div className="flex items-center justify-between">
+                                <span className="text-[11px] text-text-muted">
+                                    Supports up to 100 IPs simultaneously from HelpDesk tickets, logs, or incident reports.
+                                </span>
+                                <div className="flex items-center gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={() => { setBulkInput(""); setBulkResults([]); setSelectedIps(new Set()); }}
+                                        className="px-3 py-1.5 border border-border-color hover:bg-bg-surface rounded-lg text-xs font-medium text-text-muted transition-colors cursor-pointer"
+                                    >
+                                        Clear
+                                    </button>
+                                    <button
+                                        type="submit"
+                                        disabled={bulkLoading || !bulkInput.trim()}
+                                        className="px-4 py-1.5 bg-accent-primary hover:bg-accent-hover disabled:opacity-50 text-white rounded-lg text-xs font-bold transition-colors cursor-pointer flex items-center gap-1.5"
+                                    >
+                                        {bulkLoading ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Search className="w-3.5 h-3.5" />}
+                                        Inspect All IPs
+                                    </button>
+                                </div>
+                            </div>
+                        </form>
+
+                        {/* Bulk Multi-Select Table & Actions */}
+                        {bulkResults.length > 0 && (
+                            <div className="space-y-3 pt-2">
+                                {/* Action Bar */}
+                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 bg-bg-surface border border-border-color rounded-xl text-xs">
+                                    <div className="flex items-center gap-3">
+                                        <div className="flex items-center gap-1.5">
+                                            <input
+                                                type="checkbox"
+                                                checked={selectedIps.size === bulkResults.length && bulkResults.length > 0}
+                                                onChange={toggleSelectAll}
+                                                className="cursor-pointer"
+                                                id="select-all-bulk"
+                                            />
+                                            <label htmlFor="select-all-bulk" className="font-semibold text-text-primary cursor-pointer">
+                                                Select All ({bulkResults.length})
+                                            </label>
+                                        </div>
+
+                                        <button
+                                            type="button"
+                                            onClick={selectOnlyBlocked}
+                                            className="px-2 py-0.5 rounded text-[11px] bg-red-500/10 text-red-300 border border-red-500/30 hover:bg-red-500/20 font-medium transition-colors cursor-pointer"
+                                        >
+                                            Select Blocked Only ({bulkResults.filter(r => r.isCurrentlyBlocked).length})
+                                        </button>
+                                    </div>
+
+                                    <div className="flex items-center gap-2">
+                                        <button
+                                            type="button"
+                                            onClick={copyTicketSummary}
+                                            className="px-3 py-1.5 border border-border-color hover:bg-bg-dark rounded-lg text-xs font-medium text-text-primary transition-colors cursor-pointer flex items-center gap-1"
+                                            title="Copy clean markdown report for ServiceNow / HelpDesk ticket"
+                                        >
+                                            {copiedSummary ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                                            {copiedSummary ? "Copied!" : "Copy Summary for Ticket"}
+                                        </button>
+
+                                        <button
+                                            type="button"
+                                            onClick={handleBulkUnblock}
+                                            disabled={bulkActionLoading || selectedIps.size === 0}
+                                            className="px-4 py-1.5 bg-red-600 hover:bg-red-700 disabled:opacity-40 text-white rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 shadow-sm"
+                                        >
+                                            <Zap className="w-3.5 h-3.5" />
+                                            {bulkActionLoading ? "Unblocking..." : `⚡ Bulk Unblock Selected (${selectedIps.size})`}
+                                        </button>
+                                    </div>
+                                </div>
+
+                                {/* Results Multi-Select Table */}
+                                <div className="overflow-x-auto rounded-lg border border-border-color">
+                                    <table className="w-full text-xs text-left">
+                                        <thead className="bg-bg-surface text-text-muted border-b border-border-color">
+                                            <tr>
+                                                <th className="py-2 px-3 w-8 text-center">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={selectedIps.size === bulkResults.length && bulkResults.length > 0}
+                                                        onChange={toggleSelectAll}
+                                                        className="cursor-pointer"
+                                                    />
+                                                </th>
+                                                <th className="py-2 px-3 font-semibold">IP Address</th>
+                                                <th className="py-2 px-3 font-semibold">Overall Verdict</th>
+                                                <th className="py-2 px-3 font-semibold">FMC Feed</th>
+                                                <th className="py-2 px-3 font-semibold">Perimeter Shun</th>
+                                                <th className="py-2 px-3 font-semibold">Citrix Strikes</th>
+                                                <th className="py-2 px-3 font-semibold">FMC GeoIP</th>
+                                                <th className="py-2 px-3 font-semibold">ISP / Country</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-border-color font-mono">
+                                            {bulkResults.map((r) => {
+                                                const isSelected = selectedIps.has(r.ip);
+                                                return (
+                                                    <tr key={r.ip} className={`hover:bg-bg-surface/50 transition-colors ${isSelected ? "bg-accent-primary/5" : ""}`}>
+                                                        <td className="py-2 px-3 text-center">
+                                                            <input
+                                                                type="checkbox"
+                                                                checked={isSelected}
+                                                                onChange={() => toggleSelectRow(r.ip)}
+                                                                className="cursor-pointer"
+                                                            />
+                                                        </td>
+                                                        <td className="py-2 px-3 font-bold text-text-primary">
+                                                            {r.ip}
+                                                        </td>
+                                                        <td className="py-2 px-3">
+                                                            {r.isCurrentlyBlocked ? (
+                                                                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-red-500/15 text-red-300 border border-red-500/30">
+                                                                    🔴 BLOCKED
+                                                                </span>
+                                                            ) : (
+                                                                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
+                                                                    🟢 CLEAR
+                                                                </span>
+                                                            )}
+                                                        </td>
+                                                        <td className="py-2 px-3">
+                                                            {r.blockPosture?.inFmcFeed ? (
+                                                                <span className="text-red-400 font-bold">In Feed</span>
+                                                            ) : (
+                                                                <span className="text-emerald-400">Not in Feed</span>
+                                                            )}
+                                                        </td>
+                                                        <td className="py-2 px-3">
+                                                            {r.blockPosture?.inPerimeterVpnShun ? (
+                                                                <span className="text-red-400 font-bold">Shunned ({r.blockPosture.activeShunNodes.length})</span>
+                                                            ) : (
+                                                                <span className="text-text-muted">None</span>
+                                                            )}
+                                                        </td>
+                                                        <td className="py-2 px-3">
+                                                            {r.blockPosture?.strikeCount > 0 ? (
+                                                                <span className="text-amber-400 font-bold">Strike {r.blockPosture.strikeCount}</span>
+                                                            ) : (
+                                                                <span className="text-text-muted">Strike 0</span>
+                                                            )}
+                                                        </td>
+                                                        <td className="py-2 px-3">
+                                                            {r.blockPosture?.fmcGeoStatus?.fmcGeoBlocked ? (
+                                                                <span className="text-amber-300 font-bold">⚠️ Non-US ({r.networkProfile?.countryCode})</span>
+                                                            ) : (
+                                                                <span className="text-emerald-400">US</span>
+                                                            )}
+                                                        </td>
+                                                        <td className="py-2 px-3 text-text-muted font-sans truncate max-w-[200px]" title={r.networkProfile?.isp}>
+                                                            {r.networkProfile?.isp || "Unknown"} ({r.networkProfile?.countryCode || "US"})
+                                                        </td>
+                                                    </tr>
+                                                );
+                                            })}
                                         </tbody>
                                     </table>
                                 </div>

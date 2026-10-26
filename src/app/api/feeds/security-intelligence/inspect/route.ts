@@ -284,7 +284,7 @@ export async function GET(req: NextRequest) {
     }
 }
 
-// POST: Remove target IP from SI Feed & Pardon Across Entire Perimeter
+// POST: Batch Inspect, Bulk Remove & Pardon, or Single IP Pardon
 export async function POST(req: NextRequest) {
     try {
         const session = await auth();
@@ -293,11 +293,269 @@ export async function POST(req: NextRequest) {
         }
 
         const body = await req.json().catch(() => ({}));
-        const { action, ip, reason } = body;
+        const { action, ip, ips, targets, reason } = body;
         const userId = (session.user as any)?.id || (session.user as any)?.name || "admin";
 
+        // ==============================================================
+        // 1. BATCH INSPECT MODE (Query multiple IPs at once)
+        // ==============================================================
+        if (action === "BATCH_INSPECT") {
+            let targetList: string[] = [];
+
+            if (Array.isArray(targets)) {
+                targetList = targets.map(t => String(t).trim()).filter(Boolean);
+            } else if (typeof targets === "string") {
+                const matches = targets.match(/(?:[0-9]{1,3}\.){3}[0-9]{1,3}/g);
+                targetList = matches ? Array.from(new Set(matches)) : [];
+            }
+
+            // Cap at 100 IPs per inspection
+            const cleanIps = Array.from(new Set(targetList)).slice(0, 100);
+
+            if (cleanIps.length === 0) {
+                return NextResponse.json({ error: "No valid IPv4 addresses provided for batch inspection." }, { status: 400 });
+            }
+
+            // Fetch live feed snapshot
+            const feed = await getSecurityIntelligenceFeed("all");
+            const feedIpSet = new Set(feed.ips);
+
+            // Fetch all DB records in bulk
+            const [residentialList, blacklistList, cveList, allShunStats, allCache, allAsnBlacklist, pendingCommands] = await Promise.all([
+                prisma.residentialStrikeLedger.findMany({ where: { ip: { in: cleanIps } } }),
+                prisma.guardianBlacklist.findMany({ where: { ip: { in: cleanIps } } }),
+                prisma.netscalerCveShun.findMany({ where: { ip: { in: cleanIps } } }),
+                prisma.firewallShunStats.findMany({
+                    where: { ip: { in: cleanIps } },
+                    include: { shunIp: true }
+                }),
+                prisma.ipLookupCache.findMany({ where: { ip: { in: cleanIps } } }),
+                prisma.guardianAsnBlacklist.findMany(),
+                prisma.firewallCommandQueue.findMany({ where: { ip: { in: cleanIps }, status: "PENDING" } })
+            ]);
+
+            const resMap = new Map(residentialList.map(r => [r.ip, r]));
+            const blMap = new Map(blacklistList.map(b => [b.ip, b]));
+            const cveMap = new Map(cveList.map(c => [c.ip, c]));
+            const cacheMap = new Map(allCache.map(c => [c.ip, c]));
+            const pendingMap = new Map<string, number>();
+            for (const p of pendingCommands) {
+                pendingMap.set(p.ip, (pendingMap.get(p.ip) || 0) + 1);
+            }
+
+            const shunStatsMap = new Map<string, typeof allShunStats>();
+            for (const s of allShunStats) {
+                if (!shunStatsMap.has(s.ip)) shunStatsMap.set(s.ip, []);
+                shunStatsMap.get(s.ip)!.push(s);
+            }
+
+            const asnBlacklistSet = new Set(allAsnBlacklist.map(a => a.asn.toUpperCase().replace(/^AS/, '')));
+
+            const results = cleanIps.map(currIp => {
+                const inFeed = feedIpSet.has(currIp);
+                const residential = resMap.get(currIp);
+                const blacklist = blMap.get(currIp);
+                const cve = cveMap.get(currIp);
+                const shunStats = shunStatsMap.get(currIp) || [];
+                const cache = cacheMap.get(currIp);
+
+                const activeShunNodes = shunStats.filter(s => s.isActive).map(s => s.firewall);
+                const inPerimeterVpnShun = activeShunNodes.length > 0;
+
+                let rawGeo = null;
+                if (cache?.rawJson) {
+                    try { rawGeo = JSON.parse(cache.rawJson); } catch {}
+                }
+
+                const ispOrg = rawGeo?.company?.name || rawGeo?.asn?.name || residential?.ispOrg || shunStats[0]?.shunIp?.org || "Unknown";
+                const asnStr = rawGeo?.asn?.asn ? String(rawGeo.asn.asn) : (residential?.asn || shunStats[0]?.shunIp?.ipAsn || "Unknown");
+                const countryCode = cache?.countryCode || residential?.country || shunStats[0]?.shunIp?.ipCountryCode || "US";
+                const city = cache?.city || residential?.city || shunStats[0]?.shunIp?.city || "Unknown";
+
+                const rawAsnNum = asnStr.replace(/^AS/i, "");
+                const isAsnBlacklisted = asnBlacklistSet.has(rawAsnNum.toUpperCase());
+
+                const isUsGeo = countryCode.toUpperCase() === "US";
+                const fmcGeoBlocked = !isUsGeo;
+
+                let activeCategory = "NONE";
+                let reason = "Clean / Not blocked in SI feed";
+
+                if (cve && cve.status === "ACTIVE") {
+                    activeCategory = "CVE_IOC";
+                    reason = `CVE-2026 Exploit IOC (${cve.cve})`;
+                } else if (blacklist) {
+                    activeCategory = "BLACKLIST";
+                    reason = `Permanent Blacklist: ${blacklist.reason || "Administrative block"}`;
+                } else if (residential && (residential.status === "ENFORCED" || residential.status === "QUARANTINED" || residential.strikeCount >= 2)) {
+                    activeCategory = "RESIDENTIAL_STRIKE";
+                    reason = `Strike ${residential.strikeCount} (${residential.status}): ${residential.attemptedUsers.length} account(s)`;
+                } else if (inPerimeterVpnShun) {
+                    activeCategory = "PERIMETER_VPN_SHUN";
+                    reason = `Active VPN Shun on ${activeShunNodes.join(", ")}`;
+                } else if (fmcGeoBlocked) {
+                    activeCategory = "FMC_GEOIP_BLOCKED";
+                    reason = `Non-US Location (${countryCode}): Blocked by FMC ACP Rule 3`;
+                }
+
+                const isCurrentlyBlocked = inFeed || inPerimeterVpnShun || isAsnBlacklisted || Boolean(blacklist) || fmcGeoBlocked || (residential && residential.strikeCount >= 2 && residential.status !== "PARDONED");
+
+                return {
+                    ip: currIp,
+                    inFeed,
+                    isCurrentlyBlocked,
+                    activeCategory,
+                    reason,
+                    blockPosture: {
+                        inFmcFeed: inFeed,
+                        inPerimeterVpnShun,
+                        activeShunNodes,
+                        strikeCount: residential?.strikeCount ?? 0,
+                        strikeStatus: residential?.status ?? "CLEAN",
+                        isBlacklisted: Boolean(blacklist),
+                        isAsnBlacklisted,
+                        isCveExploit: Boolean(cve && cve.status === "ACTIVE"),
+                        fmcGeoStatus: {
+                            countryCode,
+                            isUsGeo,
+                            fmcGeoBlocked,
+                            verdict: fmcGeoBlocked ? `BLOCKED by ACP Rule 3 (${countryCode})` : "PERMITTED by Rule 2 (US)"
+                        }
+                    },
+                    networkProfile: {
+                        isp: ispOrg,
+                        asn: asnStr,
+                        city,
+                        countryCode
+                    },
+                    pendingCommandsCount: pendingMap.get(currIp) || 0
+                };
+            });
+
+            return NextResponse.json({
+                success: true,
+                count: results.length,
+                totalBlocked: results.filter(r => r.isCurrentlyBlocked).length,
+                results
+            });
+        }
+
+        // ==============================================================
+        // 2. BATCH REMOVE & PARDON MODE (Unblock multiple IPs at once)
+        // ==============================================================
+        if (action === "BATCH_REMOVE_AND_PARDON") {
+            const targetIps: string[] = Array.isArray(ips) ? ips : (typeof ips === "string" ? [ips] : []);
+            const cleanIps = Array.from(new Set(targetIps.map(i => String(i).trim()))).filter(Boolean);
+
+            if (cleanIps.length === 0) {
+                return NextResponse.json({ error: "No target IPs provided for bulk removal and pardon." }, { status: 400 });
+            }
+
+            // 1. Reset in ResidentialStrikeLedger
+            await prisma.residentialStrikeLedger.updateMany({
+                where: { ip: { in: cleanIps } },
+                data: {
+                    status: "PARDONED",
+                    strikeCount: 0,
+                    pardonReason: reason || `SOC Bulk Manual Pardon by ${userId}`
+                }
+            });
+
+            // 2. Delete from GuardianBlacklist
+            await prisma.guardianBlacklist.deleteMany({
+                where: { ip: { in: cleanIps } }
+            });
+
+            // 3. Mark CVE Shuns as REMOVED
+            await prisma.netscalerCveShun.updateMany({
+                where: { ip: { in: cleanIps } },
+                data: {
+                    status: "REMOVED",
+                    removedAt: new Date(),
+                    removedBy: userId,
+                    notes: `Bulk unblocked by ${userId}`
+                }
+            });
+
+            // 4. Deactivate in FirewallShunStats
+            await prisma.firewallShunStats.updateMany({
+                where: { ip: { in: cleanIps } },
+                data: { isActive: false }
+            });
+
+            // 5. Cancel any pending SHUN commands for these IPs
+            await prisma.firewallCommandQueue.updateMany({
+                where: { ip: { in: cleanIps }, status: "PENDING", action: "SHUN" },
+                data: {
+                    status: "COMPLETED",
+                    executedAt: new Date(),
+                    lastError: `Cancelled: Bulk pardoned by ${userId}`
+                }
+            });
+
+            // 6. Invalidate in-memory feed cache
+            invalidateFeedCache();
+
+            // 7. Enqueue UNSHUN commands for each IP
+            for (const cleanIp of cleanIps) {
+                await enqueueFirewallCommand({
+                    ip: cleanIp,
+                    action: "UNSHUN",
+                    targetHost: "all",
+                    reason: `SOC Bulk Pardon by ${userId}: ${reason || "Batch analyst unblock"}`
+                });
+            }
+
+            // 8. Drain queue immediately across firewalls
+            const drainResult = await drainFirewallQueue(Math.max(50, cleanIps.length * 2));
+
+            // 9. Log Audit
+            await logAudit(
+                "SOC_BULK_FEED_REMOVAL_PARDON",
+                `SOC analyst ${userId} bulk pardoned ${cleanIps.length} IPs. Queue drained: ${drainResult.executed} executed. Reason: ${reason || "Batch unblock"}`,
+                userId,
+                cleanIps.slice(0, 5).join(", ")
+            );
+
+            // 10. Fetch FMC sync timing
+            const lastPollSetting = await prisma.netscalerCveSetting.findUnique({
+                where: { key: "LAST_FMC_SI_POLL" }
+            });
+            const intervalMins = Math.max(5, parseInt(process.env.FMC_POLL_INTERVAL_MINUTES || "15", 10));
+            let secondsUntilNextPoll: number | null = null;
+            let nextPollExpected: string | null = null;
+
+            if (lastPollSetting?.value) {
+                const lastPollDate = new Date(lastPollSetting.value);
+                const intervalMs = intervalMins * 60 * 1000;
+                const elapsed = Date.now() - lastPollDate.getTime();
+                const cyclesPassed = Math.max(0, Math.floor(elapsed / intervalMs));
+                const nextPollMs = lastPollDate.getTime() + (cyclesPassed + 1) * intervalMs;
+                nextPollExpected = new Date(nextPollMs).toISOString();
+                secondsUntilNextPoll = Math.max(0, Math.round((nextPollMs - Date.now()) / 1000));
+            }
+
+            return NextResponse.json({
+                success: true,
+                totalRequested: cleanIps.length,
+                databaseResetCount: cleanIps.length,
+                removedFromFeed: true,
+                perimeterShunExecuted: drainResult.successes > 0 || drainResult.executed > 0,
+                drainResult,
+                fmcSync: {
+                    lastPoll: lastPollSetting?.value || null,
+                    nextPollExpected,
+                    secondsUntilNextPoll,
+                    estimatedMinutes: secondsUntilNextPoll !== null ? Math.max(1, Math.round(secondsUntilNextPoll / 60)) : 15
+                }
+            });
+        }
+
+        // ==============================================================
+        // 3. SINGLE IP REMOVE & PARDON MODE
+        // ==============================================================
         if (action !== "REMOVE_AND_PARDON" || !ip || typeof ip !== "string") {
-            return NextResponse.json({ error: "Invalid action. 'REMOVE_AND_PARDON' with target IP is required." }, { status: 400 });
+            return NextResponse.json({ error: "Invalid action. Supported: 'REMOVE_AND_PARDON', 'BATCH_INSPECT', 'BATCH_REMOVE_AND_PARDON'." }, { status: 400 });
         }
 
         const cleanIp = ip.trim();
