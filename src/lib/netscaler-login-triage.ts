@@ -269,7 +269,7 @@ interface IpMetaInfo {
     isResidentialIsp: boolean;
 }
 
-async function enrichIpMetadata(ip: string): Promise<IpMetaInfo> {
+async function enrichIpMetadata(ip: string, allowExternalLookup: boolean = false): Promise<IpMetaInfo> {
     const fallback = {
         countryCode: "Unknown",
         city: "N/A",
@@ -291,7 +291,7 @@ async function enrichIpMetadata(ip: string): Promise<IpMetaInfo> {
             } catch {
                 rawData = {};
             }
-        } else {
+        } else if (allowExternalLookup) {
             const apiKey = process.env.IPLOCATE_API_KEY;
             try {
                 const res = await axios.get(`https://www.iplocate.io/api/lookup/${ip}`, {
@@ -1575,7 +1575,7 @@ export async function blockCitrixAbusiveIps(params: {
                 const meta =
                     cachedMap.get(ip) ||
                     (blockedIps.length <= 5
-                        ? await enrichIpMetadata(ip)
+                        ? await enrichIpMetadata(ip, true)
                         : { countryCode: "Unknown", city: "N/A", asn: "Unknown", companyName: "Unknown Network" });
 
                 await prisma.firewallQueryHistory.create({
@@ -2070,7 +2070,7 @@ export async function reevaluateSingleCitrixIp(
                     timeout: 15000,
                 })
                 .catch(() => ({ data: { messages: [], total_results: 0 } })),
-            enrichIpMetadata(cleanIp),
+            enrichIpMetadata(cleanIp, true),
             prisma.vpnEvent.findFirst({
                 where: { sourceIp: cleanIp, status: "SUCCESS" },
                 select: { id: true },
