@@ -535,6 +535,7 @@ export function SecurityIntelligenceTab() {
                                     <th className="py-2.5 px-3 font-semibold" title="Current 3-Strike posture: Watchlist (unblocked), Enforced (7d block), Quarantined (90d botnet), or Pardoned (MFA OK)">Reputation Status</th>
                                     <th className="py-2.5 px-3 font-semibold" title="Corporate usernames or honeypot probe accounts targeted by this IP">Attempted Accounts</th>
                                     <th className="py-2.5 px-3 font-semibold" title="Perimeter entrypoint targeted: Citrix NetScaler Gateway vs Cisco AnyConnect VPN">Platform</th>
+                                    <th className="py-2.5 px-3 font-semibold" title="Timestamp when this IP was first observed and recorded into the reputation ledger">Added At</th>
                                     <th className="py-2.5 px-3 font-semibold" title="Timestamp when this strike tier or quarantine automatically expires and demotes">Expires At</th>
                                     <th className="py-2.5 px-3 font-semibold text-right" title="Manual intervention tools (e.g. Force Pardon & Unblock)">Actions</th>
                                 </tr>
@@ -581,12 +582,25 @@ export function SecurityIntelligenceTab() {
                                                 {row.attemptedUsers?.length > 2 && ` (+${row.attemptedUsers.length - 2} more)`}
                                             </td>
                                             <td className="py-2.5 px-3">
-                                                <span className="px-1.5 py-0.5 rounded bg-bg-surface border border-border-color text-text-muted text-[10px] font-mono">
+                                                <span className={`px-1.5 py-0.5 rounded text-[10px] font-mono border ${
+                                                    row.targetPlatform === "BOTH"
+                                                        ? "bg-purple-500/15 border-purple-500/30 text-purple-300 font-bold"
+                                                        : row.targetPlatform === "VPN"
+                                                        ? "bg-blue-500/15 border-blue-500/30 text-blue-300 font-semibold"
+                                                        : "bg-cyan-500/15 border-cyan-500/30 text-cyan-300 font-semibold"
+                                                }`}>
                                                     {row.targetPlatform || "CITRIX"}
                                                 </span>
                                             </td>
-                                            <td className="py-2.5 px-3 text-text-muted text-[11px]">
-                                                {new Date(row.expiresAt).toLocaleDateString()}
+                                            <td className="py-2.5 px-3 text-text-muted text-[11px] whitespace-nowrap">
+                                                <div>{row.firstSeen ? new Date(row.firstSeen).toLocaleDateString() : "N/A"}</div>
+                                                {row.firstSeen && (
+                                                    <div className="text-[10px] opacity-75">{new Date(row.firstSeen).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</div>
+                                                )}
+                                            </td>
+                                            <td className="py-2.5 px-3 text-text-muted text-[11px] whitespace-nowrap">
+                                                <div>{new Date(row.expiresAt).toLocaleDateString()}</div>
+                                                <div className="text-[10px] opacity-75">{new Date(row.expiresAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</div>
                                             </td>
                                             <td className="py-2.5 px-3 text-right">
                                                 {!isPardoned && (
