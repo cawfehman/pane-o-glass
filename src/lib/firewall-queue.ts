@@ -51,6 +51,22 @@ export function computeDynamicHoldExpiresAt(lastFmcPollDate?: Date | null): Date
 }
 
 /**
+ * Convenience helper: automatically queries the LAST_FMC_SI_POLL timestamp from
+ * the database and calculates the dynamic expiration timestamp.
+ */
+export async function getDynamicHoldExpiresAt(): Promise<Date> {
+    try {
+        const lastPollState = await prisma.systemState.findUnique({
+            where: { key: "LAST_FMC_SI_POLL" }
+        });
+        const lastPoll = lastPollState?.value ? new Date(lastPollState.value) : null;
+        return computeDynamicHoldExpiresAt(lastPoll);
+    } catch {
+        return computeDynamicHoldExpiresAt(null);
+    }
+}
+
+/**
  * Enqueue a firewall shun or unshun command into the persistent command queue.
  */
 export async function enqueueFirewallCommand(options: QueueEnqueueOptions) {

@@ -1,4 +1,4 @@
-import { enqueueFirewallCommand, computeDynamicHoldExpiresAt } from "@/lib/firewall-queue";
+import { enqueueFirewallCommand, getDynamicHoldExpiresAt } from "@/lib/firewall-queue";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
@@ -59,7 +59,7 @@ export async function POST(req: NextRequest) {
 
         const applyTempShun = body.applyTempShun !== false;
         if (applyTempShun && !cleanTarget.includes("/")) {
-            const dynamicHold = computeDynamicHoldExpiresAt();
+            const dynamicHold = await getDynamicHoldExpiresAt();
             await enqueueFirewallCommand({
                 ip: cleanTarget,
                 action: "SHUN",

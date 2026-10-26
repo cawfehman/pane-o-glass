@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { isPrivateIp, getIpInfoLite } from "@/lib/ipinfo";
-import { enqueueFirewallCommand, computeDynamicHoldExpiresAt } from "@/lib/firewall-queue";
+import { enqueueFirewallCommand, getDynamicHoldExpiresAt } from "@/lib/firewall-queue";
 import { logAudit } from "@/lib/audit";
 import { isCorporateUsernameFormat } from "@/lib/netscaler-login-triage";
 
@@ -148,7 +148,7 @@ export async function recordAuthFailure(event: AuthFailureEvent) {
         // Attempts with non-corporate formats (flastname, dot notation, honeypots, recon strings) are reconnaissance probes and fast-track immediately to Strike 2!
         if (isNonCorporateAttempt) {
             const expiresAt = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000); // 7-day SI
-            const dynamicHold = computeDynamicHoldExpiresAt();
+            const dynamicHold = await getDynamicHoldExpiresAt();
 
             await prisma.residentialStrikeLedger.create({
                 data: {
@@ -240,7 +240,7 @@ export async function recordAuthFailure(event: AuthFailureEvent) {
     if (existing.strikeCount === 1) {
         // Escalate from Strike 1 to Strike 2 (Active Enforced)
         const expiresAt = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000); // 7-day rolling TTL
-        const dynamicHold = computeDynamicHoldExpiresAt();
+        const dynamicHold = await getDynamicHoldExpiresAt();
 
         await prisma.residentialStrikeLedger.update({
             where: { ip: cleanIp },
@@ -285,7 +285,7 @@ export async function recordAuthFailure(event: AuthFailureEvent) {
 
     // Already Strike 2 or above -> Escalate to Strike 3 (90-Day Botnet Quarantine)
     const expiresAt = new Date(now.getTime() + 90 * 24 * 60 * 60 * 1000); // 90-day quarantine
-    const dynamicHold = computeDynamicHoldExpiresAt();
+    const dynamicHold = await getDynamicHoldExpiresAt();
 
     await prisma.residentialStrikeLedger.update({
         where: { ip: cleanIp },
