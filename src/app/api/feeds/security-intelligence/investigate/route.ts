@@ -201,14 +201,14 @@ export async function GET(req: NextRequest) {
             prisma.vpnEvent.findMany({
                 where: { sourceIp: ipToInspect, status: "SUCCESS" },
                 orderBy: { createdAt: "desc" },
-                take: 10,
-                select: { username: true, createdAt: true, vpnType: true }
+                take: 50,
+                select: { username: true, createdAt: true, vpnType: true, vpnStream: true }
             }),
             prisma.vpnEvent.findMany({
                 where: { sourceIp: ipToInspect, status: "FAILURE" },
                 orderBy: { createdAt: "desc" },
-                take: 10,
-                select: { username: true, createdAt: true, failureReason: true }
+                take: 50,
+                select: { username: true, createdAt: true, failureReason: true, vpnStream: true }
             })
         ]);
 
@@ -326,7 +326,21 @@ export async function GET(req: NextRequest) {
                 hasRecentSuccess,
                 successfulLogins: vpnSuccesses.length,
                 failedLogins: vpnFailures.length,
-                users: uniqueVpnSuccessUsers
+                users: uniqueVpnSuccessUsers,
+                gateways: {
+                    connect: {
+                        name: "Connect (Wilmington)",
+                        stream: "WDC-FTD",
+                        failures: vpnFailures.filter(f => f.vpnStream === "WDC-FTD").length,
+                        successes: vpnSuccesses.filter(s => s.vpnStream === "WDC-FTD").length
+                    },
+                    reconnect: {
+                        name: "Reconnect (Keleman)",
+                        stream: "Kel-3140",
+                        failures: vpnFailures.filter(f => f.vpnStream === "Kel-3140").length,
+                        successes: vpnSuccesses.filter(s => s.vpnStream === "Kel-3140").length
+                    }
+                }
             },
             details: {
                 inBlacklist,

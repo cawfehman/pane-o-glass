@@ -582,15 +582,49 @@ export function SecurityIntelligenceTab() {
                                                 {row.attemptedUsers?.length > 2 && ` (+${row.attemptedUsers.length - 2} more)`}
                                             </td>
                                             <td className="py-2.5 px-3">
-                                                <span className={`px-1.5 py-0.5 rounded text-[10px] font-mono border ${
-                                                    row.targetPlatform === "BOTH"
-                                                        ? "bg-purple-500/15 border-purple-500/30 text-purple-300 font-bold"
-                                                        : row.targetPlatform === "VPN"
-                                                        ? "bg-blue-500/15 border-blue-500/30 text-blue-300 font-semibold"
-                                                        : "bg-cyan-500/15 border-cyan-500/30 text-cyan-300 font-semibold"
-                                                }`}>
-                                                    {row.targetPlatform || "CITRIX"}
-                                                </span>
+                                                {row.targetPlatform === "VPN: Connect" ? (
+                                                    <span
+                                                        className="px-1.5 py-0.5 rounded text-[10px] font-mono border bg-emerald-500/15 border-emerald-500/30 text-emerald-300 font-semibold"
+                                                        title="Targeted AnyConnect Connect Gateway (Wilmington WDC-FTD - connect.cooperhealth.edu)"
+                                                    >
+                                                        VPN: Connect
+                                                    </span>
+                                                ) : row.targetPlatform === "VPN: Reconnect" ? (
+                                                    <span
+                                                        className="px-1.5 py-0.5 rounded text-[10px] font-mono border bg-rose-500/15 border-rose-500/30 text-rose-300 font-semibold"
+                                                        title="Targeted AnyConnect Reconnect Gateway (Keleman Kel-3140 - reconnect.cooperhealth.edu)"
+                                                    >
+                                                        VPN: Reconnect
+                                                    </span>
+                                                ) : row.targetPlatform === "VPN: Both" ? (
+                                                    <span
+                                                        className="px-1.5 py-0.5 rounded text-[10px] font-mono border bg-indigo-500/15 border-indigo-500/30 text-indigo-300 font-bold"
+                                                        title="Targeted BOTH Connect (Wilmington) & Reconnect (Keleman) gateways"
+                                                    >
+                                                        VPN: Both
+                                                    </span>
+                                                ) : row.targetPlatform === "BOTH" ? (
+                                                    <span
+                                                        className="px-1.5 py-0.5 rounded text-[10px] font-mono border bg-purple-500/15 border-purple-500/30 text-purple-300 font-bold"
+                                                        title="Targeted multiple gateways (Citrix NetScaler + AnyConnect VPN)"
+                                                    >
+                                                        MULTI-GATEWAY
+                                                    </span>
+                                                ) : row.targetPlatform === "VPN" ? (
+                                                    <span
+                                                        className="px-1.5 py-0.5 rounded text-[10px] font-mono border bg-blue-500/15 border-blue-500/30 text-blue-300 font-semibold"
+                                                        title="Targeted Cisco AnyConnect VPN"
+                                                    >
+                                                        VPN
+                                                    </span>
+                                                ) : (
+                                                    <span
+                                                        className="px-1.5 py-0.5 rounded text-[10px] font-mono border bg-cyan-500/15 border-cyan-500/30 text-cyan-300 font-semibold"
+                                                        title="Targeted Citrix NetScaler Gateway (remote.cooperhealth.edu)"
+                                                    >
+                                                        CITRIX
+                                                    </span>
+                                                )}
                                             </td>
                                             <td className="py-2.5 px-3 text-text-muted text-[11px] whitespace-nowrap">
                                                 <div>{row.firstSeen ? new Date(row.firstSeen).toLocaleDateString() : "N/A"}</div>
@@ -763,6 +797,25 @@ export function SecurityIntelligenceTab() {
                                                     {investigateResult.vpnHistory?.hasRecentSuccess ? `Yes (${investigateResult.vpnHistory.successfulLogins} successful logins)` : "No successful logins"}
                                                 </span>
                                             </div>
+                                            {investigateResult.vpnHistory?.gateways && (
+                                                <div className="text-text-muted flex items-center gap-1.5 flex-wrap pt-0.5 text-[11px]">
+                                                    <span className="font-medium text-text-secondary">VPN Streams:</span>
+                                                    <span
+                                                        className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-300 border border-emerald-500/25 font-mono"
+                                                        title="Wilmington Data Center - WDC-FTD (connect.cooperhealth.edu)"
+                                                    >
+                                                        Connect (Wilmington): {investigateResult.vpnHistory.gateways.connect.failures} fails
+                                                        {investigateResult.vpnHistory.gateways.connect.successes > 0 && ` / ${investigateResult.vpnHistory.gateways.connect.successes} ok`}
+                                                    </span>
+                                                    <span
+                                                        className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-rose-500/10 text-rose-300 border border-rose-500/25 font-mono"
+                                                        title="Keleman Data Center - Kel-3140 (reconnect.cooperhealth.edu)"
+                                                    >
+                                                        Reconnect (Keleman): {investigateResult.vpnHistory.gateways.reconnect.failures} fails
+                                                        {investigateResult.vpnHistory.gateways.reconnect.successes > 0 && ` / ${investigateResult.vpnHistory.gateways.reconnect.successes} ok`}
+                                                    </span>
+                                                </div>
+                                            )}
                                         </>
                                     )}
                                 </div>
