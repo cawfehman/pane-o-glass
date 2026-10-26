@@ -285,7 +285,7 @@ export function SecurityIntelligenceTab() {
     const totalPages = pagination?.totalPages || 1;
 
     return (
-        <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar pr-2 pb-16 space-y-6">
+        <div className="flex-1 min-h-0 h-full overflow-y-auto custom-scrollbar pr-2 pb-24 space-y-6">
             {/* Top Header & Timeframe Bar */}
             <div className="bg-bg-card border border-border-color rounded-xl p-5 shadow-sm">
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -526,9 +526,9 @@ export function SecurityIntelligenceTab() {
 
                 {/* Table Component */}
                 {entries.length > 0 ? (
-                    <div className="overflow-x-auto rounded-lg border border-border-color">
-                        <table className="w-full text-xs text-left">
-                            <thead className="bg-bg-surface text-text-muted border-b border-border-color">
+                    <div className="overflow-auto max-h-[560px] rounded-lg border border-border-color custom-scrollbar relative">
+                        <table className="w-full text-xs text-left border-collapse">
+                            <thead className="bg-bg-surface text-text-muted border-b border-border-color sticky top-0 z-10 shadow-sm backdrop-blur-md">
                                 <tr>
                                     <th className="py-2.5 px-3 font-semibold">IP Address</th>
                                     <th className="py-2.5 px-3 font-semibold">ISP / ASN</th>

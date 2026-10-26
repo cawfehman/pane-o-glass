@@ -440,7 +440,7 @@ export default function CiscoFirewallPage() {
 
             </div>
 
-            <div className="flex-1 min-h-0 flex flex-col gap-6">
+            <div className="flex-1 min-h-0 h-full flex flex-col gap-6">
             {activeTab === "manual" ? (
                 <>
                     <div className="grid grid-cols-1 lg:grid-cols-[minmax(300px,450px)_1fr] gap-8 items-stretch">
@@ -1054,7 +1054,9 @@ export default function CiscoFirewallPage() {
         ) : activeTab === "database" ? (
             <ShunDatabaseTab />
         ) : activeTab === "security-intelligence" ? (
-            <SecurityIntelligenceTab />
+            <div className="flex-1 min-h-0 h-full overflow-hidden flex flex-col">
+                <SecurityIntelligenceTab />
+            </div>
         ) : null}
             </div>
 
