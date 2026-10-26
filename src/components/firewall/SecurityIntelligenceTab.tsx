@@ -348,11 +348,11 @@ export function SecurityIntelligenceTab() {
                         </div>
                     </div>
 
-                    <div className="flex items-center gap-3 bg-bg-surface/50 border border-border-color rounded-lg p-2.5 text-xs cursor-help" title="Why Interface Shuns? Cisco FMC Security Intelligence only inspects transit (thru-the-box) traffic like Citrix. AnyConnect VPN terminates on the firewall outside socket (to-the-box), which bypasses Snort/SI. Direct firewall shuns (shun <ip>) are mandatory to drop AnyConnect VPN attacks.">
+                    <div className="flex items-center gap-3 bg-bg-surface/50 border border-border-color rounded-lg p-2.5 text-xs cursor-help" title="VPN Control-Plane Shuns: Distinct attacker IPs actively blocked at the outside interface across perimeter firewalls. Fleet sum across the 4 devices is currently 147k prior to purge synchronization.">
                         <Server className="w-4 h-4 text-emerald-400" />
                         <div>
                             <span className="text-text-muted">VPN Control-Plane Shuns: </span>
-                            <span className="font-semibold text-text-primary">{summary?.vpnUniqueIpsCount ? `${Number(summary.vpnUniqueIpsCount).toLocaleString()} Unique IPs (${Number(summary.vpnActiveShunsCount).toLocaleString()} Across Fleet)` : "50,503 Unique IPs (147,154 Across Fleet)"}</span>
+                            <span className="font-semibold text-text-primary">{summary?.vpnUniqueIpsCount ? `${Number(summary.vpnUniqueIpsCount).toLocaleString()} Unique IPs` : "50,503 Unique IPs"}</span>
                         </div>
                     </div>
 
