@@ -2,7 +2,8 @@
 
 import { useState, useEffect } from "react";
 import { QueryHeader } from "@/components/queries/QueryHeader";
-import { Shield, ExternalLink } from "lucide-react";
+import { Shield, ExternalLink, Activity } from "lucide-react";
+import { PerimeterTelemetryDashboard } from "@/components/telemetry/PerimeterTelemetryDashboard";
 import { ShunDatabaseTab } from "@/components/firewall/ShunDatabaseTab";
 import { SecurityIntelligenceTab } from "@/components/firewall/SecurityIntelligenceTab";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
@@ -10,7 +11,7 @@ import { PaginationControls } from "@/components/common/PaginationControls";
 import { SmartSearchBar } from "@/components/common/SmartSearchBar";
 
 export default function CiscoFirewallPage() {
-    const [activeTab, setActiveTab] = useState<"manual" | "guardian" | "blacklist" | "database" | "security-intelligence">("manual");
+    const [activeTab, setActiveTab] = useState<"manual" | "guardian" | "blacklist" | "database" | "security-intelligence" | "telemetry">("telemetry");
     const [ipAddress, setIpAddress] = useState("");
     const [availableHosts, setAvailableHosts] = useState<{ id: string, name: string }[]>([]);
     const [targetHost, setTargetHost] = useState("");
@@ -435,6 +436,18 @@ export default function CiscoFirewallPage() {
                     >
                         <Shield className="w-4 h-4 text-accent-primary" />
                         Security Intelligence (SI)
+                    </button>
+                    <button
+                        onClick={() => setActiveTab("telemetry")}
+                        className="px-4 py-2 border-none font-semibold cursor-pointer flex items-center gap-1.5"
+                        style={{
+                            background: activeTab === "telemetry" ? 'rgba(59, 130, 246, 0.1)' : 'transparent',
+                            borderBottom: activeTab === "telemetry" ? '2px solid var(--accent-primary)' : '2px solid transparent',
+                            color: activeTab === "telemetry" ? 'var(--text-primary)' : 'var(--text-secondary)',
+                        }}
+                    >
+                        <Activity className="w-4 h-4 text-indigo-400 animate-pulse" />
+                        Perimeter Telemetry
                     </button>
                 </div>
 
@@ -1056,6 +1069,10 @@ export default function CiscoFirewallPage() {
         ) : activeTab === "security-intelligence" ? (
             <div className="flex-1 min-h-0 h-full overflow-hidden flex flex-col">
                 <SecurityIntelligenceTab />
+            </div>
+        ) : activeTab === "telemetry" ? (
+            <div className="flex-1 min-h-0 h-full overflow-y-auto">
+                <PerimeterTelemetryDashboard />
             </div>
         ) : null}
             </div>
