@@ -192,9 +192,9 @@ export async function DELETE(req: NextRequest) {
         }
 
         if (ip) {
-            await prisma.guardianBlacklist.delete({
+            await prisma.guardianBlacklist.deleteMany({
                 where: { ip }
-            });
+            }).catch(() => {});
 
             await logAudit(
                 "GUARDIAN_IP_BLACKLIST_CLEAR",

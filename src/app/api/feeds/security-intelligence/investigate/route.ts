@@ -272,31 +272,64 @@ export async function GET(req: NextRequest) {
             }
         }
 
-        // Calculate Risk Verdict
-        let verdict: "FALSE_POSITIVE_LIKELY" | "CONFIRMED_THREAT" | "CLEAN_NOT_BLOCKED";
-        let verdictReason = "";
-
-        if (!isCurrentlyBlocked) {
-            verdict = "CLEAN_NOT_BLOCKED";
-            verdictReason = `IP ${ipToInspect} is NOT currently in the Security Intelligence feed or firewall shun tables.`;
-        } else if (hasVpnSuccess || citrixSuccessCount > 0) {
-            verdict = "FALSE_POSITIVE_LIKELY";
-            verdictReason = `WARNING: IP ${ipToInspect} is currently blocked, but has ${vpnSuccesses.length} successful VPN sessions and/or ${citrixSuccessCount} Citrix logins for legitimate corporate staff (${uniqueVpnSuccessUsers.slice(0, 3).join(", ") || "known users"}). Likely false positive!`;
-        } else if (inCveBlock) {
-            verdict = "CONFIRMED_THREAT";
-            verdictReason = `CONFIRMED MALICIOUS: IP ${ipToInspect} matched critical exploit signature ${cveRecord?.cve} (${cveRecord?.ruleName}). Zero legitimate login history.`;
-        } else {
-            verdict = "CONFIRMED_THREAT";
-            verdictReason = `THREAT: IP ${ipToInspect} has ${vpnFailures.length} failed login attempts with zero successful VPN or Citrix history.`;
-        }
-
         let geoData = null;
         if (cacheInfo?.rawJson) {
             try { geoData = JSON.parse(cacheInfo.rawJson); } catch {}
         }
 
-        const orgName = cacheInfo ? (geoData?.company?.name || geoData?.asn?.name || geoData?.org || "Unknown") : "Unenriched";
-        const asnStr = cacheInfo ? (geoData?.asn?.asn || "Unknown") : "Unenriched";
+        let orgName = cacheInfo ? (geoData?.company?.name || geoData?.asn?.name || geoData?.org || "Unknown") : "Unenriched";
+        let asnStr = cacheInfo ? (geoData?.asn?.asn || "Unknown") : "Unenriched";
+        let countryCode = cacheInfo?.countryCode || "Unknown";
+        let cityName = cacheInfo?.city || null;
+
+        // Fallback to internal PostgreSQL records (Reputation Ledger or VPN Event telemetry)
+        if (orgName === "Unenriched" || orgName === "Unknown" || asnStr === "Unknown" || asnStr === "Unenriched") {
+            if (residentialRecord?.asn) asnStr = residentialRecord.asn;
+            if (residentialRecord?.ispOrg) orgName = residentialRecord.ispOrg;
+            if (residentialRecord?.country) countryCode = residentialRecord.country;
+            if (residentialRecord?.city) cityName = residentialRecord.city;
+
+            if (asnStr === "Unknown" || asnStr === "Unenriched") {
+                const sampleVpn = await prisma.vpnEvent.findFirst({
+                    where: { sourceIp: ipToInspect, ipAsn: { not: null } },
+                    select: { ipAsn: true, ipAsName: true, ipCountry: true }
+                });
+                if (sampleVpn?.ipAsn) asnStr = sampleVpn.ipAsn;
+                if (sampleVpn?.ipAsName) orgName = sampleVpn.ipAsName;
+                if (sampleVpn?.ipCountry) countryCode = sampleVpn.ipCountry;
+            }
+        }
+
+        // Check if this IP's ASN is in Guardian ASN Blacklist
+        let asnBlacklistEntry = null;
+        if (asnStr && asnStr !== "Unknown" && asnStr !== "Unenriched") {
+            const rawAsn = asnStr.toUpperCase().replace(/^AS/, "");
+            asnBlacklistEntry = await prisma.guardianAsnBlacklist.findFirst({
+                where: { OR: [{ asn: `AS${rawAsn}` }, { asn: rawAsn }] }
+            });
+        }
+        const inAsnBlacklist = Boolean(asnBlacklistEntry);
+
+        // Calculate Risk Verdict
+        let verdict: "FALSE_POSITIVE_LIKELY" | "CONFIRMED_THREAT" | "CLEAN_NOT_BLOCKED";
+        let verdictReason = "";
+
+        if (hasVpnSuccess || citrixSuccessCount > 0) {
+            verdict = "FALSE_POSITIVE_LIKELY";
+            verdictReason = `WARNING: IP ${ipToInspect} is currently blocked or monitored, but has ${vpnSuccesses.length} successful VPN sessions and/or ${citrixSuccessCount} Citrix logins for legitimate corporate staff (${uniqueVpnSuccessUsers.slice(0, 3).join(", ") || "known users"}). Likely false positive!${inAsnBlacklist ? ` (Note: Host ASN ${asnStr} is blacklisted in Guardian: "${asnBlacklistEntry?.reason}")` : ''}`;
+        } else if (inAsnBlacklist) {
+            verdict = "CONFIRMED_THREAT";
+            verdictReason = `CONFIRMED THREAT (BLACKLISTED ASN): IP ${ipToInspect} belongs to ${asnStr} (${orgName}), which is blacklisted fleet-wide in Guardian Policy. Reason: "${asnBlacklistEntry?.reason}".`;
+        } else if (inCveBlock) {
+            verdict = "CONFIRMED_THREAT";
+            verdictReason = `CONFIRMED MALICIOUS: IP ${ipToInspect} matched critical exploit signature ${cveRecord?.cve} (${cveRecord?.ruleName}). Zero legitimate login history.`;
+        } else if (!isCurrentlyBlocked) {
+            verdict = "CLEAN_NOT_BLOCKED";
+            verdictReason = `IP ${ipToInspect} is NOT currently in the Security Intelligence feed or firewall shun tables.`;
+        } else {
+            verdict = "CONFIRMED_THREAT";
+            verdictReason = `THREAT: IP ${ipToInspect} has ${vpnFailures.length} failed login attempts with zero successful VPN or Citrix history.`;
+        }
 
         return NextResponse.json({
             type: "IP",
@@ -310,16 +343,18 @@ export async function GET(req: NextRequest) {
                 reason: verdictReason,
                 recommendation: verdict === "FALSE_POSITIVE_LIKELY"
                     ? "UNBLOCK_IMMEDIATELY: Verified corporate employee activity detected. Recommend pardoning or allowlisting."
-                    : (verdict === "CLEAN_NOT_BLOCKED" 
-                        ? "NONE: IP is clean and not blocked anywhere across perimeter firewalls."
-                        : "MAINTAIN_BLOCK: Confirmed threat with zero legitimate employee login history.")
+                    : (inAsnBlacklist
+                        ? `ENFORCE_BLOCK: Entire ASN ${asnStr} is blacklisted in Guardian Policy. Ensure IP is locked in Guardian Blacklist and enforced in SI feed.`
+                        : (verdict === "CLEAN_NOT_BLOCKED" 
+                            ? "NONE: IP is clean and not blocked anywhere across perimeter firewalls."
+                            : "MAINTAIN_BLOCK: Confirmed threat with zero legitimate employee login history."))
             },
             ipInfo: {
                 ip: ipToInspect,
                 as_name: orgName,
                 asn: asnStr,
-                country: cacheInfo?.countryCode || "Unknown",
-                city: cacheInfo?.city || null
+                country: countryCode,
+                city: cityName
             },
             ftdDropCount24h: ftdDropCount,
             vpnHistory: {
@@ -345,6 +380,8 @@ export async function GET(req: NextRequest) {
             details: {
                 inBlacklist,
                 blacklistReason: blacklisted?.reason || null,
+                asnBlacklisted: inAsnBlacklist,
+                asnBlacklistReason: asnBlacklistEntry?.reason || null,
                 inActiveShuns,
                 activeShunFirewalls: activeShunStats.map(s => s.firewall),
                 inCveBlock,

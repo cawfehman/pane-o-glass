@@ -5,7 +5,7 @@ import {
     Shield, Search, AlertTriangle, CheckCircle2, ShieldAlert, 
     RefreshCw, Trash2, Plus, ExternalLink, Activity, Network, ArrowRight,
     Copy, Check, Clock, UserCheck, Flame, Server, Zap, ShieldCheck,
-    ChevronLeft, ChevronRight, Filter
+    ChevronLeft, ChevronRight, Filter, Ban, Unlock, Lock
 } from "lucide-react";
 import { SmartSearchBar } from "@/components/common/SmartSearchBar";
 
@@ -44,6 +44,10 @@ export function SecurityIntelligenceTab() {
     // Unblock / Allowlist Action State
     const [unblocking, setUnblocking] = useState(false);
     const [unblockMessage, setUnblockMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
+
+    // Guardian Blacklist Action State (ASN & IP)
+    const [blacklistActionLoading, setBlacklistActionLoading] = useState(false);
+    const [blacklistActionMessage, setBlacklistActionMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
     // Feed Metrics State
     const [feedMetrics, setFeedMetrics] = useState<any | null>(null);
@@ -167,15 +171,16 @@ export function SecurityIntelligenceTab() {
     };
 
     // Execute False-Positive Investigation
-    const handleInvestigate = async (e?: React.FormEvent) => {
-        if (e) e.preventDefault();
-        const cleanQuery = searchQuery.trim();
+    const executeInvestigate = async (overrideTarget?: string) => {
+        const cleanQuery = (overrideTarget || searchQuery).trim();
         if (!cleanQuery) return;
+        if (overrideTarget) setSearchQuery(overrideTarget);
 
         setInvestigating(true);
         setInvestigateError("");
         setInvestigateResult(null);
         setUnblockMessage(null);
+        setBlacklistActionMessage(null);
 
         try {
             const res = await fetch(`/api/feeds/security-intelligence/investigate?target=${encodeURIComponent(cleanQuery)}`);
@@ -190,6 +195,133 @@ export function SecurityIntelligenceTab() {
             setInvestigateError(err.message || "Failed to contact investigation endpoint.");
         } finally {
             setInvestigating(false);
+        }
+    };
+
+    const handleInvestigate = (e?: React.FormEvent) => {
+        if (e) e.preventDefault();
+        executeInvestigate();
+    };
+
+    // Toggle ASN Blacklist
+    const handleToggleAsnBlacklist = async (blacklist: boolean) => {
+        if (!investigateResult?.target) return;
+        const targetAsn = investigateResult.target;
+        const asnName = investigateResult.asnName || "";
+
+        let reason = "";
+        if (blacklist) {
+            const inputReason = window.prompt(
+                `Enter reason for blacklisting ${targetAsn} (${asnName || "Autonomous System"}):`,
+                "Malicious hosting/cloud network blacklisted via SI Threat Investigator"
+            );
+            if (inputReason === null) return;
+            reason = inputReason.trim() || "Blacklisted via SI Threat Investigator";
+        } else {
+            if (!confirm(`Are you sure you want to remove ${targetAsn} (${asnName || "Autonomous System"}) from the Guardian Blacklist?`)) {
+                return;
+            }
+        }
+
+        setBlacklistActionLoading(true);
+        setBlacklistActionMessage(null);
+
+        try {
+            if (blacklist) {
+                const res = await fetch("/api/firewall/guardian/blacklist", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        type: "ASN",
+                        target: targetAsn,
+                        reason,
+                        asnName
+                    })
+                });
+                const data = await res.json();
+                if (!res.ok) {
+                    setBlacklistActionMessage({ type: "error", text: data.error || `Failed to blacklist ${targetAsn}.` });
+                } else {
+                    setBlacklistActionMessage({ type: "success", text: `Successfully added ${targetAsn} to Guardian Blacklist!` });
+                    executeInvestigate(targetAsn);
+                }
+            } else {
+                const res = await fetch(`/api/firewall/guardian/blacklist?asn=${encodeURIComponent(targetAsn)}`, {
+                    method: "DELETE"
+                });
+                const data = await res.json();
+                if (!res.ok) {
+                    setBlacklistActionMessage({ type: "error", text: data.error || `Failed to clear ${targetAsn} from blacklist.` });
+                } else {
+                    setBlacklistActionMessage({ type: "success", text: `Successfully removed ${targetAsn} from Guardian Blacklist!` });
+                    executeInvestigate(targetAsn);
+                }
+            }
+        } catch (err: any) {
+            setBlacklistActionMessage({ type: "error", text: err.message || "Failed to update Guardian Blacklist." });
+        } finally {
+            setBlacklistActionLoading(false);
+        }
+    };
+
+    // Toggle IP Blacklist (Permanent Do-Not-Unshun)
+    const handleToggleIpBlacklist = async (blacklist: boolean) => {
+        if (!investigateResult?.target) return;
+        const targetIp = investigateResult.target;
+
+        let reason = "";
+        if (blacklist) {
+            const inputReason = window.prompt(
+                `Enter reason for locking ${targetIp} into Guardian Blacklist (Permanent Do-Not-Unshun):`,
+                "Locked into Guardian Blacklist via SI Threat Investigator"
+            );
+            if (inputReason === null) return;
+            reason = inputReason.trim() || "Locked via SI Threat Investigator";
+        } else {
+            if (!confirm(`Are you sure you want to remove ${targetIp} from Guardian Blacklist (allow auto-unshun)?`)) {
+                return;
+            }
+        }
+
+        setBlacklistActionLoading(true);
+        setBlacklistActionMessage(null);
+
+        try {
+            if (blacklist) {
+                const res = await fetch("/api/firewall/guardian/blacklist", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        type: "IP",
+                        target: targetIp,
+                        reason
+                    })
+                });
+                const data = await res.json();
+                if (!res.ok) {
+                    setBlacklistActionMessage({ type: "error", text: data.error || `Failed to blacklist ${targetIp}.` });
+                } else {
+                    setBlacklistActionMessage({ type: "success", text: `Successfully locked ${targetIp} into Guardian Blacklist!` });
+                    executeInvestigate(targetIp);
+                    fetchReputation();
+                }
+            } else {
+                const res = await fetch(`/api/firewall/guardian/blacklist?ip=${encodeURIComponent(targetIp)}`, {
+                    method: "DELETE"
+                });
+                const data = await res.json();
+                if (!res.ok) {
+                    setBlacklistActionMessage({ type: "error", text: data.error || `Failed to clear ${targetIp} from blacklist.` });
+                } else {
+                    setBlacklistActionMessage({ type: "success", text: `Successfully removed ${targetIp} from Guardian Blacklist!` });
+                    executeInvestigate(targetIp);
+                    fetchReputation();
+                }
+            }
+        } catch (err: any) {
+            setBlacklistActionMessage({ type: "error", text: err.message || "Failed to update Guardian Blacklist." });
+        } finally {
+            setBlacklistActionLoading(false);
         }
     };
 
@@ -772,6 +904,11 @@ export function SecurityIntelligenceTab() {
                                             <div className="text-text-muted">
                                                 Provider: <span className="text-text-primary font-medium">{investigateResult.asnName}</span> ({investigateResult.country})
                                             </div>
+                                            {investigateResult.isBlacklisted && investigateResult.blacklistReason && (
+                                                <div className="text-red-400 font-medium">
+                                                    Guardian Blacklist Reason: <span className="text-text-primary font-normal">{investigateResult.blacklistReason}</span>
+                                                </div>
+                                            )}
                                             <div className="text-text-muted">
                                                 VPN Telemetry: <span className="font-semibold text-emerald-400">{investigateResult.vpnHistory?.successfulLogins?.toLocaleString() || 0} successes</span> • <span className="text-orange-400">{investigateResult.vpnHistory?.failedLogins?.toLocaleString() || 0} failures</span>
                                             </div>
@@ -782,8 +919,43 @@ export function SecurityIntelligenceTab() {
                                     ) : (
                                         <>
                                             <div className="text-text-muted">
-                                                ISP / Org: <span className="text-text-primary">{investigateResult.ipInfo?.as_name || "Unknown"}</span> ({investigateResult.ipInfo?.asn || "N/A"}) • {investigateResult.ipInfo?.country || "US"}
+                                                ISP / Org: <span className="text-text-primary">{investigateResult.ipInfo?.as_name || "Unknown"}</span> (
+                                                {investigateResult.ipInfo?.asn && investigateResult.ipInfo.asn !== "Unknown" && investigateResult.ipInfo.asn !== "Unenriched" ? (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => executeInvestigate(investigateResult.ipInfo.asn)}
+                                                        className="text-accent-primary hover:underline font-mono inline-flex items-center gap-0.5 cursor-pointer font-semibold"
+                                                        title={`Investigate ASN ${investigateResult.ipInfo.asn}`}
+                                                    >
+                                                        {investigateResult.ipInfo.asn} <ExternalLink className="w-3 h-3 inline" />
+                                                    </button>
+                                                ) : (
+                                                    investigateResult.ipInfo?.asn || "N/A"
+                                                )}) • {investigateResult.ipInfo?.country || "US"}
                                             </div>
+                                            {investigateResult.details?.asnBlacklisted && (
+                                                <div className="p-2 rounded bg-red-500/10 border border-red-500/25 text-red-300 flex items-center justify-between gap-2">
+                                                    <div className="flex items-center gap-1.5">
+                                                        <AlertTriangle className="w-4 h-4 text-red-400 shrink-0" />
+                                                        <span>
+                                                            Host ASN <strong className="font-mono text-white">{investigateResult.ipInfo?.asn}</strong> is in Guardian Blacklist ({investigateResult.details.asnBlacklistReason || "Hostile network"}).
+                                                        </span>
+                                                    </div>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => executeInvestigate(investigateResult.ipInfo.asn)}
+                                                        className="px-2 py-0.5 rounded bg-red-500/20 hover:bg-red-500/30 text-white font-medium text-[11px] border border-red-500/40 transition-colors whitespace-nowrap cursor-pointer"
+                                                    >
+                                                        Inspect ASN
+                                                    </button>
+                                                </div>
+                                            )}
+                                            {investigateResult.details?.inBlacklist && (
+                                                <div className="text-text-muted flex items-center gap-1.5">
+                                                    <Lock className="w-3.5 h-3.5 text-red-400" />
+                                                    <span>Guardian IP Blacklist: <span className="font-semibold text-red-400">Locked (Permanent Do-Not-Unshun)</span> {investigateResult.details.blacklistReason && `• "${investigateResult.details.blacklistReason}"`}</span>
+                                                </div>
+                                            )}
                                             {investigateResult.details?.residential && (
                                                 <div className="text-text-muted">
                                                     Residential Strike: <span className="font-semibold text-amber-400">Strike {investigateResult.details.residential.strikeCount} ({investigateResult.details.residential.status})</span> • Attempted: {investigateResult.details.residential.attemptedUsers?.join(", ") || "None"}
@@ -829,15 +1001,79 @@ export function SecurityIntelligenceTab() {
                                     </div>
                                 </div>
 
-                                {investigateResult.inSecurityIntelligence && (
-                                    <button
-                                        onClick={handleAllowlistAndUnblock}
-                                        disabled={unblocking}
-                                        className="w-full mt-2 py-2 px-3 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white rounded-lg font-semibold flex items-center justify-center gap-2 transition-colors cursor-pointer"
-                                    >
-                                        {unblocking ? <RefreshCw className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
-                                        Allowlist & Unblock from Perimeter Fleet
-                                    </button>
+                                {/* Action Buttons */}
+                                <div className="pt-2 flex flex-col gap-2">
+                                    {investigateResult.type === "ASN" ? (
+                                        investigateResult.isBlacklisted ? (
+                                            <button
+                                                type="button"
+                                                onClick={() => handleToggleAsnBlacklist(false)}
+                                                disabled={blacklistActionLoading}
+                                                className="w-full py-2 px-3 bg-slate-700 hover:bg-slate-600 disabled:opacity-50 text-white rounded-lg font-semibold flex items-center justify-center gap-2 transition-colors cursor-pointer text-xs"
+                                            >
+                                                {blacklistActionLoading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Unlock className="w-4 h-4 text-emerald-400" />}
+                                                Remove {investigateResult.target} from Guardian Blacklist
+                                            </button>
+                                        ) : (
+                                            <button
+                                                type="button"
+                                                onClick={() => handleToggleAsnBlacklist(true)}
+                                                disabled={blacklistActionLoading}
+                                                className="w-full py-2 px-3 bg-red-600 hover:bg-red-500 disabled:opacity-50 text-white rounded-lg font-semibold flex items-center justify-center gap-2 transition-colors cursor-pointer text-xs"
+                                            >
+                                                {blacklistActionLoading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Ban className="w-4 h-4" />}
+                                                Blacklist Entire {investigateResult.target} ({investigateResult.asnName || "ASN"})
+                                            </button>
+                                        )
+                                    ) : (
+                                        <>
+                                            {investigateResult.details?.inBlacklist ? (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleToggleIpBlacklist(false)}
+                                                    disabled={blacklistActionLoading}
+                                                    className="w-full py-2 px-3 bg-slate-700 hover:bg-slate-600 disabled:opacity-50 text-white rounded-lg font-semibold flex items-center justify-center gap-2 transition-colors cursor-pointer text-xs"
+                                                >
+                                                    {blacklistActionLoading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Unlock className="w-4 h-4 text-emerald-400" />}
+                                                    Remove IP from Guardian Blacklist (Allow Auto-Unshun)
+                                                </button>
+                                            ) : (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleToggleIpBlacklist(true)}
+                                                    disabled={blacklistActionLoading}
+                                                    className="w-full py-2 px-3 bg-red-700 hover:bg-red-600 disabled:opacity-50 text-white rounded-lg font-semibold flex items-center justify-center gap-2 transition-colors cursor-pointer text-xs"
+                                                    title="Lock IP permanently into Guardian Blacklist so background cron jobs never automatically un-shun it"
+                                                >
+                                                    {blacklistActionLoading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Lock className="w-4 h-4" />}
+                                                    Lock IP into Guardian Blacklist (Permanent Do-Not-Unshun)
+                                                </button>
+                                            )}
+
+                                            {investigateResult.inSecurityIntelligence && (
+                                                <button
+                                                    type="button"
+                                                    onClick={handleAllowlistAndUnblock}
+                                                    disabled={unblocking}
+                                                    className="w-full py-2 px-3 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white rounded-lg font-semibold flex items-center justify-center gap-2 transition-colors cursor-pointer text-xs"
+                                                >
+                                                    {unblocking ? <RefreshCw className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
+                                                    Allowlist & Unblock from Perimeter Fleet
+                                                </button>
+                                            )}
+                                        </>
+                                    )}
+                                </div>
+
+                                {blacklistActionMessage && (
+                                    <div className={`p-2.5 rounded-lg text-xs flex items-center gap-2 border ${
+                                        blacklistActionMessage.type === "success" 
+                                            ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400" 
+                                            : "bg-red-500/10 border-red-500/20 text-red-400"
+                                    }`}>
+                                        {blacklistActionMessage.type === "success" ? <CheckCircle2 className="w-4 h-4" /> : <AlertTriangle className="w-4 h-4" />}
+                                        {blacklistActionMessage.text}
+                                    </div>
                                 )}
 
                                 {unblockMessage && (
