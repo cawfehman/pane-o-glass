@@ -102,6 +102,36 @@ export async function authenticateWithAD(username: string, password: string): Pr
         }
     }
 }
+export function convertAdFileTimeToDate(filetimeStr: string | number | undefined): Date | null {
+    if (!filetimeStr) return null;
+    try {
+        const str = String(filetimeStr).trim();
+        if (str === "0" || str === "9223372036854775807" || !str) return null;
+        const ticks = BigInt(str);
+        const epochTicks = BigInt("116444736000000000"); // 100ns ticks from 1601 to 1970
+        const unixMs = Number((ticks - epochTicks) / BigInt(10000));
+        const date = new Date(unixMs);
+        return isNaN(date.getTime()) ? null : date;
+    } catch {
+        return null;
+    }
+}
+
+export function extractGroupCNs(memberOfRaw: any): string[] {
+    if (!memberOfRaw) return [];
+    const list = Array.isArray(memberOfRaw) ? memberOfRaw : [memberOfRaw];
+    return list.map(dn => {
+        const m = String(dn).match(/^CN=([^,]+)/i);
+        return m ? m[1].replace(/\\/g, "") : String(dn);
+    }).filter(Boolean);
+}
+
+export function extractCnFromDn(dnRaw: any): string | null {
+    if (!dnRaw) return null;
+    const m = String(dnRaw).match(/^CN=([^,]+)/i);
+    return m ? m[1].replace(/\\/g, "") : String(dnRaw);
+}
+
 /**
  * Fetches specific user details (department, title, etc.) for session enrichment.
  * Does NOT perform user authentication, uses service account bind only.
@@ -136,7 +166,11 @@ export async function getUserDetails(username: string) {
         const { searchEntries } = await client.search(baseDN, {
             filter: `(|(sAMAccountName=${escapedUsername})(userPrincipalName=${escapedUsername}@cooperhealth.edu)(userPrincipalName=${escapedOriginal}))`,
             scope: "sub",
-            attributes: ["displayName", "department", "title", "telephoneNumber", "mail", "lockoutTime", "sAMAccountName", "userPrincipalName", "userAccountControl"],
+            attributes: [
+                "displayName", "department", "title", "telephoneNumber", "mail",
+                "lockoutTime", "sAMAccountName", "userPrincipalName", "userAccountControl",
+                "pwdLastSet", "accountExpires", "memberOf", "manager", "whenCreated"
+            ],
         });
 
         if (searchEntries.length === 0) {
@@ -151,11 +185,36 @@ export async function getUserDetails(username: string) {
                 email: "",
                 isEnabled: false,
                 isLockedOut: false,
+                pwdLastSet: null,
+                passwordAgeDays: null,
+                mustChangePassword: false,
+                passwordNeverExpires: false,
+                smartcardRequired: false,
+                accountExpires: null,
+                isExpired: false,
+                memberOf: [],
+                manager: null,
+                whenCreated: null
             };
         }
 
         const entry = searchEntries[0];
         const uac = Number(entry.userAccountControl || 0);
+
+        const rawPwdLastSet = String(entry.pwdLastSet || "0");
+        const mustChangePassword = rawPwdLastSet === "0";
+        const pwdLastSetDate = convertAdFileTimeToDate(rawPwdLastSet);
+        const passwordAgeDays = pwdLastSetDate
+            ? Math.max(0, Math.floor((Date.now() - pwdLastSetDate.getTime()) / (1000 * 60 * 60 * 24)))
+            : null;
+
+        const rawAccountExpires = String(entry.accountExpires || "0");
+        const accountExpiresDate = convertAdFileTimeToDate(rawAccountExpires);
+        const isExpired = accountExpiresDate ? accountExpiresDate.getTime() < Date.now() : false;
+
+        const memberOf = extractGroupCNs(entry.memberOf);
+        const manager = extractCnFromDn(entry.manager);
+
         return {
             exists: true,
             sAMAccountName: String(entry.sAMAccountName || cleanUsername),
@@ -167,6 +226,16 @@ export async function getUserDetails(username: string) {
             email: String(entry.mail || ""),
             isEnabled: !(uac & 2),
             isLockedOut: entry.lockoutTime && String(entry.lockoutTime) !== "0" && parseInt(String(entry.lockoutTime), 10) > 0 ? true : false,
+            pwdLastSet: pwdLastSetDate ? pwdLastSetDate.toISOString() : null,
+            passwordAgeDays,
+            mustChangePassword,
+            passwordNeverExpires: Boolean(uac & 65536),
+            smartcardRequired: Boolean(uac & 262144),
+            accountExpires: accountExpiresDate ? accountExpiresDate.toISOString() : null,
+            isExpired,
+            memberOf,
+            manager,
+            whenCreated: entry.whenCreated ? String(entry.whenCreated) : null
         };
     } catch (err: any) {
         logger.error("LDAP Enrichment Error:", err.message);

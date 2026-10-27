@@ -11,6 +11,7 @@ import {
     OG_GRAYLOG_IMPRIVATA_RADIUS_STREAM_ID,
 } from "./imprivata-graylog";
 import { getAdaptiveSearchWindow } from "./graylog-backlog-guardian";
+import { NetscalerGraylogClient } from "./netscaler-graylog";
 
 const httpsAgent = new https.Agent({
     rejectUnauthorized: false
@@ -30,6 +31,77 @@ export interface AdUserDetails {
     email: string;
     isEnabled?: boolean;
     isLockedOut: boolean;
+    pwdLastSet?: string | null;
+    passwordAgeDays?: number | null;
+    mustChangePassword?: boolean;
+    passwordNeverExpires?: boolean;
+    smartcardRequired?: boolean;
+    accountExpires?: string | null;
+    isExpired?: boolean;
+    memberOf?: string[];
+    manager?: string | null;
+    whenCreated?: string | null;
+}
+
+export interface EdgeAccessVpnSession {
+    id: string;
+    sourceIp: string;
+    assignedIp?: string | null;
+    status: string;
+    duration?: number | null;
+    failureReason?: string | null;
+    vpnType?: string | null;
+    vpnStream?: string | null;
+    ipCountry?: string | null;
+    ipCountryCode?: string | null;
+    createdAt: string;
+}
+
+export interface EdgeAccessCitrixLogin {
+    timestamp: string;
+    clientIp: string;
+    action: string;
+    status: "SUCCESS" | "FAILURE" | "INFO";
+    countryCode?: string;
+    countryName?: string;
+    failureReason?: string;
+}
+
+export interface PerimeterIpPosture {
+    ip: string;
+    source: "VPN" | "CITRIX";
+    isBlocked: boolean;
+    inThreatFeed: boolean;
+    inPerimeterVpnShun: boolean;
+    activeShunNodes: string[];
+    isFmcGeoBlocked: boolean;
+    strikeCount: number;
+    strikeStatus: string;
+    countryCode?: string | null;
+    countryName?: string | null;
+    asn?: string | null;
+    org?: string | null;
+}
+
+export interface AccountEdgeAccess {
+    vpn: {
+        activeSession: EdgeAccessVpnSession | null;
+        recentSessions: EdgeAccessVpnSession[];
+    };
+    citrix: {
+        recentAttempts: EdgeAccessCitrixLogin[];
+    };
+    perimeterPosture: PerimeterIpPosture | null;
+    reputationStrikes: {
+        hasStrikes: boolean;
+        ipCount: number;
+        records: Array<{
+            ip: string;
+            strikeCount: number;
+            status: string;
+            lastSeen: string;
+        }>;
+    };
 }
 
 export interface AdSecurityEvent {
@@ -193,6 +265,7 @@ export interface LockoutInvestigationResult {
     timeline: FailureTimelineBucket[];
     events: AdSecurityEvent[];
     lifecycleHistory: AccountLifecycleHistoryItem[];
+    edgeAccess?: AccountEdgeAccess;
     queriedSources: {
         adGraylogStream: string;
         imprivataGraylogStream?: string;
@@ -774,14 +847,34 @@ export async function investigateAccountLockout(
 
     const rangeSeconds = Math.max(3600, rangeHours * 3600);
 
-    // 2. Fetch AD Security Events, persistent lifecycle events, and Imprivata RADIUS/ESSO correlation in parallel
-    const [events, lifecycleHistory, imprivataDetails] = await Promise.all([
+    // 2. Fetch AD Security Events, persistent lifecycle events, Imprivata, Cisco VPN, NetScaler, and Threat strikes in parallel
+    const [events, lifecycleHistory, imprivataDetails, vpnEvents, citrixTimeline, strikeRecords] = await Promise.all([
         fetchAdSecurityEventsFromGraylog(variants, baseUser, rangeSeconds),
         getAccountLifecycleHistory([baseUser, canonicalUser, ...variants], 20),
         queryImprivataForUser(variants, rangeSeconds).catch((err) => {
             console.warn("[Account-Lockout] Imprivata correlation note:", err?.message || err);
             return null;
         }),
+        prisma.vpnEvent.findMany({
+            where: { username: { in: variants } },
+            orderBy: { createdAt: "desc" },
+            take: 10
+        }).catch(() => []),
+        (async () => {
+            try {
+                const nsClient = new NetscalerGraylogClient();
+                const res = await nsClient.investigate(canonicalUser, rangeSeconds, 15);
+                return res;
+            } catch {
+                return [];
+            }
+        })(),
+        prisma.residentialStrikeLedger.findMany({
+            where: {
+                attemptedUsers: { hasSome: variants }
+            },
+            take: 5
+        }).catch(() => [])
     ]);
 
     // 2c. Correlate opaque AD events (where Caller is 'Unknown Caller', '-', a Domain Controller, or an Imprivata node)
@@ -1176,6 +1269,159 @@ export async function investigateAccountLockout(
         recommendation = "Review the failure event timeline below to identify repeating patterns and source machines.";
     }
 
+    // 4b. Correlate Edge Access & Perimeter Posture (VPN, Citrix, and Perimeter blocks)
+    const latestVpn = vpnEvents[0];
+    const latestCitrix = citrixTimeline[0];
+    let mostRecentRemoteIp: { ip: string; source: "VPN" | "CITRIX"; countryCode?: string; countryName?: string } | null = null;
+
+    if (latestVpn && latestCitrix) {
+        if (new Date(latestVpn.createdAt).getTime() >= new Date(latestCitrix.timestamp).getTime()) {
+            mostRecentRemoteIp = {
+                ip: latestVpn.sourceIp,
+                source: "VPN",
+                countryCode: latestVpn.ipCountryCode || undefined,
+                countryName: latestVpn.ipCountry || undefined
+            };
+        } else {
+            mostRecentRemoteIp = {
+                ip: latestCitrix.clientIp || "",
+                source: "CITRIX",
+                countryCode: latestCitrix.countryCode,
+                countryName: latestCitrix.cityName
+            };
+        }
+    } else if (latestVpn) {
+        mostRecentRemoteIp = {
+            ip: latestVpn.sourceIp,
+            source: "VPN",
+            countryCode: latestVpn.ipCountryCode || undefined,
+            countryName: latestVpn.ipCountry || undefined
+        };
+    } else if (latestCitrix && latestCitrix.clientIp) {
+        mostRecentRemoteIp = {
+            ip: latestCitrix.clientIp,
+            source: "CITRIX",
+            countryCode: latestCitrix.countryCode,
+            countryName: latestCitrix.cityName
+        };
+    }
+
+    let perimeterPosture: PerimeterIpPosture | null = null;
+    if (mostRecentRemoteIp && mostRecentRemoteIp.ip && !mostRecentRemoteIp.ip.startsWith("10.") && !mostRecentRemoteIp.ip.startsWith("172.") && !mostRecentRemoteIp.ip.startsWith("192.168.")) {
+        const ip = mostRecentRemoteIp.ip;
+        const [shunStats, blacklist, strikeLedger, cache] = await Promise.all([
+            prisma.firewallShunStats.findMany({ where: { ip, isActive: true } }).catch(() => []),
+            prisma.guardianBlacklist.findUnique({ where: { ip } }).catch(() => null),
+            prisma.residentialStrikeLedger.findUnique({ where: { ip } }).catch(() => null),
+            prisma.ipLookupCache.findUnique({ where: { ip } }).catch(() => null)
+        ]);
+
+        const activeShunNodes = (shunStats || []).map(s => s.firewall || "Perimeter ASA");
+        const inPerimeterVpnShun = activeShunNodes.length > 0;
+        const isStrikeEnforced = Boolean(strikeLedger && strikeLedger.strikeCount >= 2 && strikeLedger.status !== "PARDONED");
+        const isBlacklisted = Boolean(blacklist);
+        const inThreatFeed = isStrikeEnforced || isBlacklisted;
+
+        let geoCountry = mostRecentRemoteIp.countryCode;
+        let geoCountryName = mostRecentRemoteIp.countryName;
+        let asn: string | null = null;
+        let org: string | null = null;
+        if (cache?.rawJson) {
+            try {
+                const geo = JSON.parse(cache.rawJson);
+                geoCountry = geoCountry || geo.country_code || geo.countryCode;
+                geoCountryName = geoCountryName || geo.country || geo.country_name;
+                asn = geo.asn || geo.as || null;
+                org = geo.org || geo.isp || null;
+            } catch {}
+        }
+
+        const isFmcGeoBlocked = Boolean(geoCountry && geoCountry.toUpperCase() !== "US");
+        const isBlocked = inThreatFeed || inPerimeterVpnShun || isFmcGeoBlocked;
+
+        perimeterPosture = {
+            ip,
+            source: mostRecentRemoteIp.source,
+            isBlocked,
+            inThreatFeed,
+            inPerimeterVpnShun,
+            activeShunNodes,
+            isFmcGeoBlocked,
+            strikeCount: strikeLedger?.strikeCount ?? 0,
+            strikeStatus: strikeLedger?.status ?? "CLEAN",
+            countryCode: geoCountry,
+            countryName: geoCountryName,
+            asn,
+            org
+        };
+    }
+
+    // Active AnyConnect VPN: status === "SUCCESS" and recent (last 12h) without explicit disconnect
+    const activeVpn = (vpnEvents || []).find(v => v.status === "SUCCESS" && (!v.duration || v.duration === 0) && (Date.now() - new Date(v.createdAt).getTime()) < 43200000) || null;
+
+    const edgeAccess: AccountEdgeAccess = {
+        vpn: {
+            activeSession: activeVpn ? {
+                id: activeVpn.id,
+                sourceIp: activeVpn.sourceIp,
+                assignedIp: activeVpn.assignedIp,
+                status: activeVpn.status,
+                duration: activeVpn.duration,
+                failureReason: activeVpn.failureReason,
+                vpnType: activeVpn.vpnType,
+                vpnStream: activeVpn.vpnStream,
+                ipCountry: activeVpn.ipCountry,
+                ipCountryCode: activeVpn.ipCountryCode,
+                createdAt: activeVpn.createdAt.toISOString()
+            } : null,
+            recentSessions: (vpnEvents || []).map(v => ({
+                id: v.id,
+                sourceIp: v.sourceIp,
+                assignedIp: v.assignedIp,
+                status: v.status,
+                duration: v.duration,
+                failureReason: v.failureReason,
+                vpnType: v.vpnType,
+                vpnStream: v.vpnStream,
+                ipCountry: v.ipCountry,
+                ipCountryCode: v.ipCountryCode,
+                createdAt: v.createdAt.toISOString()
+            }))
+        },
+        citrix: {
+            recentAttempts: (citrixTimeline || []).map(c => ({
+                timestamp: c.timestamp,
+                clientIp: c.clientIp || "",
+                action: c.action || c.eventType || "GATEWAY_EVENT",
+                status: (c.eventType === "AUTH_SUCCESS" ? "SUCCESS" : c.eventType === "AUTH_FAILURE" ? "FAILURE" : "INFO") as "SUCCESS" | "FAILURE" | "INFO",
+                countryCode: c.countryCode,
+                countryName: c.cityName,
+                failureReason: c.eventType === "AUTH_FAILURE" ? (c.action || "Authentication Denied") : undefined
+            }))
+        },
+        perimeterPosture,
+        reputationStrikes: {
+            hasStrikes: (strikeRecords || []).length > 0,
+            ipCount: (strikeRecords || []).length,
+            records: (strikeRecords || []).map(s => ({
+                ip: s.ip,
+                strikeCount: s.strikeCount,
+                status: s.status,
+                lastSeen: s.lastSeen.toISOString()
+            }))
+        }
+    };
+
+    // If perimeter IP is blocked, surface warning in recommendation
+    if (perimeterPosture && perimeterPosture.isBlocked) {
+        const blockReason = perimeterPosture.inPerimeterVpnShun
+            ? `Perimeter ASA Shun on ${perimeterPosture.activeShunNodes.join(", ") || "firewalls"}`
+            : perimeterPosture.inThreatFeed
+            ? "FMC Security Intelligence Threat Feed"
+            : `FMC Geo-Fence (Non-US location: ${perimeterPosture.countryCode || "Foreign"})`;
+        recommendation = `⚠️ PERIMETER BLOCK DETECTED: User's remote IP (${perimeterPosture.ip}) is blocked via ${blockReason}. Even if AD is unlocked, perimeter firewalls will drop connection attempts before authentication reaches domain controllers. ${recommendation}`;
+    }
+
     // 5. Construct Chronological Timeline Buckets (grouped by ~15m or 1h intervals)
     const timeline = buildTimelineBuckets(events, rangeHours);
 
@@ -1212,6 +1458,7 @@ export async function investigateAccountLockout(
         timeline,
         events,
         lifecycleHistory,
+        edgeAccess,
         queriedSources: {
             adGraylogStream: OG_GRAYLOG_AD_STREAM_ID,
             imprivataGraylogStream: OG_GRAYLOG_IMPRIVATA_RADIUS_STREAM_ID,

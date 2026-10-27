@@ -7,7 +7,8 @@ import {
     ChevronUp, Copy, Check, Download, RefreshCw, Radio, HardDrive, 
     Info, ArrowRight, UserCheck, Layers, ExternalLink, Filter,
     ArrowUpDown, ArrowUp, ArrowDown, X, RotateCcw, KeyRound, Repeat,
-    History, BarChart3, ChevronLeft, ChevronRight, Users, Lock
+    History, BarChart3, ChevronLeft, ChevronRight, Users, Lock,
+    Globe, Activity, Sparkles, ShieldAlert
 } from "lucide-react";
 import { 
     ResponsiveContainer, AreaChart, Area, XAxis, YAxis, 
@@ -126,6 +127,77 @@ interface AdUserDetails {
     email: string;
     isEnabled?: boolean;
     isLockedOut: boolean;
+    pwdLastSet?: string | null;
+    passwordAgeDays?: number | null;
+    mustChangePassword?: boolean;
+    passwordNeverExpires?: boolean;
+    smartcardRequired?: boolean;
+    accountExpires?: string | null;
+    isExpired?: boolean;
+    memberOf?: string[];
+    manager?: string | null;
+    whenCreated?: string | null;
+}
+
+interface EdgeAccessVpnSession {
+    id: string;
+    sourceIp: string;
+    assignedIp?: string | null;
+    status: string;
+    duration?: number | null;
+    failureReason?: string | null;
+    vpnType?: string | null;
+    vpnStream?: string | null;
+    ipCountry?: string | null;
+    ipCountryCode?: string | null;
+    createdAt: string;
+}
+
+interface EdgeAccessCitrixLogin {
+    timestamp: string;
+    clientIp: string;
+    action: string;
+    status: "SUCCESS" | "FAILURE" | "INFO";
+    countryCode?: string;
+    countryName?: string;
+    failureReason?: string;
+}
+
+interface PerimeterIpPosture {
+    ip: string;
+    source: "VPN" | "CITRIX";
+    isBlocked: boolean;
+    inThreatFeed: boolean;
+    inPerimeterVpnShun: boolean;
+    activeShunNodes: string[];
+    isFmcGeoBlocked: boolean;
+    strikeCount: number;
+    strikeStatus: string;
+    countryCode?: string | null;
+    countryName?: string | null;
+    asn?: string | null;
+    org?: string | null;
+}
+
+interface AccountEdgeAccess {
+    vpn: {
+        activeSession: EdgeAccessVpnSession | null;
+        recentSessions: EdgeAccessVpnSession[];
+    };
+    citrix: {
+        recentAttempts: EdgeAccessCitrixLogin[];
+    };
+    perimeterPosture: PerimeterIpPosture | null;
+    reputationStrikes: {
+        hasStrikes: boolean;
+        ipCount: number;
+        records: Array<{
+            ip: string;
+            strikeCount: number;
+            status: string;
+            lastSeen: string;
+        }>;
+    };
 }
 
 interface LockoutInvestigationResult {
@@ -213,6 +285,7 @@ interface LockoutInvestigationResult {
     timeline: FailureTimelineBucket[];
     events: AdSecurityEvent[];
     lifecycleHistory?: AccountLifecycleHistoryItem[];
+    edgeAccess?: AccountEdgeAccess;
     queriedSources: {
         adGraylogStream: string;
         iseQueryMode: "ISE_MNT" | "GRAYLOG_ISE" | "SKIPPED";
@@ -1216,43 +1289,325 @@ export default function AccountLockoutClient() {
                         </div>
                     </div>
 
-                    {/* Active Directory Identity & Real-Time Status Card */}
+                    {/* Active Directory Identity & Replicated State Card */}
                     {data.adUserDetails?.exists && (
-                        <div className="p-3.5 rounded-xl border border-indigo-500/30 bg-indigo-950/15 flex flex-wrap items-center justify-between gap-3 text-xs">
-                            <div className="flex items-center gap-3">
-                                <div className="w-8 h-8 rounded-lg bg-indigo-500/20 border border-indigo-500/30 flex items-center justify-center text-indigo-400 font-bold shrink-0">
-                                    <Shield size={16} />
+                        <div className="p-4 rounded-xl border border-indigo-500/30 bg-indigo-950/20 space-y-3 shadow-xs">
+                            <div className="flex flex-wrap items-start justify-between gap-3 text-xs">
+                                <div className="flex items-start gap-3">
+                                    <div className="w-9 h-9 rounded-lg bg-indigo-500/20 border border-indigo-500/30 flex items-center justify-center text-indigo-400 font-bold shrink-0 mt-0.5">
+                                        <Shield size={18} />
+                                    </div>
+                                    <div className="space-y-1">
+                                        <div className="flex items-center gap-2 flex-wrap">
+                                            <span className="font-bold text-text-primary text-sm">
+                                                {data.adUserDetails.displayName || data.searchedUser}
+                                            </span>
+                                            <span className="text-[11px] text-text-muted font-mono">
+                                                ({data.adUserDetails.sAMAccountName || data.searchedUser})
+                                            </span>
+                                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                                                data.adUserDetails.isLockedOut
+                                                    ? "bg-rose-500/20 text-rose-300 border-rose-500/40"
+                                                    : "bg-emerald-500/20 text-emerald-300 border-emerald-500/40"
+                                            }`}>
+                                                {data.adUserDetails.isLockedOut ? "AD Status: LOCKED OUT" : "AD Status: Normal (Active)"}
+                                            </span>
+                                            {data.adUserDetails.isEnabled === false && (
+                                                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full border bg-zinc-500/20 text-zinc-300 border-zinc-500/40">
+                                                    Account Disabled
+                                                </span>
+                                            )}
+                                            {data.adUserDetails.mustChangePassword && (
+                                                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full border bg-amber-500/20 text-amber-300 border-amber-500/40">
+                                                    Must Change Password At Next Logon
+                                                </span>
+                                            )}
+                                            {data.adUserDetails.passwordAgeDays !== null && data.adUserDetails.passwordAgeDays !== undefined && !data.adUserDetails.mustChangePassword && (
+                                                <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full border ${
+                                                    data.adUserDetails.passwordAgeDays > 90
+                                                        ? "bg-amber-500/15 text-amber-300 border-amber-500/30"
+                                                        : "bg-slate-800 text-slate-300 border-slate-700"
+                                                }`}>
+                                                    Password Age: {data.adUserDetails.passwordAgeDays}d ({new Date(data.adUserDetails.pwdLastSet!).toLocaleDateString()})
+                                                </span>
+                                            )}
+                                            {data.adUserDetails.passwordNeverExpires && (
+                                                <span className="text-[10px] font-medium px-2 py-0.5 rounded-full border bg-slate-800 text-slate-400 border-slate-700">
+                                                    Password Never Expires
+                                                </span>
+                                            )}
+                                            {data.adUserDetails.isExpired && (
+                                                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full border bg-rose-500/20 text-rose-300 border-rose-500/40">
+                                                    Account Expired
+                                                </span>
+                                            )}
+                                        </div>
+                                        <div className="text-[11px] text-text-secondary flex items-center gap-4 flex-wrap">
+                                            {data.adUserDetails.title && <span>Title: <strong className="text-zinc-200">{data.adUserDetails.title}</strong></span>}
+                                            {data.adUserDetails.department && <span>Dept: <strong className="text-zinc-200">{data.adUserDetails.department}</strong></span>}
+                                            {data.adUserDetails.email && <span>Email: <strong className="text-zinc-200">{data.adUserDetails.email}</strong></span>}
+                                            {data.adUserDetails.manager && <span>Manager: <strong className="text-zinc-200">{data.adUserDetails.manager}</strong></span>}
+                                        </div>
+                                    </div>
                                 </div>
-                                <div>
-                                    <div className="flex items-center gap-2 flex-wrap">
-                                        <span className="font-bold text-text-primary text-sm">
-                                            {data.adUserDetails.displayName || data.searchedUser}
-                                        </span>
-                                        <span className="text-[11px] text-text-muted font-mono">
-                                            ({data.searchedUser})
-                                        </span>
-                                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
-                                            data.adUserDetails.isLockedOut
-                                                ? "bg-rose-500/20 text-rose-300 border-rose-500/40"
-                                                : "bg-emerald-500/20 text-emerald-300 border-emerald-500/40"
-                                        }`}>
-                                            {data.adUserDetails.isLockedOut ? "AD Flag: LOCKED OUT" : "AD Flag: Normal (Not Locked)"}
-                                        </span>
-                                        {data.adUserDetails.isEnabled === false && (
-                                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full border bg-zinc-500/20 text-zinc-300 border-zinc-500/40">
-                                                Account Disabled
+                                <div className="text-[10px] text-zinc-400 bg-black/25 px-2.5 py-1 rounded border border-white/5 flex items-center gap-1.5 self-start">
+                                    <Lock size={11} className="text-zinc-400" />
+                                    <span>Read-Only Source: Active Directory (Replicated)</span>
+                                </div>
+                            </div>
+
+                            {/* Security Group Entitlements */}
+                            {data.adUserDetails.memberOf && data.adUserDetails.memberOf.length > 0 && (
+                                <div className="pt-2 border-t border-indigo-500/20 text-xs">
+                                    <div className="text-[10px] uppercase font-bold text-indigo-300 tracking-wider mb-1.5 flex items-center gap-1.5">
+                                        <Layers size={11} />
+                                        <span>Security Group Memberships ({data.adUserDetails.memberOf.length})</span>
+                                    </div>
+                                    <div className="flex flex-wrap gap-1.5">
+                                        {data.adUserDetails.memberOf.slice(0, 8).map((grp, gIdx) => {
+                                            const isHighlight = /citrix|vpn|remote|admin|security/i.test(grp);
+                                            return (
+                                                <span
+                                                    key={`grp-${gIdx}`}
+                                                    className={`px-2 py-0.5 rounded text-[10px] font-mono border ${
+                                                        isHighlight
+                                                            ? "bg-indigo-500/20 text-indigo-200 border-indigo-500/40 font-semibold"
+                                                            : "bg-slate-900/60 text-slate-300 border-slate-700/60"
+                                                    }`}
+                                                >
+                                                    {grp}
+                                                </span>
+                                            );
+                                        })}
+                                        {data.adUserDetails.memberOf.length > 8 && (
+                                            <span className="px-2 py-0.5 rounded text-[10px] font-mono text-zinc-400 bg-black/20 border border-zinc-800">
+                                                +{data.adUserDetails.memberOf.length - 8} more groups
                                             </span>
                                         )}
                                     </div>
-                                    <div className="text-[11px] text-text-secondary mt-0.5 flex items-center gap-3 flex-wrap">
-                                        {data.adUserDetails.title && <span>Title: <strong className="text-zinc-200">{data.adUserDetails.title}</strong></span>}
-                                        {data.adUserDetails.department && <span>Dept: <strong className="text-zinc-200">{data.adUserDetails.department}</strong></span>}
-                                        {data.adUserDetails.email && <span>Email: <strong className="text-zinc-200">{data.adUserDetails.email}</strong></span>}
-                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    )}
+
+                    {/* Perimeter Block Active Alert (Cross-Pivot Detection) */}
+                    {data.edgeAccess?.perimeterPosture?.isBlocked && (
+                        <div className="p-4 rounded-xl border border-rose-500/50 bg-rose-950/30 text-xs flex items-start gap-3 shadow-sm">
+                            <ShieldAlert size={20} className="text-rose-400 shrink-0 mt-0.5" />
+                            <div className="space-y-1.5 flex-1">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                    <span className="font-bold text-rose-300 uppercase tracking-wide text-[11px]">
+                                        Perimeter Block Active on User Remote IP
+                                    </span>
+                                    <span className="text-[11px] px-2 py-0.5 rounded bg-rose-500/20 text-rose-200 border border-rose-500/40 font-mono font-bold">
+                                        {data.edgeAccess.perimeterPosture.ip}
+                                    </span>
+                                    {data.edgeAccess.perimeterPosture.countryCode && (
+                                        <span className="text-[10px] px-2 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700 font-mono">
+                                            {data.edgeAccess.perimeterPosture.countryCode} {data.edgeAccess.perimeterPosture.countryName ? `(${data.edgeAccess.perimeterPosture.countryName})` : ""}
+                                        </span>
+                                    )}
+                                </div>
+                                <p className="text-zinc-200 leading-relaxed text-xs">
+                                    User&apos;s connection attempts from <strong className="font-mono text-rose-300">{data.edgeAccess.perimeterPosture.ip}</strong> ({data.edgeAccess.perimeterPosture.source} Gateway) are currently dropped at the perimeter by:
+                                    <strong className="text-white"> {data.edgeAccess.perimeterPosture.inPerimeterVpnShun ? `Perimeter ASA Shun on ${data.edgeAccess.perimeterPosture.activeShunNodes.join(', ')}` : data.edgeAccess.perimeterPosture.inThreatFeed ? 'FMC Security Intelligence Feed (POG_SI_Edge_Defense)' : `FMC Perimeter Geo-Fence (${data.edgeAccess.perimeterPosture.countryCode || 'Non-US'})`}</strong>.
+                                    <span className="block mt-0.5 text-zinc-300">Traffic will NOT reach Active Directory while this perimeter block is active. Unlocking AD will not resolve the connection issue until this IP is cleared.</span>
+                                </p>
+                                <div className="pt-1">
+                                    <a
+                                        href={`/firewall/si-feeds?ip=${encodeURIComponent(data.edgeAccess.perimeterPosture.ip)}`}
+                                        className="inline-flex items-center gap-1.5 px-3 py-1 rounded bg-rose-600 hover:bg-rose-500 text-white font-semibold text-xs transition-colors shadow-xs"
+                                    >
+                                        <Shield size={13} />
+                                        <span>Inspect &amp; Triage IP in Live Feed Inspector</span>
+                                        <ExternalLink size={11} />
+                                    </a>
                                 </div>
                             </div>
                         </div>
                     )}
+
+                    {/* Edge & Remote Access Posture (AnyConnect VPN & Citrix Gateway) */}
+                    {data.edgeAccess && (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+                            {/* AnyConnect VPN Column */}
+                            <div className="p-3.5 rounded-xl border border-border-color bg-[var(--bg-surface)] text-xs space-y-2.5 shadow-xs">
+                                <div className="flex items-center justify-between gap-2 border-b border-border-color pb-2">
+                                    <div className="flex items-center gap-2">
+                                        <Globe size={15} className="text-cyan-400" />
+                                        <span className="font-bold text-text-primary text-xs">Cisco AnyConnect VPN</span>
+                                    </div>
+                                    {data.edgeAccess.vpn.activeSession ? (
+                                        <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 font-semibold text-[10px] flex items-center gap-1">
+                                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                                            Active Live Session
+                                        </span>
+                                    ) : (
+                                        <span className="px-2 py-0.5 rounded-full bg-zinc-800 text-zinc-400 border border-zinc-700 text-[10px]">
+                                            Disconnected
+                                        </span>
+                                    )}
+                                </div>
+
+                                {data.edgeAccess.vpn.activeSession ? (
+                                    <div className="p-2.5 rounded-lg bg-emerald-950/15 border border-emerald-500/30 space-y-1">
+                                        <div className="flex justify-between items-center text-[11px]">
+                                            <span className="text-zinc-400">Public IP:</span>
+                                            <a
+                                                href={`/firewall/si-feeds?ip=${encodeURIComponent(data.edgeAccess.vpn.activeSession.sourceIp)}`}
+                                                className="font-mono font-bold text-cyan-300 hover:underline flex items-center gap-1"
+                                            >
+                                                {data.edgeAccess.vpn.activeSession.sourceIp}
+                                                <ExternalLink size={10} />
+                                            </a>
+                                        </div>
+                                        {data.edgeAccess.vpn.activeSession.assignedIp && (
+                                            <div className="flex justify-between items-center text-[11px]">
+                                                <span className="text-zinc-400">Virtual Assigned IP:</span>
+                                                <span className="font-mono text-zinc-200">{data.edgeAccess.vpn.activeSession.assignedIp}</span>
+                                            </div>
+                                        )}
+                                        <div className="flex justify-between items-center text-[11px]">
+                                            <span className="text-zinc-400">Gateway Node / Stream:</span>
+                                            <span className="font-mono text-zinc-200">{data.edgeAccess.vpn.activeSession.vpnStream || data.edgeAccess.vpn.activeSession.vpnType || "WDC Perimeter"}</span>
+                                        </div>
+                                        <div className="flex justify-between items-center text-[11px]">
+                                            <span className="text-zinc-400">Connected Since:</span>
+                                            <span className="text-zinc-300">{new Date(data.edgeAccess.vpn.activeSession.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                                        </div>
+                                    </div>
+                                ) : data.edgeAccess.vpn.recentSessions.length > 0 ? (
+                                    <div className="space-y-1.5">
+                                        <div className="text-[10px] uppercase font-bold text-text-muted tracking-wider">Recent VPN History</div>
+                                        <div className="space-y-1">
+                                            {data.edgeAccess.vpn.recentSessions.slice(0, 3).map((sess, sIdx) => (
+                                                <div key={`vpnsess-${sIdx}`} className="p-2 rounded bg-[var(--bg-background)] border border-border-color flex items-center justify-between text-[11px]">
+                                                    <div className="flex items-center gap-2">
+                                                        <span className={`w-1.5 h-1.5 rounded-full ${sess.status === "SUCCESS" ? "bg-emerald-400" : "bg-rose-400"}`} />
+                                                        <a
+                                                            href={`/firewall/si-feeds?ip=${encodeURIComponent(sess.sourceIp)}`}
+                                                            className="font-mono text-text-primary hover:underline"
+                                                        >
+                                                            {sess.sourceIp}
+                                                        </a>
+                                                        {sess.ipCountryCode && (
+                                                            <span className="text-[9px] px-1 rounded bg-zinc-800 text-zinc-400 font-mono">{sess.ipCountryCode}</span>
+                                                        )}
+                                                    </div>
+                                                    <span className="text-text-muted text-[10px]">
+                                                        {new Date(sess.createdAt).toLocaleDateString([], { month: "short", day: "numeric" })} {new Date(sess.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                                    </span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <div className="text-center py-4 text-text-muted text-xs">
+                                        No recent AnyConnect VPN sessions recorded for this user.
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Citrix NetScaler Gateway Column */}
+                            <div className="p-3.5 rounded-xl border border-border-color bg-[var(--bg-surface)] text-xs space-y-2.5 shadow-xs">
+                                <div className="flex items-center justify-between gap-2 border-b border-border-color pb-2">
+                                    <div className="flex items-center gap-2">
+                                        <Activity size={15} className="text-amber-400" />
+                                        <span className="font-bold text-text-primary text-xs">Citrix NetScaler Gateway</span>
+                                    </div>
+                                    {data.edgeAccess.reputationStrikes.hasStrikes ? (
+                                        <span className="px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40 font-semibold text-[10px]">
+                                            {data.edgeAccess.reputationStrikes.ipCount} Strike Record(s)
+                                        </span>
+                                    ) : (
+                                        <span className="px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 text-[10px]">
+                                            Reputation Clean
+                                        </span>
+                                    )}
+                                </div>
+
+                                {data.edgeAccess.citrix.recentAttempts.length > 0 ? (
+                                    <div className="space-y-1.5">
+                                        <div className="text-[10px] uppercase font-bold text-text-muted tracking-wider">Recent Gateway Logins &amp; Attempts</div>
+                                        <div className="space-y-1">
+                                            {data.edgeAccess.citrix.recentAttempts.slice(0, 4).map((att, aIdx) => (
+                                                <div key={`ctxatt-${aIdx}`} className="p-2 rounded bg-[var(--bg-background)] border border-border-color flex items-center justify-between text-[11px]">
+                                                    <div className="space-y-0.5">
+                                                        <div className="flex items-center gap-1.5">
+                                                            <span className={`px-1.5 py-0.2 rounded font-mono text-[9px] font-bold ${
+                                                                att.status === "SUCCESS"
+                                                                    ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"
+                                                                    : "bg-rose-500/20 text-rose-300 border border-rose-500/30"
+                                                            }`}>
+                                                                {att.action}
+                                                            </span>
+                                                            <a
+                                                                href={`/firewall/si-feeds?ip=${encodeURIComponent(att.clientIp)}`}
+                                                                className="font-mono text-text-primary hover:underline font-semibold"
+                                                            >
+                                                                {att.clientIp}
+                                                            </a>
+                                                            {att.countryCode && (
+                                                                <span className="text-[9px] px-1 rounded bg-zinc-800 text-zinc-400 font-mono">{att.countryCode}</span>
+                                                            )}
+                                                        </div>
+                                                        {att.failureReason && (
+                                                            <div className="text-[10px] text-rose-400/90 truncate max-w-[280px]">
+                                                                {att.failureReason}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                    <span className="text-text-muted text-[10px] shrink-0">
+                                                        {new Date(att.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                                    </span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <div className="text-center py-4 text-text-muted text-xs">
+                                        No recent Citrix NetScaler Gateway sessions detected in the search window.
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Modular Cloud Identity & EDR Signals (Prepared for Defender & Entra ID) */}
+                    <div className="p-3.5 rounded-xl border border-border-color/80 bg-[var(--bg-surface)]/60 text-xs space-y-2">
+                        <div className="flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-2">
+                                <Sparkles size={14} className="text-indigo-400" />
+                                <span className="font-bold text-text-primary text-xs">Cloud Identity &amp; EDR Telemetry (Roadmap)</span>
+                            </div>
+                            <span className="text-[10px] px-2 py-0.5 rounded bg-indigo-500/10 text-indigo-300 border border-indigo-500/20 font-semibold">
+                                Architecture Ready
+                            </span>
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-1 text-[11px]">
+                            <div className="p-2 rounded bg-[var(--bg-background)] border border-border-color space-y-0.5">
+                                <div className="font-semibold text-text-primary flex items-center justify-between">
+                                    <span>Microsoft Entra ID</span>
+                                    <span className="text-[9px] text-zinc-500 font-mono">SOON</span>
+                                </div>
+                                <p className="text-[10px] text-text-muted">Cloud sign-ins, Conditional Access status, and Azure MFA.</p>
+                            </div>
+                            <div className="p-2 rounded bg-[var(--bg-background)] border border-border-color space-y-0.5">
+                                <div className="font-semibold text-text-primary flex items-center justify-between">
+                                    <span>Defender for Identity (MDI)</span>
+                                    <span className="text-[9px] text-zinc-500 font-mono">SOON</span>
+                                </div>
+                                <p className="text-[10px] text-text-muted">Domain Controller RPC/Kerberos sensor alerts and ticket theft.</p>
+                            </div>
+                            <div className="p-2 rounded bg-[var(--bg-background)] border border-border-color space-y-0.5">
+                                <div className="font-semibold text-text-primary flex items-center justify-between">
+                                    <span>Defender for Endpoint (MDE)</span>
+                                    <span className="text-[9px] text-zinc-500 font-mono">SOON</span>
+                                </div>
+                                <p className="text-[10px] text-text-muted">Workstation health, device risk score, and isolation status.</p>
+                            </div>
+                        </div>
+                    </div>
 
                     {/* Active Lockout Loop Alert Banner */}
                     {data.unlockActivity?.isLoop && (

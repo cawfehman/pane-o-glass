@@ -231,6 +231,11 @@ export function LiveFeedInspector() {
         setCopiedSummary(true);
         setTimeout(() => setCopiedSummary(false), 2000);
     };
+
+    // Copy MD5 Checksum
+    const copyMd5 = (text: string) => {
+        navigator.clipboard.writeText(text);
+        setCopiedMd5(true);
         setTimeout(() => setCopiedMd5(false), 2000);
     };
 
@@ -582,7 +587,16 @@ export function LiveFeedInspector() {
                                                 <tbody className="divide-y divide-border-color font-mono">
                                                     {checkResult.vpnTelemetry.recentSessions.slice(0, 5).map((s: any, idx: number) => (
                                                 <tr key={idx} className="hover:bg-bg-card/50">
-                                                    <td className="py-1 px-2.5 font-semibold text-text-primary">{s.username}</td>
+                                                    <td className="py-1 px-2.5 font-semibold text-text-primary">
+                                                        <a
+                                                            href={`/queries/account-lockout?user=${encodeURIComponent(s.username)}`}
+                                                            className="text-cyan-400 hover:text-cyan-300 hover:underline inline-flex items-center gap-1 font-mono"
+                                                            title="Investigate user account in Account Lockout Investigator"
+                                                        >
+                                                            {s.username}
+                                                            <ExternalLink className="w-2.5 h-2.5 opacity-70" />
+                                                        </a>
+                                                    </td>
                                                     <td className="py-1 px-2.5">
                                                         <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
                                                             s.status === "SUCCESS" ? "text-emerald-400 bg-emerald-500/10" : "text-red-400 bg-red-500/10"
