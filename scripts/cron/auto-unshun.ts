@@ -300,20 +300,22 @@ async function runAutoUnshun() {
     
     const isRecoveryMode = rangeSeconds !== "240";
 
-    let watchList: string[] = [];
+    const watchListSet = new Set<string>();
     try {
         const dbWatch = await prisma.guardianWatchIp.findMany({ select: { ip: true } });
         if (dbWatch && dbWatch.length > 0) {
-            watchList = dbWatch.map(w => w.ip.trim()).filter(Boolean);
+            dbWatch.forEach(w => {
+                if (w.ip?.trim()) watchListSet.add(w.ip.trim());
+            });
         }
     } catch (e: any) {
-        console.error("[GUARDIAN] Failed to load monitored IPs from database, checking .env fallback:", e.message);
+        console.error("[GUARDIAN] Failed to load monitored IPs from database:", e.message);
     }
 
-    if (watchList.length === 0) {
-        const watchListStr = process.env.WATCH_IP_LIST! || "";
-        watchList = watchListStr.split(',').map(ip => ip.trim()).filter(ip => ip !== "");
-    }
+    const envWatchList = (process.env.WATCH_IP_LIST || "").split(",").map(ip => ip.trim()).filter(Boolean);
+    envWatchList.forEach(ip => watchListSet.add(ip));
+
+    const watchList = Array.from(watchListSet);
     
     const configStr = process.env.FIREWALL_CONFIG! || "[]";
     let firewalls = [];

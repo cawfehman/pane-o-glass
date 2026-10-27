@@ -10,6 +10,22 @@ function main() {
 
     console.log('[Deploy Post-Build] Checking production PM2 services and git hooks...');
 
+    // 0. Automatically sync any Guardian Watchlist or Blacklist IPs from .env into PostgreSQL
+    try {
+        console.log("[Deploy Post-Build] Syncing Guardian IPs from .env into database...");
+        const syncScript = path.resolve(__dirname, "../../dist-scripts/utils/sync-env-guardian.js");
+        if (fs.existsSync(syncScript)) {
+            execSync(`node "${syncScript}"`, { stdio: "inherit" });
+        } else {
+            const localScript = path.resolve(process.cwd(), "dist-scripts/utils/sync-env-guardian.js");
+            if (fs.existsSync(localScript)) {
+                execSync(`node "${localScript}"`, { stdio: "inherit" });
+            }
+        }
+    } catch (e) {
+        console.warn("[Deploy Post-Build] Warning syncing Guardian IPs from .env:", e.message);
+    }
+
     // 1. Ensure PM2 restarts citrix-guardian immediately
     try {
         console.log('[Deploy Post-Build] Ensuring citrix-guardian is active in PM2...');

@@ -1,3 +1,6 @@
+import fs from "fs";
+import path from "path";
+import dotenv from "dotenv";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
@@ -27,6 +30,37 @@ export async function GET(req: NextRequest) {
         if (!session?.user || !(await isAuthorizedForBlacklist(session))) {
             return NextResponse.json({ error: "Forbidden: Access to this tool is restricted." }, { status: 403 });
         }
+
+        // Auto-sync any blacklist IPs defined in .env
+        try {
+            const envPath = path.resolve(process.cwd(), ".env");
+            if (fs.existsSync(envPath)) {
+                const envConfig = dotenv.parse(fs.readFileSync(envPath, "utf8"));
+                const rawBlacklist = [
+                    envConfig["GUARDIAN_BLACKLIST"],
+                    envConfig["GUARDIAN_BLACKLIST_IPS"],
+                    envConfig["BLACKLIST_IP_LIST"]
+                ].filter(Boolean).join(",");
+
+                const envBlacklistIps = Array.from(new Set(
+                    rawBlacklist
+                        .split(",")
+                        .map((ip) => ip.trim())
+                        .filter((ip) => /^(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/.test(ip))
+                ));
+
+                for (const ip of envBlacklistIps) {
+                    await prisma.guardianBlacklist.upsert({
+                        where: { ip },
+                        update: {},
+                        create: {
+                            ip,
+                            reason: "Synced from GUARDIAN_BLACKLIST (.env)"
+                        }
+                    }).catch(() => {});
+                }
+            }
+        } catch (e) {}
 
         const [ips, asns] = await Promise.all([
             prisma.guardianBlacklist.findMany({ orderBy: { createdAt: "desc" } }),
