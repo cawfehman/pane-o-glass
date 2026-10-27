@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { QueryHeader } from "@/components/queries/QueryHeader";
 import { Shield, ExternalLink, Activity } from "lucide-react";
 import { PerimeterTelemetryDashboard } from "@/components/telemetry/PerimeterTelemetryDashboard";
@@ -42,6 +42,31 @@ export default function CiscoFirewallPage() {
     const [loadingBlacklist, setLoadingBlacklist] = useState(false);
     const [blacklistPage, setBlacklistPage] = useState(1);
     const [blacklistLimit, setBlacklistLimit] = useState(25);
+    const [blacklistSearch, setBlacklistSearch] = useState("");
+
+    const filteredBlacklistIps = useMemo(() => {
+        if (!blacklistSearch.trim()) return blacklistIps;
+        const q = blacklistSearch.toLowerCase().trim();
+        return blacklistIps.filter((item) => {
+            const ip = (item.ip || "").toLowerCase();
+            const reason = (item.reason || "").toLowerCase();
+            const date = item.createdAt ? new Date(item.createdAt).toLocaleString().toLowerCase() : "";
+            return ip.includes(q) || reason.includes(q) || date.includes(q);
+        });
+    }, [blacklistIps, blacklistSearch]);
+
+    const filteredBlacklistAsns = useMemo(() => {
+        if (!blacklistSearch.trim()) return blacklistAsns;
+        const q = blacklistSearch.toLowerCase().trim();
+        return blacklistAsns.filter((item) => {
+            const asn = (item.asn || "").toLowerCase();
+            const asnName = (item.asnName || "").toLowerCase();
+            const reason = (item.reason || "").toLowerCase();
+            const createdBy = (item.createdBy || "").toLowerCase();
+            const date = item.createdAt ? new Date(item.createdAt).toLocaleString().toLowerCase() : "";
+            return asn.includes(q) || asnName.includes(q) || reason.includes(q) || createdBy.includes(q) || date.includes(q);
+        });
+    }, [blacklistAsns, blacklistSearch]);
 
     // Add Blacklist Modal State
     const [showAddBlacklistModal, setShowAddBlacklistModal] = useState(false);
@@ -898,13 +923,70 @@ export default function CiscoFirewallPage() {
                 </div>
             </div>
         ) : activeTab === "blacklist" ? (
-            <div className="flex-1 min-h-0 flex flex-col gap-6">
-                <div className="glass-card flex-1 flex flex-col min-h-0 border border-border-color rounded-xl overflow-hidden shadow-sm" style={{ minHeight: '400px', padding: 0 }}>
+            <div className="flex-1 min-h-0 flex flex-col gap-4">
+                {/* --- SMART SEARCH BAR FOR BLACKLIST --- */}
+                <SmartSearchBar
+                    value={blacklistSearch}
+                    onChange={(val) => {
+                        setBlacklistSearch(val);
+                        setBlacklistPage(1);
+                    }}
+                    onSearch={(cleanTerm) => {
+                        setBlacklistSearch(cleanTerm);
+                        setBlacklistPage(1);
+                    }}
+                    onReset={() => {
+                        setBlacklistSearch("");
+                        setBlacklistPage(1);
+                    }}
+                    enableLiveFiltering={true}
+                    placeholder={
+                        blacklistSubTab === "IP"
+                            ? "Search blacklisted IPs by address, blocking reason, or date..."
+                            : "Search blacklisted ASNs by ASN, organization name, reason, or submitter..."
+                    }
+                    buttonLabel="Filter Blacklist"
+                    supportedFields={
+                        blacklistSubTab === "IP"
+                            ? ["IP Address", "Reason", "Date Added"]
+                            : ["ASN", "Organization", "Reason", "Added By", "Date Added"]
+                    }
+                    examples={
+                        blacklistSubTab === "IP"
+                            ? ["198.51.100.1", "brute force", "malicious"]
+                            : ["AS15169", "Amazon", "scanner", "root"]
+                    }
+                    typeDetector={(term) => {
+                        const clean = term.trim();
+                        if (/^AS\d+$/i.test(clean)) {
+                            return { label: `ASN: ${clean.toUpperCase()}`, colorClass: "bg-emerald-500/15 text-emerald-300 border-emerald-500/30" };
+                        }
+                        if (/^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$/.test(clean)) {
+                            return { label: "IPv4 Address", colorClass: "bg-sky-500/15 text-sky-300 border-sky-500/30" };
+                        }
+                        return null;
+                    }}
+                    filterControls={
+                        blacklistSearch ? (
+                            <button
+                                onClick={() => {
+                                    setBlacklistSearch("");
+                                    setBlacklistPage(1);
+                                }}
+                                className="px-3 py-2 rounded-xl border border-border-color bg-bg-surface-hover/80 text-xs text-text-muted hover:text-text-primary transition-colors cursor-pointer"
+                            >
+                                Clear Search
+                            </button>
+                        ) : null
+                    }
+                />
+
+                <div className="glass-card flex-1 flex flex-col min-h-0 border border-border-color rounded-xl overflow-hidden shadow-sm" style={{ minHeight: "400px", padding: 0 }}>
                     <div className="p-4 border-b border-border-color bg-bg-surface/60 shrink-0">
                         <div className="flex items-center justify-between gap-4 flex-wrap">
                             <div>
                                 <h3 className="m-0 text-base font-bold text-text-primary">Guardian Do-Not-Unshun Blacklist</h3>
-                                <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', margin: '4px 0 0 0' }}>
+                                <p style={{ color: "var(--text-muted)", fontSize: "0.85rem", margin: "4px 0 0 0" }}>
                                     IP addresses and ASNs (Autonomous System Numbers) barred from automated unshunning or safety exceptions.
                                 </p>
                             </div>
@@ -929,20 +1011,20 @@ export default function CiscoFirewallPage() {
                                 onClick={() => { setBlacklistSubTab("IP"); setBlacklistPage(1); }}
                                 className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors cursor-pointer ${blacklistSubTab === "IP" ? "bg-accent-primary/20 text-accent-primary border border-accent-primary/30" : "text-text-secondary hover:text-text-primary bg-bg-dark/40"}`}
                             >
-                                Blacklisted IPs ({blacklistIps.length})
+                                Blacklisted IPs ({filteredBlacklistIps.length}{blacklistSearch ? ` / ${blacklistIps.length}` : ""})
                             </button>
                             <button
                                 onClick={() => { setBlacklistSubTab("ASN"); setBlacklistPage(1); }}
                                 className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors cursor-pointer ${blacklistSubTab === "ASN" ? "bg-accent-primary/20 text-accent-primary border border-accent-primary/30" : "text-text-secondary hover:text-text-primary bg-bg-dark/40"}`}
                             >
-                                Blacklisted ASNs ({blacklistAsns.length})
+                                Blacklisted ASNs ({filteredBlacklistAsns.length}{blacklistSearch ? ` / ${blacklistAsns.length}` : ""})
                             </button>
                         </div>
 
                         {/* Top Pinned Pagination */}
                         <div className="pt-3 mt-3 border-t border-border-color/60">
                             <PaginationControls
-                                totalRecords={blacklistSubTab === "IP" ? blacklistIps.length : blacklistAsns.length}
+                                totalRecords={blacklistSubTab === "IP" ? filteredBlacklistIps.length : filteredBlacklistAsns.length}
                                 page={blacklistPage}
                                 limit={blacklistLimit}
                                 limitOptions={[25, 50, 100, 200]}
@@ -959,34 +1041,46 @@ export default function CiscoFirewallPage() {
                     {loadingBlacklist ? (
                         <div className="p-8 text-center text-text-muted">Loading blacklist...</div>
                     ) : blacklistSubTab === "IP" ? (
-                        blacklistIps.length === 0 ? (
-                            <div className="p-8 text-center text-text-muted">No individual IPs currently blacklisted.</div>
+                        filteredBlacklistIps.length === 0 ? (
+                            <div className="p-12 text-center text-text-muted flex flex-col items-center justify-center gap-2">
+                                <p className="text-sm">
+                                    {blacklistSearch ? `No blacklisted IPs matching "${blacklistSearch}"` : "No individual IPs currently blacklisted."}
+                                </p>
+                                {blacklistSearch && (
+                                    <button
+                                        onClick={() => { setBlacklistSearch(""); setBlacklistPage(1); }}
+                                        className="text-xs text-accent-primary hover:underline font-semibold cursor-pointer"
+                                    >
+                                        Clear Search Filter
+                                    </button>
+                                )}
+                            </div>
                         ) : (
                             <div className="flex-1 overflow-auto custom-scrollbar">
-                                <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+                                <table style={{ width: "100%", borderCollapse: "collapse", textAlign: "left" }}>
                                     <thead className="sticky top-0 bg-bg-surface z-10">
-                                        <tr style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
-                                            <th style={{ padding: '12px 14px', borderBottom: '1px solid var(--border-color)' }}>Blacklisted Date</th>
-                                            <th style={{ padding: '12px 14px', borderBottom: '1px solid var(--border-color)' }}>IP Address</th>
-                                            <th style={{ padding: '12px 14px', borderBottom: '1px solid var(--border-color)' }}>Reason for Blocking</th>
-                                            <th style={{ padding: '12px 14px', borderBottom: '1px solid var(--border-color)', textAlign: 'right' }}>Actions</th>
+                                        <tr style={{ color: "var(--text-secondary)", fontSize: "0.85rem" }}>
+                                            <th style={{ padding: "12px 14px", borderBottom: "1px solid var(--border-color)" }}>Blacklisted Date</th>
+                                            <th style={{ padding: "12px 14px", borderBottom: "1px solid var(--border-color)" }}>IP Address</th>
+                                            <th style={{ padding: "12px 14px", borderBottom: "1px solid var(--border-color)" }}>Reason for Blocking</th>
+                                            <th style={{ padding: "12px 14px", borderBottom: "1px solid var(--border-color)", textAlign: "right" }}>Actions</th>
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        {blacklistIps
+                                        {filteredBlacklistIps
                                             .slice((blacklistPage - 1) * blacklistLimit, blacklistPage * blacklistLimit)
                                             .map((item) => (
-                                            <tr key={item.ip} style={{ borderBottom: '1px solid var(--border-color)', fontSize: '0.875rem' }} className="table-row-hover">
-                                                <td style={{ padding: '12px 14px', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+                                            <tr key={item.ip} style={{ borderBottom: "1px solid var(--border-color)", fontSize: "0.875rem" }} className="table-row-hover">
+                                                <td style={{ padding: "12px 14px", color: "var(--text-muted)", whiteSpace: "nowrap" }}>
                                                     {new Date(item.createdAt).toLocaleString()}
                                                 </td>
-                                                <td style={{ padding: '12px 14px', fontFamily: 'monospace', fontWeight: 600, color: 'var(--accent-primary)' }}>
+                                                <td style={{ padding: "12px 14px", fontFamily: "monospace", fontWeight: 600, color: "var(--accent-primary)" }}>
                                                     {item.ip}
                                                 </td>
-                                                <td style={{ padding: '12px 14px', color: 'var(--text-primary)' }}>
+                                                <td style={{ padding: "12px 14px", color: "var(--text-primary)" }}>
                                                     {item.reason}
                                                 </td>
-                                                <td style={{ padding: '12px 14px', textAlign: 'right' }}>
+                                                <td style={{ padding: "12px 14px", textAlign: "right" }}>
                                                     <button
                                                         onClick={() => handleRemoveFromBlacklist(item.ip)}
                                                         className="px-3 py-1 text-xs font-semibold rounded-lg border border-red-500/30 text-red-400 hover:bg-red-500/10 transition-colors cursor-pointer"
@@ -1001,42 +1095,54 @@ export default function CiscoFirewallPage() {
                             </div>
                         )
                     ) : (
-                        blacklistAsns.length === 0 ? (
-                            <div className="p-8 text-center text-text-muted">No ASNs currently blacklisted.</div>
+                        filteredBlacklistAsns.length === 0 ? (
+                            <div className="p-12 text-center text-text-muted flex flex-col items-center justify-center gap-2">
+                                <p className="text-sm">
+                                    {blacklistSearch ? `No blacklisted ASNs matching "${blacklistSearch}"` : "No ASNs currently blacklisted."}
+                                </p>
+                                {blacklistSearch && (
+                                    <button
+                                        onClick={() => { setBlacklistSearch(""); setBlacklistPage(1); }}
+                                        className="text-xs text-accent-primary hover:underline font-semibold cursor-pointer"
+                                    >
+                                        Clear Search Filter
+                                    </button>
+                                )}
+                            </div>
                         ) : (
                             <div className="flex-1 overflow-auto custom-scrollbar">
-                                <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+                                <table style={{ width: "100%", borderCollapse: "collapse", textAlign: "left" }}>
                                     <thead className="sticky top-0 bg-bg-surface z-10">
-                                        <tr style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
-                                            <th style={{ padding: '12px 14px', borderBottom: '1px solid var(--border-color)' }}>Blacklisted Date</th>
-                                            <th style={{ padding: '12px 14px', borderBottom: '1px solid var(--border-color)' }}>ASN</th>
-                                            <th style={{ padding: '12px 14px', borderBottom: '1px solid var(--border-color)' }}>Organization / ISP Name</th>
-                                            <th style={{ padding: '12px 14px', borderBottom: '1px solid var(--border-color)' }}>Reason for Blocking</th>
-                                            <th style={{ padding: '12px 14px', borderBottom: '1px solid var(--border-color)' }}>Added By</th>
-                                            <th style={{ padding: '12px 14px', borderBottom: '1px solid var(--border-color)', textAlign: 'right' }}>Actions</th>
+                                        <tr style={{ color: "var(--text-secondary)", fontSize: "0.85rem" }}>
+                                            <th style={{ padding: "12px 14px", borderBottom: "1px solid var(--border-color)" }}>Blacklisted Date</th>
+                                            <th style={{ padding: "12px 14px", borderBottom: "1px solid var(--border-color)" }}>ASN</th>
+                                            <th style={{ padding: "12px 14px", borderBottom: "1px solid var(--border-color)" }}>Organization / ISP Name</th>
+                                            <th style={{ padding: "12px 14px", borderBottom: "1px solid var(--border-color)" }}>Reason for Blocking</th>
+                                            <th style={{ padding: "12px 14px", borderBottom: "1px solid var(--border-color)" }}>Added By</th>
+                                            <th style={{ padding: "12px 14px", borderBottom: "1px solid var(--border-color)", textAlign: "right" }}>Actions</th>
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        {blacklistAsns
+                                        {filteredBlacklistAsns
                                             .slice((blacklistPage - 1) * blacklistLimit, blacklistPage * blacklistLimit)
                                             .map((item) => (
-                                            <tr key={item.asn} style={{ borderBottom: '1px solid var(--border-color)', fontSize: '0.875rem' }} className="table-row-hover">
-                                                <td style={{ padding: '12px 14px', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+                                            <tr key={item.asn} style={{ borderBottom: "1px solid var(--border-color)", fontSize: "0.875rem" }} className="table-row-hover">
+                                                <td style={{ padding: "12px 14px", color: "var(--text-muted)", whiteSpace: "nowrap" }}>
                                                     {new Date(item.createdAt).toLocaleString()}
                                                 </td>
-                                                <td style={{ padding: '12px 14px', fontFamily: 'monospace', fontWeight: 600, color: 'var(--accent-primary)' }}>
+                                                <td style={{ padding: "12px 14px", fontFamily: "monospace", fontWeight: 600, color: "var(--accent-primary)" }}>
                                                     {item.asn}
                                                 </td>
-                                                <td style={{ padding: '12px 14px', color: 'var(--text-secondary)' }}>
+                                                <td style={{ padding: "12px 14px", color: "var(--text-secondary)" }}>
                                                     {item.asnName || "Unknown Org"}
                                                 </td>
-                                                <td style={{ padding: '12px 14px', color: 'var(--text-primary)' }}>
+                                                <td style={{ padding: "12px 14px", color: "var(--text-primary)" }}>
                                                     {item.reason}
                                                 </td>
-                                                <td style={{ padding: '12px 14px', color: 'var(--text-muted)', fontSize: '0.8rem' }}>
+                                                <td style={{ padding: "12px 14px", color: "var(--text-muted)", fontSize: "0.8rem" }}>
                                                     {item.createdBy || "System"}
                                                 </td>
-                                                <td style={{ padding: '12px 14px', textAlign: 'right' }}>
+                                                <td style={{ padding: "12px 14px", textAlign: "right" }}>
                                                     <button
                                                         onClick={() => handleRemoveAsnFromBlacklist(item.asn)}
                                                         className="px-3 py-1 text-xs font-semibold rounded-lg border border-red-500/30 text-red-400 hover:bg-red-500/10 transition-colors cursor-pointer"
@@ -1055,11 +1161,16 @@ export default function CiscoFirewallPage() {
                     {/* Bottom Pinned Pagination */}
                     <div className="p-3 border-t border-border-color bg-bg-surface/80 backdrop-blur-md shrink-0">
                         <PaginationControls
-                            totalRecords={blacklistSubTab === "IP" ? blacklistIps.length : blacklistAsns.length}
+                            totalRecords={blacklistSubTab === "IP" ? filteredBlacklistIps.length : filteredBlacklistAsns.length}
                             page={blacklistPage}
                             limit={blacklistLimit}
+                            limitOptions={[25, 50, 100, 200]}
                             onPageChange={setBlacklistPage}
-                            showLimitSelector={false}
+                            onLimitChange={(l) => {
+                                setBlacklistLimit(l);
+                                setBlacklistPage(1);
+                            }}
+                            showLimitSelector={true}
                         />
                     </div>
                 </div>
