@@ -1621,12 +1621,171 @@ export async function getMerakiDhcpPools(options?: {
 }
 
 // ---------------------------------------------------------------------------
-// Wireless (MR) Diagnostics & Network Client Finder
+// Wireless (MR) Diagnostics, Spoke Appliance (MX/Z3) & Network Client Finder
 // ---------------------------------------------------------------------------
+
+/**
+ * Fetches all wired and wireless client devices connected to a specific Meraki device
+ * (such as an MX68, MX67, MX64, or Z3 teleworker gateway spoke in Cooper Health, or an MS switch).
+ */
+export async function getMerakiDeviceClients(
+    serial: string,
+    timespan = 86400,
+    forceRefresh = false
+): Promise<{
+    device: MerakiDeviceUnified | null;
+    clients: MerakiNetworkClient[];
+    summary: {
+        totalClients: number;
+        wiredClients: number;
+        wirelessClients: number;
+        onlineClients: number;
+        totalBytesUsed: number;
+    };
+}> {
+    const cleanSerial = serial.trim().toUpperCase();
+    const overview = await getMerakiFleetOverview({ forceRefresh: false });
+    const device = overview.devices.find((d) => d.serial.toUpperCase() === cleanSerial) || null;
+
+    const span = Math.min(604800, Math.max(300, timespan));
+    const ttlMs = 120_000; // 2-minute client cache
+
+    const rawClients = await merakiGet<any[]>(
+        `/devices/${cleanSerial}/clients`,
+        { timespan: span },
+        { ttlMs, forceRefresh }
+    ).catch(() => []);
+
+    const orgName = device?.organizationName || "Cooper Health";
+    const netName = device?.networkName || "Spoke Appliance";
+
+    const clients: MerakiNetworkClient[] = (rawClients || []).map((c: any) => {
+        const macColon = normalizeMacColon(c.mac);
+        const macCompact = normalizeMacCompact(c.mac);
+        const isWireless = Boolean(c.ssid || (c.recentDeviceConnection && String(c.recentDeviceConnection).toLowerCase() === "wireless"));
+
+        return {
+            id: String(c.id || macCompact),
+            mac: macColon,
+            macCompact,
+            description: c.description || c.dhcpHostname || c.mdnsName || null,
+            ip: c.ip || null,
+            ip6: c.ip6 || null,
+            user: c.user || null,
+            firstSeen: c.firstSeen ? (typeof c.firstSeen === "number" ? new Date(c.firstSeen * 1000).toISOString() : String(c.firstSeen)) : null,
+            lastSeen: c.lastSeen ? (typeof c.lastSeen === "number" ? new Date(c.lastSeen * 1000).toISOString() : String(c.lastSeen)) : null,
+            manufacturer: c.manufacturer || null,
+            os: c.os || null,
+            recentDeviceSerial: cleanSerial,
+            recentDeviceName: device?.name || cleanSerial,
+            recentDeviceMac: device?.mac || null,
+            recentDeviceConnection: isWireless ? "Wireless" : "Wired",
+            ssid: c.ssid || null,
+            vlan: c.vlan !== undefined && c.vlan !== null ? c.vlan : null,
+            switchport: c.switchport ? String(c.switchport) : null,
+            status: c.status || "Online",
+            usage: {
+                sent: Number(c.usage?.sent || 0),
+                recv: Number(c.usage?.recv || 0),
+                total: Number(c.usage?.total || (Number(c.usage?.sent || 0) + Number(c.usage?.recv || 0))),
+            },
+            networkId: device?.networkId || "",
+            networkName: netName,
+            organizationId: device?.organizationId || "905261",
+            organizationName: orgName,
+        };
+    });
+
+    clients.sort((a, b) => b.usage.total - a.usage.total);
+
+    return {
+        device,
+        clients,
+        summary: {
+            totalClients: clients.length,
+            wiredClients: clients.filter((c) => c.recentDeviceConnection === "Wired").length,
+            wirelessClients: clients.filter((c) => c.recentDeviceConnection === "Wireless").length,
+            onlineClients: clients.filter((c) => c.status?.toLowerCase() === "online").length,
+            totalBytesUsed: clients.reduce((acc, c) => acc + c.usage.total, 0),
+        },
+    };
+}
+
+/**
+ * Searches across entire organizations for a specific client MAC address using the Meraki Org Client Search endpoint.
+ * This searches across all 420 Cooper Health networks instantly in one single API call.
+ */
+export async function searchMerakiClientsByMac(
+    mac: string,
+    orgId?: string
+): Promise<MerakiNetworkClient[]> {
+    const compactHex = normalizeMacCompact(mac);
+    if (compactHex.length < 12) return [];
+
+    const colonMac = normalizeMacColon(compactHex);
+    const targetOrgs = orgId && orgId !== "ALL" ? [orgId] : ["905261", "262100"];
+    const results: MerakiNetworkClient[] = [];
+
+    const overview = await getMerakiFleetOverview({ forceRefresh: false });
+    const deviceByMac = new Map<string, MerakiDeviceUnified>();
+    for (const d of overview.devices) {
+        if (d.macCompact) deviceByMac.set(d.macCompact, d);
+    }
+
+    for (const oid of targetOrgs) {
+        try {
+            const raw = await merakiGet<any>(
+                `/organizations/${oid}/clients/search`,
+                { mac: colonMac },
+                { ttlMs: 120_000 }
+            );
+
+            if (raw && Array.isArray(raw.records)) {
+                for (const rec of raw.records) {
+                    const devMacCompact = normalizeMacCompact(rec.recentDeviceMac);
+                    const parentDev = devMacCompact ? deviceByMac.get(devMacCompact) : null;
+                    const netName = rec.network?.name || parentDev?.networkName || "Spoke Network";
+
+                    results.push({
+                        id: String(raw.clientId || rec.id || compactHex),
+                        mac: colonMac,
+                        macCompact: compactHex,
+                        description: rec.description || rec.dhcpHostname || raw.manufacturer || null,
+                        ip: rec.ip || null,
+                        ip6: rec.ip6 || null,
+                        user: rec.user || null,
+                        firstSeen: rec.firstSeen ? new Date(rec.firstSeen * 1000).toISOString() : null,
+                        lastSeen: rec.lastSeen ? new Date(rec.lastSeen * 1000).toISOString() : null,
+                        manufacturer: raw.manufacturer || null,
+                        os: rec.os || null,
+                        recentDeviceSerial: parentDev?.serial || null,
+                        recentDeviceName: parentDev?.name || parentDev?.model || rec.recentDeviceMac || "Meraki Appliance",
+                        recentDeviceMac: rec.recentDeviceMac || parentDev?.mac || null,
+                        recentDeviceConnection: rec.ssid ? "Wireless" : "Wired",
+                        ssid: rec.ssid || null,
+                        vlan: rec.vlan ?? null,
+                        switchport: rec.switchport ? String(rec.switchport) : null,
+                        status: rec.status || "Online",
+                        usage: { sent: 0, recv: 0, total: 0 },
+                        networkId: rec.network?.id || parentDev?.networkId || "",
+                        networkName: netName,
+                        organizationId: oid,
+                        organizationName: oid === "905261" ? "Cooper Health" : "Cape Regional",
+                    });
+                }
+            }
+        } catch {
+            // Non-fatal if search for this org fails
+        }
+    }
+
+    return results;
+}
 
 export async function getMerakiClientsAndWireless(options: {
     orgId?: string;
     networkId?: string;
+    serial?: string;
     search?: string;
     timespan?: number; // seconds, default 86400 (24h)
     forceRefresh?: boolean;
@@ -1636,6 +1795,21 @@ export async function getMerakiClientsAndWireless(options: {
     ssids: { number: number; name: string; enabled: boolean; authMode?: string; encryptionMode?: string }[];
     inspectedNetworks: { id: string; name: string; organizationName: string }[];
 }> {
+    // If a specific device serial was requested, fetch that device's clients directly
+    if (options.serial && options.serial.trim()) {
+        const devClients = await getMerakiDeviceClients(options.serial, options.timespan, options.forceRefresh);
+        return {
+            clients: devClients.clients,
+            wirelessFailures: null,
+            ssids: [],
+            inspectedNetworks: devClients.device ? [{
+                id: devClients.device.networkId,
+                name: devClients.device.networkName,
+                organizationName: devClients.device.organizationName,
+            }] : [],
+        };
+    }
+
     const overview = await getMerakiFleetOverview({
         orgId: options.orgId,
         forceRefresh: options.forceRefresh,
@@ -1652,11 +1826,35 @@ export async function getMerakiClientsAndWireless(options: {
         orgNameById.set(o.id, o.name);
     }
 
+    const searchLower = (options.search || "").trim().toLowerCase();
+    const searchMacCompact = normalizeMacCompact(options.search);
+
+    const clients: MerakiNetworkClient[] = [];
+    const ssids: { number: number; name: string; enabled: boolean; authMode?: string; encryptionMode?: string }[] = [];
+    let wirelessFailures: MerakiWirelessFailureSummary | null = null;
+
+    // If the search looks like a full MAC address, query the org-wide search directly first
+    if (searchMacCompact.length === 12) {
+        const macMatches = await searchMerakiClientsByMac(searchMacCompact, options.orgId);
+        for (const m of macMatches) {
+            clients.push(m);
+        }
+    }
+
     // Determine which network(s) to query
     let targetNetworks: MerakiNetwork[] = [];
     if (options.networkId && options.networkId !== "AUTO") {
         const found = overview.networks.find((n) => n.id === options.networkId);
         if (found) targetNetworks = [found];
+    } else if (options.orgId === "905261") {
+        // In Cooper Health, networks are MX/Z3 appliance spokes; pick networks with online devices or name match
+        const cooperNets = overview.networks.filter((n) => n.organizationId === "905261");
+        if (searchLower) {
+            targetNetworks = cooperNets.filter((n) => n.name.toLowerCase().includes(searchLower)).slice(0, 10);
+        }
+        if (targetNetworks.length === 0) {
+            targetNetworks = cooperNets.slice(0, 6);
+        }
     } else {
         // Default to networks that have wireless or switches (e.g., Cape Regional Medical Center first)
         const sortedNets = [...overview.networks].sort((a, b) => {
@@ -1668,15 +1866,8 @@ export async function getMerakiClientsAndWireless(options: {
             if (aHasSwitch !== bHasSwitch) return bHasSwitch - aHasSwitch;
             return a.name.localeCompare(b.name);
         });
-        targetNetworks = sortedNets.slice(0, 3);
+        targetNetworks = sortedNets.slice(0, 4);
     }
-
-    const clients: MerakiNetworkClient[] = [];
-    const ssids: { number: number; name: string; enabled: boolean; authMode?: string; encryptionMode?: string }[] = [];
-    let wirelessFailures: MerakiWirelessFailureSummary | null = null;
-
-    const searchLower = (options.search || "").trim().toLowerCase();
-    const searchMacCompact = normalizeMacCompact(options.search);
 
     for (const net of targetNetworks) {
         const orgName = orgNameById.get(net.organizationId) || net.organizationId;

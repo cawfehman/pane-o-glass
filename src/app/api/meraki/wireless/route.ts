@@ -19,6 +19,7 @@ export async function GET(req: NextRequest) {
         const { searchParams } = new URL(req.url);
         const orgId = searchParams.get("orgId") || "ALL";
         const networkId = searchParams.get("networkId") || "AUTO";
+        const serial = searchParams.get("serial") || undefined;
         const search = searchParams.get("search") || "";
         const timespan = parseInt(searchParams.get("timespan") || "86400", 10);
         const forceRefresh = searchParams.get("refresh") === "true";
@@ -26,6 +27,7 @@ export async function GET(req: NextRequest) {
         const data = await getMerakiClientsAndWireless({
             orgId,
             networkId,
+            serial,
             search,
             timespan: isNaN(timespan) ? 86400 : timespan,
             forceRefresh,

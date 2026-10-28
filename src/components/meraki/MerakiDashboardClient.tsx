@@ -27,6 +27,10 @@ import {
     ChevronRight,
     Lock,
     Cpu,
+    Users,
+    Laptop,
+    Monitor,
+    X,
 } from "lucide-react";
 import { QueryHeader } from "@/components/queries/QueryHeader";
 import { ToolHelp } from "@/components/ToolHelp";
@@ -40,6 +44,14 @@ import type {
 } from "@/lib/meraki";
 
 type ActiveTab = "overview" | "dhcp" | "switch" | "wireless";
+
+function formatClientBytes(bytes: number): string {
+    if (!bytes || isNaN(bytes) || bytes <= 0) return "0 B";
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+    return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+}
 
 export default function MerakiDashboardClient() {
     const [activeTab, setActiveTab] = useState<ActiveTab>("overview");
@@ -64,6 +76,25 @@ export default function MerakiDashboardClient() {
     // Quick MAC / IP Resolver
     const [quickLookupInput, setQuickLookupInput] = useState<string>("");
     const [quickLookupResult, setQuickLookupResult] = useState<MerakiDeviceUnified | null | undefined>(undefined);
+    const [quickLookupClient, setQuickLookupClient] = useState<MerakiNetworkClient | null>(null);
+    const [quickLookupSearchingClients, setQuickLookupSearchingClients] = useState<boolean>(false);
+
+    // Spoke Appliance Connected Clients Modal State (Cooper Health MX68 / Z3 spokes)
+    const [spokeClientsModalDevice, setSpokeClientsModalDevice] = useState<MerakiDeviceUnified | null>(null);
+    const [spokeClientsModalLoading, setSpokeClientsModalLoading] = useState<boolean>(false);
+    const [spokeClientsModalData, setSpokeClientsModalData] = useState<{
+        device: MerakiDeviceUnified | null;
+        clients: MerakiNetworkClient[];
+        summary: {
+            totalClients: number;
+            wiredClients: number;
+            wirelessClients: number;
+            onlineClients: number;
+            totalBytesUsed: number;
+        };
+    } | null>(null);
+    const [spokeClientsModalError, setSpokeClientsModalError] = useState<string | null>(null);
+    const [spokeClientsModalFilter, setSpokeClientsModalFilter] = useState<string>("");
 
     // DHCP Tab State
     const [dhcpData, setDhcpData] = useState<MerakiDhcpScanResponse | null>(null);
@@ -285,11 +316,32 @@ export default function MerakiDashboardClient() {
         }
     }, [activeTab, clientsData, wirelessLoading, fetchWirelessAndClients]);
 
-    // Quick Resolver Handler
-    const handleQuickResolve = () => {
+    // Fetch connected client devices for a specific spoke appliance (MX68, Z3, MX67, etc.)
+    const fetchSpokeClients = useCallback(async (device: MerakiDeviceUnified, forceRefresh = false) => {
+        setSpokeClientsModalDevice(device);
+        setSpokeClientsModalLoading(true);
+        setSpokeClientsModalError(null);
+        setSpokeClientsModalData(null);
+        setSpokeClientsModalFilter("");
+        try {
+            const url = `/api/meraki/device/${encodeURIComponent(device.serial)}/clients${forceRefresh ? "?refresh=true" : ""}`;
+            const res = await fetch(url);
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || "Failed to load connected clients");
+            setSpokeClientsModalData(data);
+        } catch (err: any) {
+            setSpokeClientsModalError(err.message || "Error loading connected clients");
+        } finally {
+            setSpokeClientsModalLoading(false);
+        }
+    }, []);
+
+    // Quick Resolver Handler (Resolves switches, appliances, and client devices plugged into spokes)
+    const handleQuickResolve = async () => {
         const q = quickLookupInput.trim().toLowerCase();
         if (!q || !overview) {
             setQuickLookupResult(undefined);
+            setQuickLookupClient(null);
             return;
         }
         const compactHex = q.replace(/[^0-9a-f]/g, "");
@@ -301,7 +353,30 @@ export default function MerakiDashboardClient() {
                 d.mac.toLowerCase() === q ||
                 (compactHex.length === 12 && d.macCompact === compactHex)
         );
-        setQuickLookupResult(match || null);
+        if (match) {
+            setQuickLookupResult(match);
+            setQuickLookupClient(null);
+            return;
+        }
+
+        // If no physical Meraki device matched, search across connected client devices (wired & wireless)
+        setQuickLookupSearchingClients(true);
+        try {
+            const res = await fetch(`/api/meraki/wireless?search=${encodeURIComponent(q)}&timespan=86400`);
+            const data = await res.json();
+            if (data?.clients && data.clients.length > 0) {
+                setQuickLookupClient(data.clients[0]);
+                setQuickLookupResult(null);
+                return;
+            }
+        } catch {
+            // Ignore search error
+        } finally {
+            setQuickLookupSearchingClients(false);
+        }
+
+        setQuickLookupResult(null);
+        setQuickLookupClient(null);
     };
 
     // Filtered Fleet Devices
@@ -608,15 +683,68 @@ export default function MerakiDashboardClient() {
                         </div>
                         <button
                             onClick={handleQuickResolve}
-                            className="px-3 py-1.5 rounded-lg text-xs font-bold bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 hover:bg-emerald-500/25 cursor-pointer"
+                            disabled={quickLookupSearchingClients}
+                            className="px-3 py-1.5 rounded-lg text-xs font-bold bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 hover:bg-emerald-500/25 cursor-pointer flex items-center gap-1.5"
                         >
+                            {quickLookupSearchingClients ? (
+                                <RefreshCw size={12} className="animate-spin" />
+                            ) : null}
                             Resolve
                         </button>
                     </div>
                 </div>
 
-                {/* Quick Lookup Result Banner */}
-                {quickLookupResult !== undefined && (
+                {/* Quick Lookup Result Banner - Client Device Match (Connected to Spoke Appliance / Switch) */}
+                {quickLookupClient && (
+                    <div className="p-3 rounded-xl bg-bg-surface border border-indigo-500/40 flex flex-wrap items-center justify-between gap-3 text-xs shadow-lg">
+                        <div className="flex items-center gap-3 flex-wrap">
+                            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 flex items-center gap-1">
+                                <Laptop size={12} />
+                                Connected Client Device
+                            </span>
+                            <span className="font-bold text-text-primary text-sm">
+                                {quickLookupClient.description || quickLookupClient.user || "Client Device"}
+                            </span>
+                            <span className="font-mono text-text-secondary">
+                                IP: <strong className="text-cyan-300 font-bold">{quickLookupClient.ip || "N/A"}</strong>
+                            </span>
+                            <span className="font-mono text-text-secondary">
+                                MAC: <strong className="text-amber-300">{quickLookupClient.mac}</strong> ({quickLookupClient.macCompact})
+                            </span>
+                            <span className="text-text-secondary">
+                                Connected To Spoke Gateway: <strong className="text-text-primary">{quickLookupClient.recentDeviceName || quickLookupClient.recentDeviceSerial}</strong>
+                            </span>
+                            <span className="text-text-muted">
+                                Network: {quickLookupClient.networkName} ({quickLookupClient.organizationName})
+                            </span>
+                            <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-cyan-500/10 text-cyan-300 border border-cyan-500/30">
+                                {quickLookupClient.recentDeviceConnection}
+                            </span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            {quickLookupClient.recentDeviceSerial && (
+                                <button
+                                    onClick={() => {
+                                        const dev = overview?.devices.find((d) => d.serial === quickLookupClient.recentDeviceSerial);
+                                        if (dev) fetchSpokeClients(dev);
+                                    }}
+                                    className="px-3 py-1 rounded-lg bg-indigo-500/20 text-indigo-300 border border-indigo-500/40 font-bold cursor-pointer hover:bg-indigo-500/30"
+                                >
+                                    Inspect Spoke Gateway →
+                                </button>
+                            )}
+                            <button
+                                onClick={() => setQuickLookupClient(null)}
+                                className="text-text-muted hover:text-text-primary px-2 py-1 cursor-pointer bg-transparent border-none"
+                            >
+                                ✕
+                            </button>
+                        </div>
+                    </div>
+                )}
+
+                {/* Quick Lookup Result Banner - Physical Meraki Hardware Match */}
+                {quickLookupResult !== undefined && !quickLookupClient && (
                     <div className="p-3 rounded-xl bg-bg-surface border border-emerald-500/30 flex flex-wrap items-center justify-between gap-3 text-xs">
                         {quickLookupResult ? (
                             <>
@@ -654,15 +782,24 @@ export default function MerakiDashboardClient() {
                                         </button>
                                     )}
                                     {quickLookupResult.productType === "appliance" && (
-                                        <button
-                                            onClick={() => {
-                                                setActiveTab("dhcp");
-                                                fetchDhcpPools({ serial: quickLookupResult.serial, batchSize: 5 });
-                                            }}
-                                            className="px-3 py-1 rounded-lg bg-amber-500/20 text-amber-300 border border-amber-500/40 font-bold cursor-pointer"
-                                        >
-                                            Inspect DHCP Pools →
-                                        </button>
+                                        <div className="flex items-center gap-1.5">
+                                            <button
+                                                onClick={() => fetchSpokeClients(quickLookupResult)}
+                                                className="px-3 py-1 rounded-lg bg-indigo-500/20 text-indigo-300 border border-indigo-500/40 font-bold cursor-pointer hover:bg-indigo-500/30 flex items-center gap-1"
+                                            >
+                                                <Users size={12} />
+                                                View Clients →
+                                            </button>
+                                            <button
+                                                onClick={() => {
+                                                    setActiveTab("dhcp");
+                                                    fetchDhcpPools({ serial: quickLookupResult.serial, batchSize: 5 });
+                                                }}
+                                                className="px-3 py-1 rounded-lg bg-amber-500/20 text-amber-300 border border-amber-500/40 font-bold cursor-pointer"
+                                            >
+                                                DHCP Pools →
+                                            </button>
+                                        </div>
                                     )}
                                     <button
                                         onClick={() => setQuickLookupResult(undefined)}
@@ -675,7 +812,7 @@ export default function MerakiDashboardClient() {
                         ) : (
                             <div className="flex items-center justify-between w-full">
                                 <span className="text-rose-400 font-medium">
-                                    No Meraki device matched &ldquo;{quickLookupInput}&rdquo; across Cooper Health or Cape Regional.
+                                    No Meraki hardware or connected client device matched &ldquo;{quickLookupInput}&rdquo; across Cooper Health or Cape Regional.
                                 </span>
                                 <button
                                     onClick={() => setQuickLookupResult(undefined)}
@@ -1055,15 +1192,25 @@ export default function MerakiDashboardClient() {
                                                                                             Ports &amp; CDP
                                                                                         </button>
                                                                                     ) : (
-                                                                                        <button
-                                                                                            onClick={() => {
-                                                                                                setActiveTab("dhcp");
-                                                                                                fetchDhcpPools({ serial: dev.serial, batchSize: 5 });
-                                                                                            }}
-                                                                                            className="px-2 py-1 rounded bg-indigo-500/15 text-indigo-300 border border-indigo-500/30 font-bold text-[11px] cursor-pointer"
-                                                                                        >
-                                                                                            Check DHCP
-                                                                                        </button>
+                                                                                        <div className="flex items-center justify-end gap-1.5">
+                                                                                            <button
+                                                                                                onClick={() => fetchSpokeClients(dev)}
+                                                                                                className="px-2 py-1 rounded bg-indigo-500/20 text-indigo-300 border border-indigo-500/40 hover:bg-indigo-500/30 font-bold text-[11px] cursor-pointer flex items-center gap-1"
+                                                                                                title="Inspect connected workstations, IP phones, and medical equipment"
+                                                                                            >
+                                                                                                <Users size={11} />
+                                                                                                Clients
+                                                                                            </button>
+                                                                                            <button
+                                                                                                onClick={() => {
+                                                                                                    setActiveTab("dhcp");
+                                                                                                    fetchDhcpPools({ serial: dev.serial, batchSize: 5 });
+                                                                                                }}
+                                                                                                className="px-2 py-1 rounded bg-indigo-500/15 text-indigo-300 border border-indigo-500/30 font-bold text-[11px] cursor-pointer"
+                                                                                            >
+                                                                                                Check DHCP
+                                                                                            </button>
+                                                                                        </div>
                                                                                     )}
                                                                                 </td>
                                                                             </tr>
@@ -1172,15 +1319,25 @@ export default function MerakiDashboardClient() {
                                                                                 </button>
                                                                             )}
                                                                             {dev.productType === "appliance" && (
-                                                                                <button
-                                                                                    onClick={() => {
-                                                                                        setActiveTab("dhcp");
-                                                                                        fetchDhcpPools({ serial: dev.serial, batchSize: 5 });
-                                                                                    }}
-                                                                                    className="px-2.5 py-1 rounded bg-indigo-500/15 text-indigo-300 border border-indigo-500/30 hover:bg-indigo-500/25 font-bold text-[11px] cursor-pointer"
-                                                                                >
-                                                                                    DHCP
-                                                                                </button>
+                                                                                <div className="flex items-center gap-1.5">
+                                                                                    <button
+                                                                                        onClick={() => fetchSpokeClients(dev)}
+                                                                                        className="px-2 py-1 rounded bg-indigo-500/20 text-indigo-300 border border-indigo-500/40 hover:bg-indigo-500/30 font-bold text-[11px] cursor-pointer flex items-center gap-1"
+                                                                                        title="Inspect connected workstations, IP phones, and medical equipment"
+                                                                                    >
+                                                                                        <Users size={11} />
+                                                                                        Clients
+                                                                                    </button>
+                                                                                    <button
+                                                                                        onClick={() => {
+                                                                                            setActiveTab("dhcp");
+                                                                                            fetchDhcpPools({ serial: dev.serial, batchSize: 5 });
+                                                                                        }}
+                                                                                        className="px-2.5 py-1 rounded bg-indigo-500/15 text-indigo-300 border border-indigo-500/30 hover:bg-indigo-500/25 font-bold text-[11px] cursor-pointer"
+                                                                                    >
+                                                                                        DHCP
+                                                                                    </button>
+                                                                                </div>
                                                                             )}
                                                                             {dev.productType === "wireless" && (
                                                                                 <button
@@ -1359,15 +1516,25 @@ export default function MerakiDashboardClient() {
                                                             </button>
                                                         )}
                                                         {dev.productType === "appliance" && (
-                                                            <button
-                                                                onClick={() => {
-                                                                    setActiveTab("dhcp");
-                                                                    fetchDhcpPools({ serial: dev.serial, batchSize: 5 });
-                                                                }}
-                                                                className="px-2.5 py-1 rounded-lg bg-indigo-500/15 text-indigo-300 border border-indigo-500/30 hover:bg-indigo-500/25 font-bold text-xs cursor-pointer"
-                                                            >
-                                                                Check DHCP
-                                                            </button>
+                                                            <div className="flex items-center justify-end gap-1.5">
+                                                                <button
+                                                                    onClick={() => fetchSpokeClients(dev)}
+                                                                    className="px-2.5 py-1 rounded-lg bg-indigo-500/20 text-indigo-300 border border-indigo-500/40 hover:bg-indigo-500/30 font-bold text-xs cursor-pointer flex items-center gap-1"
+                                                                    title="Inspect connected workstations, IP phones, and medical equipment"
+                                                                >
+                                                                    <Users size={12} />
+                                                                    Clients
+                                                                </button>
+                                                                <button
+                                                                    onClick={() => {
+                                                                        setActiveTab("dhcp");
+                                                                        fetchDhcpPools({ serial: dev.serial, batchSize: 5 });
+                                                                    }}
+                                                                    className="px-2.5 py-1 rounded-lg bg-indigo-500/15 text-indigo-300 border border-indigo-500/30 hover:bg-indigo-500/25 font-bold text-xs cursor-pointer"
+                                                                >
+                                                                    Check DHCP
+                                                                </button>
+                                                            </div>
                                                         )}
                                                         {dev.productType === "wireless" && (
                                                             <button
@@ -2095,11 +2262,13 @@ export default function MerakiDashboardClient() {
                                     <option value="AUTO">
                                         Auto (Primary Wireless & Switch Networks)
                                     </option>
-                                    {(overview?.networks || []).map((n) => (
-                                        <option key={n.id} value={n.id}>
-                                            {n.name} ({n.productTypes.join(", ")})
-                                        </option>
-                                    ))}
+                                    {(overview?.networks || [])
+                                        .filter((n) => selectedOrgId === "ALL" || n.organizationId === selectedOrgId)
+                                        .map((n) => (
+                                            <option key={n.id} value={n.id}>
+                                                {n.name} ({n.productTypes.join(", ")})
+                                            </option>
+                                        ))}
                                 </select>
 
                                 {/* Timespan Pills */}
@@ -2371,6 +2540,271 @@ export default function MerakiDashboardClient() {
                                         )}
                                     </tbody>
                                 </table>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* CONNECTED SPOKE CLIENTS MODAL (MX68, Z3, MX67 Gateway Connected Workstations, IP Phones & Peripherals) */}
+                {spokeClientsModalDevice && (
+                    <div
+                        className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-fadeIn"
+                        onClick={(e) => {
+                            if (e.target === e.currentTarget) setSpokeClientsModalDevice(null);
+                        }}
+                    >
+                        <div className="glass-card border border-border-color rounded-2xl w-full max-w-5xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden bg-bg-surface">
+                            {/* Modal Header */}
+                            <div className="p-4 border-b border-border-color flex items-center justify-between gap-3 bg-bg-default/80">
+                                <div className="flex items-center gap-3">
+                                    <div className="w-10 h-10 rounded-xl bg-indigo-500/20 border border-indigo-500/40 flex items-center justify-center text-indigo-300">
+                                        <Laptop size={20} />
+                                    </div>
+                                    <div>
+                                        <div className="flex items-center gap-2">
+                                            <h3 className="m-0 text-base font-extrabold text-text-primary">
+                                                {spokeClientsModalDevice.name || spokeClientsModalDevice.serial}
+                                            </h3>
+                                            <span className="px-2 py-0.5 rounded text-[11px] font-mono font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
+                                                {spokeClientsModalDevice.model}
+                                            </span>
+                                            {getStatusBadge(spokeClientsModalDevice.status)}
+                                        </div>
+                                        <p className="m-0 text-xs text-text-muted mt-0.5">
+                                            {spokeClientsModalDevice.networkName} • LAN IP: {spokeClientsModalDevice.lanIp || "—"} • Serial: {spokeClientsModalDevice.serial}
+                                        </p>
+                                    </div>
+                                </div>
+
+                                <div className="flex items-center gap-2">
+                                    <button
+                                        onClick={() => fetchSpokeClients(spokeClientsModalDevice, true)}
+                                        disabled={spokeClientsModalLoading}
+                                        className="px-3 py-1.5 rounded-lg text-xs font-bold bg-bg-surface hover:bg-white/10 text-text-secondary border border-border-color flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                                        title="Force fresh poll from Meraki Cloud API"
+                                    >
+                                        <RefreshCw size={13} className={spokeClientsModalLoading ? "animate-spin" : ""} />
+                                        Refresh
+                                    </button>
+                                    <button
+                                        onClick={() => setSpokeClientsModalDevice(null)}
+                                        className="p-1.5 rounded-lg text-text-muted hover:text-text-primary hover:bg-white/10 cursor-pointer border-none bg-transparent"
+                                    >
+                                        <X size={18} />
+                                    </button>
+                                </div>
+                            </div>
+
+                            {/* Summary Stat Bar & Search */}
+                            {spokeClientsModalData && (
+                                <div className="p-3 border-b border-border-color bg-black/20 flex flex-wrap items-center justify-between gap-3 text-xs">
+                                    <div className="flex items-center gap-2">
+                                        <div className="px-2.5 py-1 rounded-lg bg-bg-surface border border-border-color">
+                                            <span className="text-text-muted">Total Devices: </span>
+                                            <span className="font-bold text-text-primary">{spokeClientsModalData.summary.totalClients}</span>
+                                        </div>
+                                        <div className="px-2.5 py-1 rounded-lg bg-cyan-500/10 border border-cyan-500/30 text-cyan-300">
+                                            <span className="opacity-80">Wired: </span>
+                                            <span className="font-bold">{spokeClientsModalData.summary.wiredClients}</span>
+                                        </div>
+                                        <div className="px-2.5 py-1 rounded-lg bg-purple-500/10 border border-purple-500/30 text-purple-300">
+                                            <span className="opacity-80">Wireless: </span>
+                                            <span className="font-bold">{spokeClientsModalData.summary.wirelessClients}</span>
+                                        </div>
+                                        <div className="px-2.5 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-300">
+                                            <span className="opacity-80">Online: </span>
+                                            <span className="font-bold">{spokeClientsModalData.summary.onlineClients}</span>
+                                        </div>
+                                        <div className="px-2.5 py-1 rounded-lg bg-bg-surface border border-border-color">
+                                            <span className="text-text-muted">24h Traffic: </span>
+                                            <span className="font-bold text-emerald-400">
+                                                {formatClientBytes(spokeClientsModalData.summary.totalBytesUsed)}
+                                            </span>
+                                        </div>
+                                    </div>
+
+                                    <div className="relative flex items-center min-w-[240px]">
+                                        <Search size={14} className="absolute left-3 text-text-muted" />
+                                        <input
+                                            type="text"
+                                            value={spokeClientsModalFilter}
+                                            onChange={(e) => setSpokeClientsModalFilter(e.target.value)}
+                                            placeholder="Filter clients by IP, MAC, name, OS..."
+                                            className="pl-8 pr-3 py-1.5 rounded-lg bg-bg-default border border-border-color text-xs text-text-primary w-full focus:outline-none focus:border-indigo-400"
+                                        />
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Modal Content */}
+                            <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">
+                                {spokeClientsModalLoading ? (
+                                    <div className="py-16 flex flex-col items-center justify-center gap-3 text-text-muted">
+                                        <RefreshCw size={28} className="animate-spin text-indigo-400" />
+                                        <span className="text-sm font-semibold">
+                                            Querying Meraki Cloud for devices connected to {spokeClientsModalDevice.name || spokeClientsModalDevice.serial}...
+                                        </span>
+                                        <span className="text-xs text-text-secondary">
+                                            Retrieving 24-hour telemetry for wired workstations, IP phones, and medical equipment
+                                        </span>
+                                    </div>
+                                ) : spokeClientsModalError ? (
+                                    <div className="p-4 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-center justify-between">
+                                        <span>{spokeClientsModalError}</span>
+                                        <button
+                                            onClick={() => fetchSpokeClients(spokeClientsModalDevice, true)}
+                                            className="px-3 py-1 rounded bg-rose-500/20 hover:bg-rose-500/30 font-bold border border-rose-500/40 text-rose-200 cursor-pointer"
+                                        >
+                                            Retry
+                                        </button>
+                                    </div>
+                                ) : !spokeClientsModalData || spokeClientsModalData.clients.length === 0 ? (
+                                    <div className="py-16 text-center text-text-muted flex flex-col items-center gap-2">
+                                        <Laptop size={32} className="opacity-40" />
+                                        <span className="text-sm font-medium">No client devices observed on this gateway in the last 24 hours.</span>
+                                        <span className="text-xs text-text-secondary">
+                                            Device traffic may be quiet or devices may not have generated IP traffic within the polling timespan.
+                                        </span>
+                                    </div>
+                                ) : (
+                                    (() => {
+                                        const q = spokeClientsModalFilter.trim().toLowerCase();
+                                        const filteredClients = spokeClientsModalData.clients.filter((c) => {
+                                            if (!q) return true;
+                                            return (
+                                                (c.description && c.description.toLowerCase().includes(q)) ||
+                                                (c.ip && c.ip.toLowerCase().includes(q)) ||
+                                                (c.mac && c.mac.toLowerCase().includes(q)) ||
+                                                (c.macCompact && c.macCompact.includes(q.replace(/[^0-9a-f]/g, ""))) ||
+                                                (c.user && c.user.toLowerCase().includes(q)) ||
+                                                (c.os && c.os.toLowerCase().includes(q)) ||
+                                                (c.manufacturer && c.manufacturer.toLowerCase().includes(q))
+                                            );
+                                        });
+
+                                        return (
+                                            <div className="overflow-x-auto">
+                                                <table className="w-full text-left border-collapse text-xs">
+                                                    <thead>
+                                                        <tr className="border-b border-border-color text-text-muted uppercase text-[11px] bg-black/20">
+                                                            <th className="py-2.5 px-3">Status</th>
+                                                            <th className="py-2.5 px-3">Client Device / Hostname</th>
+                                                            <th className="py-2.5 px-3">IP Address</th>
+                                                            <th className="py-2.5 px-3">MAC Address</th>
+                                                            <th className="py-2.5 px-3">Connection / Port</th>
+                                                            <th className="py-2.5 px-3">VLAN</th>
+                                                            <th className="py-2.5 px-3">OS / Manufacturer</th>
+                                                            <th className="py-2.5 px-3 text-right">Traffic Usage</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody className="divide-y divide-border-color">
+                                                        {filteredClients.map((client) => (
+                                                            <tr key={client.id || client.mac} className="hover:bg-white/5 transition-colors">
+                                                                <td className="py-2.5 px-3">
+                                                                    <span
+                                                                        className={`px-2 py-0.5 rounded text-[10px] font-bold border ${
+                                                                            client.status?.toLowerCase() === "online"
+                                                                                ? "bg-emerald-500/15 text-emerald-400 border-emerald-500/30"
+                                                                                : "bg-zinc-500/15 text-zinc-400 border-zinc-500/30"
+                                                                        }`}
+                                                                    >
+                                                                        {client.status || "Active"}
+                                                                    </span>
+                                                                </td>
+                                                                <td className="py-2.5 px-3">
+                                                                    <div className="font-bold text-text-primary flex items-center gap-1.5">
+                                                                        {client.description || client.user || "Unnamed Device"}
+                                                                    </div>
+                                                                    {client.user && client.description && client.user !== client.description && (
+                                                                        <div className="text-[11px] text-text-muted">
+                                                                            User: {client.user}
+                                                                        </div>
+                                                                    )}
+                                                                </td>
+                                                                <td className="py-2.5 px-3 font-mono">
+                                                                    {client.ip ? (
+                                                                        <div className="flex items-center gap-1">
+                                                                            <span className="text-cyan-300 font-bold">{client.ip}</span>
+                                                                            <button
+                                                                                onClick={() => copyToClipboard(client.ip!)}
+                                                                                className="opacity-50 hover:opacity-100 p-0.5 text-text-muted hover:text-white cursor-pointer bg-transparent border-none"
+                                                                                title="Copy IP"
+                                                                            >
+                                                                                {copiedText === client.ip ? <Check size={11} className="text-emerald-400" /> : <Copy size={11} />}
+                                                                            </button>
+                                                                        </div>
+                                                                    ) : (
+                                                                        <span className="text-text-muted">—</span>
+                                                                    )}
+                                                                </td>
+                                                                <td className="py-2.5 px-3 font-mono">
+                                                                    <div className="flex items-center gap-1">
+                                                                        <span>{client.mac}</span>
+                                                                        <button
+                                                                            onClick={() => copyToClipboard(client.mac)}
+                                                                            className="opacity-50 hover:opacity-100 p-0.5 text-text-muted hover:text-white cursor-pointer bg-transparent border-none"
+                                                                            title="Copy MAC"
+                                                                        >
+                                                                            {copiedText === client.mac ? <Check size={11} className="text-emerald-400" /> : <Copy size={11} />}
+                                                                        </button>
+                                                                    </div>
+                                                                </td>
+                                                                <td className="py-2.5 px-3">
+                                                                    <span
+                                                                        className={`px-2 py-0.5 rounded text-[10px] font-bold border ${
+                                                                            client.recentDeviceConnection === "Wireless"
+                                                                                ? "bg-purple-500/15 text-purple-300 border-purple-500/30"
+                                                                                : "bg-cyan-500/15 text-cyan-300 border-cyan-500/30"
+                                                                        }`}
+                                                                    >
+                                                                        {client.recentDeviceConnection}
+                                                                    </span>
+                                                                    <div className="text-[11px] text-text-muted mt-0.5 font-mono">
+                                                                        {client.ssid ? `SSID: ${client.ssid}` : client.switchport ? `Port #${client.switchport}` : ""}
+                                                                    </div>
+                                                                </td>
+                                                                <td className="py-2.5 px-3 font-mono">
+                                                                    {client.vlan !== null && client.vlan !== undefined ? client.vlan : "—"}
+                                                                </td>
+                                                                <td className="py-2.5 px-3">
+                                                                    <div className="text-text-primary text-[11px]">
+                                                                        {client.os || client.manufacturer || "Unknown Device"}
+                                                                    </div>
+                                                                    {client.manufacturer && client.os && (
+                                                                        <div className="text-[10px] text-text-muted">
+                                                                            {client.manufacturer}
+                                                                        </div>
+                                                                    )}
+                                                                </td>
+                                                                <td className="py-2.5 px-3 text-right font-mono">
+                                                                    <div className="font-bold text-emerald-400">
+                                                                        {formatClientBytes(client.usage.total)}
+                                                                    </div>
+                                                                    <div className="text-[10px] text-text-muted">
+                                                                        ↑{formatClientBytes(client.usage.sent)} / ↓{formatClientBytes(client.usage.recv)}
+                                                                    </div>
+                                                                </td>
+                                                            </tr>
+                                                        ))}
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        );
+                                    })()
+                                )}
+                            </div>
+
+                            {/* Modal Footer */}
+                            <div className="p-3 border-t border-border-color bg-black/30 flex items-center justify-between text-[11px] text-text-muted">
+                                <span>
+                                    Queried live from Meraki Cloud API (24h timespan). Workstations, IP phones, and medical peripherals connected directly to spoke switchports.
+                                </span>
+                                <button
+                                    onClick={() => setSpokeClientsModalDevice(null)}
+                                    className="px-3 py-1 rounded bg-bg-surface hover:bg-white/10 text-text-primary font-bold border border-border-color cursor-pointer"
+                                >
+                                    Close
+                                </button>
                             </div>
                         </div>
                     </div>
