@@ -10,6 +10,8 @@ import { blockCitrixAbusiveIps } from "@/lib/netscaler-login-triage";
 
 export const dynamic = "force-dynamic";
 
+let lastBlacklistEnvMtimeMs = 0;
+
 async function isAuthorizedForBlacklist(session: any): Promise<boolean> {
     if (!session?.user) return false;
     const role = (session.user as any)?.role;
@@ -31,33 +33,38 @@ export async function GET(req: NextRequest) {
             return NextResponse.json({ error: "Forbidden: Access to this tool is restricted." }, { status: 403 });
         }
 
-        // Auto-sync any blacklist IPs defined in .env
+        // Auto-sync any blacklist IPs defined in .env only when .env is modified on disk
+        // (avoids per-request disk/DB overhead and preserves UI deletions/unblocks)
         try {
             const envPath = path.resolve(process.cwd(), ".env");
             if (fs.existsSync(envPath)) {
-                const envConfig = dotenv.parse(fs.readFileSync(envPath, "utf8"));
-                const rawBlacklist = [
-                    envConfig["GUARDIAN_BLACKLIST"],
-                    envConfig["GUARDIAN_BLACKLIST_IPS"],
-                    envConfig["BLACKLIST_IP_LIST"]
-                ].filter(Boolean).join(",");
+                const stat = fs.statSync(envPath);
+                if (stat.mtimeMs !== lastBlacklistEnvMtimeMs) {
+                    const envConfig = dotenv.parse(fs.readFileSync(envPath, "utf8"));
+                    const rawBlacklist = [
+                        envConfig["GUARDIAN_BLACKLIST"],
+                        envConfig["GUARDIAN_BLACKLIST_IPS"],
+                        envConfig["BLACKLIST_IP_LIST"]
+                    ].filter(Boolean).join(",");
 
-                const envBlacklistIps = Array.from(new Set(
-                    rawBlacklist
-                        .split(",")
-                        .map((ip) => ip.trim())
-                        .filter((ip) => /^(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/.test(ip))
-                ));
+                    const envBlacklistIps = Array.from(new Set(
+                        rawBlacklist
+                            .split(",")
+                            .map((ip) => ip.trim())
+                            .filter((ip) => /^(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/.test(ip))
+                    ));
 
-                for (const ip of envBlacklistIps) {
-                    await prisma.guardianBlacklist.upsert({
-                        where: { ip },
-                        update: {},
-                        create: {
-                            ip,
-                            reason: "Synced from GUARDIAN_BLACKLIST (.env)"
-                        }
-                    }).catch(() => {});
+                    if (envBlacklistIps.length > 0) {
+                        await prisma.guardianBlacklist.createMany({
+                            data: envBlacklistIps.map((ip) => ({
+                                ip,
+                                reason: "Synced from GUARDIAN_BLACKLIST (.env)"
+                            })),
+                            skipDuplicates: true
+                        }).catch(() => {});
+                    }
+
+                    lastBlacklistEnvMtimeMs = stat.mtimeMs;
                 }
             }
         } catch (e) {}
@@ -143,7 +150,7 @@ export async function POST(req: NextRequest) {
                     reason: cleanReason,
                     targetHost,
                     addToGuardianBlacklist: true,
-                    userId: session.user.id,
+                    userId: session.user.id || authorName,
                     clientIp,
                     initiatorEmail: session.user.email || authorName
                 });

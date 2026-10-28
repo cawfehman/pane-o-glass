@@ -119,20 +119,61 @@ export async function enqueueExpiredBridgeUnshuns(limit: number = 100): Promise<
         take: limit
     });
 
-    for (const exp of expiredBridges) {
-        await enqueueFirewallCommand({
-            ip: exp.ip,
-            action: "UNSHUN",
-            targetHost: exp.targetHost,
-            reason: `Dynamic bridge hold expired (was shunned until ${exp.expiresAt?.toISOString()})`,
-            status: "PENDING"
-        });
+    if (expiredBridges.length === 0) {
+        return 0;
+    }
 
-        await prisma.firewallCommandQueue.update({
-            where: { id: exp.id },
-            data: { expiresAt: null }
+    const candidateIps = Array.from(new Set(expiredBridges.map(e => e.ip)));
+
+    // 1. Check which (ip + targetHost) pairs already have a PENDING UNSHUN queued
+    const existingPending = await prisma.firewallCommandQueue.findMany({
+        where: {
+            ip: { in: candidateIps },
+            action: "UNSHUN",
+            status: "PENDING"
+        },
+        select: { ip: true, targetHost: true }
+    });
+
+    const existingKeys = new Set(existingPending.map(e => `${e.ip}:::${e.targetHost}`));
+    const seenInBatch = new Set<string>();
+    const toCreate: {
+        ip: string;
+        action: string;
+        targetHost: string;
+        reason: string;
+        status: string;
+        expiresAt: null;
+    }[] = [];
+
+    for (const exp of expiredBridges) {
+        const cleanIp = exp.ip.trim();
+        const targetHost = exp.targetHost || "all";
+        const key = `${cleanIp}:::${targetHost}`;
+        if (!existingKeys.has(key) && !seenInBatch.has(key)) {
+            seenInBatch.add(key);
+            toCreate.push({
+                ip: cleanIp,
+                action: "UNSHUN",
+                targetHost,
+                reason: `Dynamic bridge hold expired (was shunned until ${exp.expiresAt?.toISOString()})`,
+                status: "PENDING",
+                expiresAt: null
+            });
+        }
+    }
+
+    if (toCreate.length > 0) {
+        await prisma.firewallCommandQueue.createMany({
+            data: toCreate
         });
     }
+
+    // 2. Clear expiresAt on all processed bridge rows in a single batch update
+    await prisma.firewallCommandQueue.updateMany({
+        where: { id: { in: expiredBridges.map(e => e.id) } },
+        data: { expiresAt: null }
+    });
 
     return expiredBridges.length;
 }

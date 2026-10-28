@@ -62,29 +62,27 @@ export async function syncEnvGuardian() {
     let syncedBlacklist = 0;
 
     try {
-        for (const ip of watchIps) {
-            await prisma.guardianWatchIp.upsert({
-                where: { ip },
-                update: {},
-                create: {
+        if (watchIps.length > 0) {
+            await prisma.guardianWatchIp.createMany({
+                data: watchIps.map(ip => ({
                     ip,
                     description: "Synced from WATCH_IP_LIST (.env)",
                     createdBy: "System (.env Sync)"
-                }
+                })),
+                skipDuplicates: true
             });
-            syncedWatch++;
+            syncedWatch = watchIps.length;
         }
 
-        for (const ip of blacklistIps) {
-            await prisma.guardianBlacklist.upsert({
-                where: { ip },
-                update: {},
-                create: {
+        if (blacklistIps.length > 0) {
+            await prisma.guardianBlacklist.createMany({
+                data: blacklistIps.map(ip => ({
                     ip,
                     reason: "Synced from GUARDIAN_BLACKLIST (.env)"
-                }
+                })),
+                skipDuplicates: true
             });
-            syncedBlacklist++;
+            syncedBlacklist = blacklistIps.length;
         }
 
         console.log(`[ENV-GUARDIAN-SYNC] Successfully synced ${syncedWatch} Watchlist IP(s) and ${syncedBlacklist} Blacklist IP(s) from .env into PostgreSQL.`);

@@ -1,29 +1,9 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { auth } from "@/lib/auth";
 import { isPrivateIp } from "@/lib/iplocate";
+import { isResidentialOrg } from "@/lib/reputation-ledger";
 import crypto from "crypto";
-
-// Common US consumer residential ISPs for TTL aging calculus
-const RESIDENTIAL_ISP_KEYWORDS = [
-    "comcast",
-    "charter",
-    "spectrum",
-    "verizon",
-    "at&t",
-    "att",
-    "cox",
-    "optimum",
-    "centurylink",
-    "frontier",
-    "t-mobile",
-    "sprint"
-];
-
-function isResidentialOrg(org?: string | null): boolean {
-    if (!org) return false;
-    const lower = org.toLowerCase();
-    return RESIDENTIAL_ISP_KEYWORDS.some(kw => lower.includes(kw));
-}
 
 export async function getSecurityIntelligenceIps(tierFilter: string = "all"): Promise<{
     ips: string[];
@@ -93,7 +73,7 @@ export async function getSecurityIntelligenceIps(tierFilter: string = "all"): Pr
     }
 
     // 4. Active Firewall Shun Database Records
-    // - Dynamic Residential ISPs: 48-Hour TTL aging to prevent bloat & DHCP employee collateral lockout
+    // - Dynamic Residential ISPs: 7-Day (168-Hour) TTL aging to prevent bloat & DHCP employee collateral lockout
     // - Cloud VPS / Hosting ASNs / Datacenters: RETAINED INDEFINITELY (zero business need for inbound VPS traffic)
     if (tierFilter === "all" || tierFilter === "hosting" || tierFilter === "residential") {
         const activeStats = await prisma.firewallShunStats.findMany({
@@ -119,7 +99,7 @@ export async function getSecurityIntelligenceIps(tierFilter: string = "all"): Pr
             const isRes = isResidentialOrg(stat.shunIp?.org);
 
             if (isRes) {
-                // Tier 1: Dynamic Residential IP -> strictly apply 48-Hour TTL
+                // Tier 1: Dynamic Residential IP -> strictly apply 7-Day (168-Hour) TTL
                 if (stat.lastSeen >= residentialCutoff) {
                     if (tierFilter === "all" || tierFilter === "residential") {
                         ipSet.add(ip);
@@ -226,25 +206,26 @@ export async function GET(req: Request) {
     try {
         const url = new URL(req.url);
         const format = url.searchParams.get("format") || "txt";
-
-        // Track last poll timestamp for FMC dynamic hold synchronization
-        await prisma.netscalerCveSetting.upsert({
-            where: { key: "LAST_FMC_SI_POLL" },
-            update: { value: new Date().toISOString() },
-            create: { key: "LAST_FMC_SI_POLL", value: new Date().toISOString() }
-        }).catch(() => {});
         const tier = url.searchParams.get("tier") || "all";
         const key = url.searchParams.get("key");
 
-        // Optional token security check
+        // 1. Validate authorization BEFORE updating poll timestamps or serving feed data
         const requiredKey = process.env.SECURITY_INTELLIGENCE_KEY;
         if (requiredKey && key !== requiredKey) {
-            // Also allow internal RFC 1918 traffic
-            const forwarded = req.headers.get("x-forwarded-for") || "";
-            const clientIp = forwarded.split(",")[0].trim();
-            if (!isPrivateIp(clientIp)) {
+            const session = await auth().catch(() => null);
+            if (!session?.user) {
                 return new NextResponse("Unauthorized: Invalid Security Intelligence Key", { status: 401 });
             }
+        }
+
+        // 2. Track last poll timestamp for FMC dynamic hold synchronization
+        // Only record when serving the plain-text feed (actual FMC poll), not UI ?format=json previews
+        if (format === "txt") {
+            await prisma.netscalerCveSetting.upsert({
+                where: { key: "LAST_FMC_SI_POLL" },
+                update: { value: new Date().toISOString() },
+                create: { key: "LAST_FMC_SI_POLL", value: new Date().toISOString() }
+            }).catch(() => {});
         }
 
         const { body, md5, metrics, ips } = await getSecurityIntelligenceFeed(tier);

@@ -1872,6 +1872,11 @@ export async function runCitrixLoginAutoShunCycle(options?: {
         const uList = ipEval.targetedUsers.map((u) => u.username);
         const isMultiUser = uList.length >= 2;
         const totalFails = ipEval.loginFailedCount + ipEval.policyFailedCount || ipEval.totalFailures || 1;
+        const authFailures = ipEval.loginFailedCount + ipEval.policyFailedCount;
+        const matchesBlacklistedAsnRule =
+            cfg.shunSingleFailureOnBlacklistedAsn &&
+            ipEval.isOnAsnBlacklist &&
+            (authFailures >= 1 || ipEval.totalFailures >= 1);
         const now = new Date();
 
         if (ipEval.isOnWatchlist || ipEval.verdict === "LEGIT_USER_ISSUE") {
@@ -1969,12 +1974,6 @@ export async function runCitrixLoginAutoShunCycle(options?: {
             protectedCount++;
             continue;
         }
-
-        const authFailures = ipEval.loginFailedCount + ipEval.policyFailedCount;
-        const matchesBlacklistedAsnRule =
-            cfg.shunSingleFailureOnBlacklistedAsn &&
-            ipEval.isOnAsnBlacklist &&
-            (authFailures >= 1 || ipEval.totalFailures >= 1);
 
         const matches10mAuthBurstRule =
             ipEval.maxAuthFailuresIn10m >= cfg.minAuthFailuresIn10m;

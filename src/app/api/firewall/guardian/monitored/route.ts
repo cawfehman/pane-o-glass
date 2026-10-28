@@ -9,6 +9,8 @@ import dotenv from "dotenv";
 
 export const dynamic = "force-dynamic";
 
+let lastMonitoredEnvMtimeMs = 0;
+
 const IPV4_REGEX = /^(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/;
 
 // GET /api/firewall/guardian/monitored
@@ -22,72 +24,67 @@ export async function GET() {
             return NextResponse.json({ error: "Forbidden: Access to this tool is restricted." }, { status: 403 });
         }
 
-        // 1. Read .env from disk if present to capture newly added IPs without requiring process restart
-        let envConfig: Record<string, string> = {};
+        // 1. Sync .env from disk only when modified (avoids per-request disk/DB overhead and preserves UI deletions)
         try {
             const envPath = path.resolve(process.cwd(), ".env");
             if (fs.existsSync(envPath)) {
-                envConfig = dotenv.parse(fs.readFileSync(envPath, "utf8"));
+                const stat = fs.statSync(envPath);
+                if (stat.mtimeMs !== lastMonitoredEnvMtimeMs) {
+                    const envConfig = dotenv.parse(fs.readFileSync(envPath, "utf8"));
+                    const getVal = (key: string): string => envConfig[key] || process.env[key] || "";
+
+                    const rawWatchList = [
+                        getVal("WATCH_IP_LIST"),
+                        getVal("GUARDIAN_WATCH_IP_LIST"),
+                        getVal("GUARDIAN_WATCH_LIST"),
+                        getVal("GUARDIAN_IPS")
+                    ].join(",");
+
+                    const envIps = Array.from(new Set(
+                        rawWatchList
+                            .split(",")
+                            .map(ip => ip.trim())
+                            .filter(ip => IPV4_REGEX.test(ip))
+                    ));
+
+                    if (envIps.length > 0) {
+                        await prisma.guardianWatchIp.createMany({
+                            data: envIps.map(ip => ({
+                                ip,
+                                description: "Synced from WATCH_IP_LIST (.env)",
+                                createdBy: "System (.env Sync)"
+                            })),
+                            skipDuplicates: true
+                        }).catch(() => {});
+                    }
+
+                    const rawBlacklist = [
+                        getVal("GUARDIAN_BLACKLIST"),
+                        getVal("GUARDIAN_BLACKLIST_IPS"),
+                        getVal("BLACKLIST_IP_LIST")
+                    ].join(",");
+
+                    const blacklistIps = Array.from(new Set(
+                        rawBlacklist
+                            .split(",")
+                            .map(ip => ip.trim())
+                            .filter(ip => IPV4_REGEX.test(ip))
+                    ));
+
+                    if (blacklistIps.length > 0) {
+                        await prisma.guardianBlacklist.createMany({
+                            data: blacklistIps.map(ip => ({
+                                ip,
+                                reason: "Synced from GUARDIAN_BLACKLIST (.env)"
+                            })),
+                            skipDuplicates: true
+                        }).catch(() => {});
+                    }
+
+                    lastMonitoredEnvMtimeMs = stat.mtimeMs;
+                }
             }
         } catch (e) {}
-
-        const getVal = (key: string): string => envConfig[key] || process.env[key] || "";
-
-        const rawWatchList = [
-            getVal("WATCH_IP_LIST"),
-            getVal("GUARDIAN_WATCH_IP_LIST"),
-            getVal("GUARDIAN_WATCH_LIST"),
-            getVal("GUARDIAN_IPS")
-        ].join(",");
-
-        const envIps = Array.from(new Set(
-            rawWatchList
-                .split(",")
-                .map(ip => ip.trim())
-                .filter(ip => IPV4_REGEX.test(ip))
-        ));
-
-        // Sync any new IPs from .env into the database
-        if (envIps.length > 0) {
-            for (const ip of envIps) {
-                await prisma.guardianWatchIp.upsert({
-                    where: { ip },
-                    update: {},
-                    create: {
-                        ip,
-                        description: "Synced from WATCH_IP_LIST (.env)",
-                        createdBy: "System (.env Sync)"
-                    }
-                }).catch(() => {});
-            }
-        }
-
-        // Also check if any blacklist IPs were configured in .env
-        const rawBlacklist = [
-            getVal("GUARDIAN_BLACKLIST"),
-            getVal("GUARDIAN_BLACKLIST_IPS"),
-            getVal("BLACKLIST_IP_LIST")
-        ].join(",");
-
-        const blacklistIps = Array.from(new Set(
-            rawBlacklist
-                .split(",")
-                .map(ip => ip.trim())
-                .filter(ip => IPV4_REGEX.test(ip))
-        ));
-
-        if (blacklistIps.length > 0) {
-            for (const ip of blacklistIps) {
-                await prisma.guardianBlacklist.upsert({
-                    where: { ip },
-                    update: {},
-                    create: {
-                        ip,
-                        reason: "Synced from GUARDIAN_BLACKLIST (.env)"
-                    }
-                }).catch(() => {});
-            }
-        }
 
         const items = await prisma.guardianWatchIp.findMany({
             orderBy: { createdAt: "desc" }

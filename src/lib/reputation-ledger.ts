@@ -22,7 +22,7 @@ const HONEYPOT_USERNAMES = new Set([
     "demo"
 ]);
 
-const RESIDENTIAL_ISP_KEYWORDS = [
+export const RESIDENTIAL_ISP_KEYWORDS = [
     "comcast",
     "charter",
     "spectrum",
@@ -31,19 +31,72 @@ const RESIDENTIAL_ISP_KEYWORDS = [
     "att",
     "cox",
     "optimum",
+    "cablevision",
     "centurylink",
     "frontier",
     "t-mobile",
     "sprint",
     "broadband",
     "cable",
-    "telecom"
+    "telecom",
+    "fiber",
+    "wireless",
+    "ezee",
+    "northland",
+    "blue stream",
+    "altafiber",
+    "spacex",
+    "starlink",
+    "tds",
+    "penteledata",
+    "liveoak"
+];
+
+export const CLOUD_VPS_KEYWORDS = [
+    "amazon",
+    "aws",
+    "digitalocean",
+    "microsoft azure",
+    "microsoft corporation",
+    "google cloud",
+    "google llc",
+    "ovh",
+    "hetzner",
+    "linode",
+    "akamai connected cloud",
+    "choopa",
+    "vultr",
+    "contabo",
+    "m247",
+    "hostinger",
+    "leaseweb",
+    "kamatera",
+    "tzulo",
+    "datacamp",
+    "sharktech",
+    "psychz",
+    "ionos",
+    "upcloud",
+    "scaleway",
+    "hostwinds",
+    "hosting",
+    "datacenter",
+    "vps"
 ];
 
 export function isResidential(org?: string | null): boolean {
     if (!org) return false;
     const lower = org.toLowerCase();
     return RESIDENTIAL_ISP_KEYWORDS.some(kw => lower.includes(kw));
+}
+
+export const isResidentialOrg = isResidential;
+
+export function isCloudVpsOrg(org?: string | null): boolean {
+    if (!org) return false;
+    if (isResidential(org)) return false;
+    const lower = org.toLowerCase();
+    return CLOUD_VPS_KEYWORDS.some(kw => lower.includes(kw));
 }
 
 export interface AuthFailureEvent {
@@ -90,39 +143,38 @@ export async function recordAuthFailure(event: AuthFailureEvent) {
     const isCorpFormat = isCorporateUsernameFormat(cleanUser);
     const isNonCorporateAttempt = !isCorpFormat || isHoneypot;
 
-    // 2. Cloud VPS / Datacenter ASN -> Indefinite Shun & SI Feed (Bypasses Strike System)
-    if (!isRes && org && (
-        org.toLowerCase().includes("amazon") ||
-        org.toLowerCase().includes("digitalocean") ||
-        org.toLowerCase().includes("microsoft") ||
-        org.toLowerCase().includes("google") ||
-        org.toLowerCase().includes("ovh") ||
-        org.toLowerCase().includes("hetzner") ||
-        org.toLowerCase().includes("linode") ||
-        org.toLowerCase().includes("choopa") ||
-        org.toLowerCase().includes("vultr") ||
-        org.toLowerCase().includes("hosting") ||
-        org.toLowerCase().includes("datacenter") ||
-        org.toLowerCase().includes("server")
-    )) {
+    // 2. Cloud VPS / Datacenter ASN or Guardian Blacklisted ASN -> Indefinite Shun & SI Feed (Bypasses Strike System)
+    const normalizedAsn = asn
+        ? `AS${String(asn).toUpperCase().replace(/^AS/, "").trim()}`
+        : "";
+    const blacklistedAsnEntry = normalizedAsn
+        ? await prisma.guardianAsnBlacklist.findUnique({ where: { asn: normalizedAsn } }).catch(() => null)
+        : null;
+
+    if (!isRes && (blacklistedAsnEntry || isCloudVpsOrg(org))) {
+        const asnLabel = org || blacklistedAsnEntry?.asnName || normalizedAsn || "Cloud VPS";
+        const blockReason = blacklistedAsnEntry
+            ? `Blacklisted ASN ${normalizedAsn} (${asnLabel}) auth failure on ${platform}`
+            : `Cloud VPS / Datacenter ASN (${asnLabel}) auth failure on ${platform}`;
+
         // Add to GuardianBlacklist (permanent SI feed)
         await prisma.guardianBlacklist.upsert({
             where: { ip: cleanIp },
-            update: { reason: `Cloud VPS / Datacenter ASN (${org}) auth failure on ${platform}` },
-            create: { ip: cleanIp, reason: `Cloud VPS / Datacenter ASN (${org}) auth failure on ${platform}` }
+            update: { reason: blockReason },
+            create: { ip: cleanIp, reason: blockReason }
         });
 
         // Enqueue Firewall Shun (especially critical for VPN control plane)
         await enqueueFirewallCommand({
             ip: cleanIp,
             action: "SHUN",
-            reason: `Cloud VPS / Datacenter ASN block (${org}) - ${platform} auth failure`,
-            expiresAt: null // Indefinite retention for Cloud VPS
+            reason: blockReason,
+            expiresAt: null // Indefinite retention for Cloud VPS / Blacklisted ASN
         });
 
         await logAudit(
             "AUTH_FAILURE_CLOUD_VPS_SHUNNED",
-            `Cloud VPS ${cleanIp} (${org}) attempted ${platform} auth for ${cleanUser}. Blocked indefinitely.`,
+            `${blockReason} for user ${cleanUser}. Blocked indefinitely.`,
             "REPUTATION_ENGINE",
             cleanIp
         );
@@ -131,7 +183,7 @@ export async function recordAuthFailure(event: AuthFailureEvent) {
             tier: "CLOUD_VPS",
             action: "SHUNNED_INDEFINITELY",
             ip: cleanIp,
-            org
+            org: asnLabel
         };
     }
 
