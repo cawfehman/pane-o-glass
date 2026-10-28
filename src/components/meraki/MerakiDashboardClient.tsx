@@ -141,17 +141,21 @@ export default function MerakiDashboardClient() {
         fetchOverview(false);
     }, [fetchOverview]);
 
-    // Live-ticking age indicator for the shared server cache
+    // Live-ticking age indicator & automatic sync with the 10-minute server background poller
     useEffect(() => {
         if (!overview?.fetchedAt) return;
         const updateAge = () => {
             const diffSec = Math.max(0, Math.round((Date.now() - new Date(overview.fetchedAt).getTime()) / 1000));
             setLiveAgeSec(diffSec);
+            // If the 10-minute background poll interval has elapsed, sync the latest pre-warmed server snapshot (no forceRefresh needed)
+            if (diffSec >= 605 && !overviewLoading) {
+                fetchOverview(false);
+            }
         };
         updateAge();
         const interval = setInterval(updateAge, 5000);
         return () => clearInterval(interval);
-    }, [overview?.fetchedAt]);
+    }, [overview?.fetchedAt, overviewLoading, fetchOverview]);
 
     const formatAgeLabel = (sec: number) => {
         if (sec < 10) return "just now";
@@ -485,18 +489,18 @@ export default function MerakiDashboardClient() {
                                 className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border ${
                                     overview.cacheMeta?.status === "LIVE" && liveAgeSec < 25
                                         ? "bg-emerald-500/10 text-emerald-300 border-emerald-500/30"
-                                        : liveAgeSec < 240
+                                        : liveAgeSec < 500
                                         ? "bg-sky-500/10 text-sky-300 border-sky-500/30"
                                         : "bg-amber-500/10 text-amber-300 border-amber-500/30"
                                 }`}
-                                title={`Shared server snapshot fetched at ${new Date(
+                                title={`Server background poller refreshes Meraki every 10 minutes across all users. Last fetched at ${new Date(
                                     overview.fetchedAt
-                                ).toLocaleTimeString()} (5-minute shared TTL across all concurrent users).`}
+                                ).toLocaleTimeString()}.`}
                             >
                                 <Clock size={13} />
                                 {overview.cacheMeta?.status === "LIVE" && liveAgeSec < 20
                                     ? `Live Pull • ${formatAgeLabel(liveAgeSec)}`
-                                    : `Shared Cache • ${formatAgeLabel(liveAgeSec)}`}
+                                    : `10m Auto-Poll • ${formatAgeLabel(liveAgeSec)}`}
                                 <span className="opacity-70 text-[10px]">
                                     ({new Date(overview.fetchedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })})
                                 </span>

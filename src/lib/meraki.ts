@@ -281,7 +281,8 @@ interface OverviewSnapshotEntry {
     expiresAt: number;
 }
 
-const OVERVIEW_CACHE_TTL_MS = 300_000; // 5 minutes shared server-side snapshot TTL
+const OVERVIEW_CACHE_TTL_MS = 600_000; // 10 minutes shared server-side snapshot TTL
+const BACKGROUND_POLL_INTERVAL_MS = 600_000; // 10-minute automatic background poller
 const MIN_FORCE_REFRESH_COOLDOWN_MS = 15_000; // If refreshed <15s ago by another user, reuse that fresh pull
 
 const globalForMeraki = globalThis as unknown as {
@@ -290,6 +291,9 @@ const globalForMeraki = globalThis as unknown as {
     __merakiOverviewSnapshots?: Map<string, OverviewSnapshotEntry>;
     __merakiOverviewInFlight?: Map<string, Promise<MerakiFleetOverviewResponse>>;
     __merakiDhcpDeviceCache?: Map<string, { pools: MerakiDhcpPool[]; expiresAt: number }>;
+    __merakiPollerStarted?: boolean;
+    __merakiPollerTimer?: ReturnType<typeof setInterval>;
+    __merakiLastBackgroundPollMs?: number;
 };
 
 const apiCache = globalForMeraki.__merakiApiCache ?? (globalForMeraki.__merakiApiCache = new Map<string, CacheEntry<any>>());
@@ -403,7 +407,7 @@ export async function merakiGet<T = any>(
     }
 
     const cacheKey = url.toString();
-    const ttlMs = options?.ttlMs ?? 300_000; // Default 5 min shared server cache
+    const ttlMs = options?.ttlMs ?? 600_000; // Default 10 min shared server cache aligned with background poller
 
     if (!options?.forceRefresh && ttlMs > 0) {
         const cached = apiCache.get(cacheKey);
@@ -475,7 +479,7 @@ export async function merakiGet<T = any>(
 
 export async function getMerakiOrganizations(forceRefresh = false): Promise<MerakiOrganization[]> {
     const orgs = await merakiGet<any[]>("/organizations", undefined, {
-        ttlMs: 300_000,
+        ttlMs: 600_000,
         forceRefresh,
     });
     return (orgs || []).map((o) => ({
@@ -531,40 +535,127 @@ export interface MerakiFleetOverviewResponse {
         fetchedAt: string;
         ageSeconds: number;
         ttlSeconds: number;
+        pollIntervalSeconds: number;
         expiresAt: string;
+        nextAutoPollAt: string;
     };
+}
+
+/**
+ * Slices a full ("ALL") MerakiFleetOverviewResponse down to a single organization in memory
+ * so switching org tabs in the UI never triggers extra Meraki API calls.
+ */
+function sliceOverviewByOrg(full: MerakiFleetOverviewResponse, orgId: string): MerakiFleetOverviewResponse {
+    const organizations = full.organizations.filter((o) => o.id === orgId);
+    const networks = full.networks.filter((n) => n.organizationId === orgId);
+    const devices = full.devices.filter((d) => d.organizationId === orgId);
+    const topologyGroups = full.topologyGroups.filter((g) => g.organizationId === orgId);
+
+    const summary: MerakiFleetOverviewResponse["summary"] = {
+        totalOrganizations: organizations.length,
+        totalNetworks: networks.length,
+        totalDevices: devices.length,
+        byProductType: {
+            switch: devices.filter((d) => d.productType === "switch").length,
+            appliance: devices.filter((d) => d.productType === "appliance").length,
+            wireless: devices.filter((d) => d.productType === "wireless").length,
+            other: devices.filter((d) => !["switch", "appliance", "wireless"].includes(d.productType)).length,
+        },
+        byStatus: {
+            online: devices.filter((d) => d.status === "online").length,
+            alerting: devices.filter((d) => d.status === "alerting").length,
+            offline: devices.filter((d) => d.status === "offline").length,
+            dormant: devices.filter((d) => d.status === "dormant").length,
+        },
+        uplinksSummary: {
+            active: 0,
+            ready: 0,
+            failed: 0,
+            notConnected: 0,
+        },
+    };
+
+    for (const d of devices) {
+        for (const u of d.uplinks) {
+            const s = u.status.toLowerCase();
+            if (s === "active") summary.uplinksSummary.active++;
+            else if (s === "ready") summary.uplinksSummary.ready++;
+            else if (s === "failed") summary.uplinksSummary.failed++;
+            else if (s === "not connected") summary.uplinksSummary.notConnected++;
+        }
+    }
+
+    return {
+        organizations,
+        networks,
+        devices,
+        topologyGroups,
+        summary,
+        fetchedAt: full.fetchedAt,
+        cacheMeta: { ...full.cacheMeta },
+    };
+}
+
+/**
+ * Starts the singleton 10-minute background poller that keeps Cooper Health (905261)
+ * and Cape Regional (262100) fleet snapshots continuously warm on the server.
+ */
+function ensureBackgroundPollerStarted(): void {
+    if (globalForMeraki.__merakiPollerStarted) return;
+    globalForMeraki.__merakiPollerStarted = true;
+
+    const timer = setInterval(() => {
+        globalForMeraki.__merakiLastBackgroundPollMs = Date.now();
+        getMerakiFleetOverview({ orgId: "ALL", forceRefresh: true }).catch(() => {
+            // Silently ignore transient background poll errors; existing snapshot remains available
+        });
+    }, BACKGROUND_POLL_INTERVAL_MS);
+
+    if (typeof (timer as any)?.unref === "function") {
+        (timer as any).unref();
+    }
+    globalForMeraki.__merakiPollerTimer = timer;
 }
 
 export async function getMerakiFleetOverview(options?: {
     orgId?: string;
     forceRefresh?: boolean;
 }): Promise<MerakiFleetOverviewResponse> {
+    ensureBackgroundPollerStarted();
+
     const orgKey = options?.orgId && options.orgId !== "ALL" ? options.orgId : "ALL";
     const nowMs = Date.now();
-    const existingSnapshot = overviewSnapshots.get(orgKey);
+    const existingSnapshot = overviewSnapshots.get(orgKey) ?? overviewSnapshots.get("ALL");
 
-    // 1. Serve from shared server snapshot cache if still fresh (or if another user just force-refreshed <15s ago)
+    // 1. Serve from 10-minute shared server snapshot cache if still fresh (or if refreshed <15s ago)
     const recentlyRefreshed = existingSnapshot && nowMs - existingSnapshot.fetchedAtMs < MIN_FORCE_REFRESH_COOLDOWN_MS;
     if (existingSnapshot && (recentlyRefreshed || (!options?.forceRefresh && existingSnapshot.expiresAt > nowMs))) {
         const ageSeconds = Math.max(0, Math.round((nowMs - existingSnapshot.fetchedAtMs) / 1000));
+        const baseResp =
+            orgKey !== "ALL" && existingSnapshot.response.organizations.length > 1
+                ? sliceOverviewByOrg(existingSnapshot.response, orgKey)
+                : existingSnapshot.response;
         return {
-            ...existingSnapshot.response,
+            ...baseResp,
             cacheMeta: {
                 status: "CACHED",
                 fetchedAt: existingSnapshot.response.fetchedAt,
                 ageSeconds,
                 ttlSeconds: Math.round(OVERVIEW_CACHE_TTL_MS / 1000),
+                pollIntervalSeconds: Math.round(BACKGROUND_POLL_INTERVAL_MS / 1000),
                 expiresAt: new Date(existingSnapshot.expiresAt).toISOString(),
+                nextAutoPollAt: new Date(existingSnapshot.expiresAt).toISOString(),
             },
         };
     }
 
-    // 2. If another user's request is already in flight for this orgKey, await that same Promise (1 API call serves all concurrent users)
-    if (overviewInFlight.has(orgKey)) {
-        const sharedResp = await overviewInFlight.get(orgKey)!;
+    // 2. Always fetch the full ("ALL") snapshot so all org views share one single 10-minute poll
+    if (overviewInFlight.has("ALL")) {
+        const sharedResp = await overviewInFlight.get("ALL")!;
         const ageSeconds = Math.max(0, Math.round((Date.now() - new Date(sharedResp.fetchedAt).getTime()) / 1000));
+        const sliced = orgKey !== "ALL" ? sliceOverviewByOrg(sharedResp, orgKey) : sharedResp;
         return {
-            ...sharedResp,
+            ...sliced,
             cacheMeta: {
                 ...sharedResp.cacheMeta,
                 status: "CACHED",
@@ -577,23 +668,19 @@ export async function getMerakiFleetOverview(options?: {
 
     const buildPromise = (async (): Promise<MerakiFleetOverviewResponse> => {
         const allOrgs = await getMerakiOrganizations(forceRefresh);
+        const targetOrgs = allOrgs;
 
-    const targetOrgs =
-        options?.orgId && options.orgId !== "ALL"
-            ? allOrgs.filter((o) => o.id === options.orgId)
-            : allOrgs;
+        const networksAll: MerakiNetwork[] = [];
+        const devicesAll: MerakiDeviceUnified[] = [];
+        const orgSummaries: MerakiFleetOverviewResponse["organizations"] = [];
 
-    const networksAll: MerakiNetwork[] = [];
-    const devicesAll: MerakiDeviceUnified[] = [];
-    const orgSummaries: MerakiFleetOverviewResponse["organizations"] = [];
-
-    for (const org of targetOrgs) {
-        const [rawNets, rawDevs, rawStatuses, rawUplinks] = await Promise.all([
-            merakiGet<any[]>(`/organizations/${org.id}/networks`, { perPage: 1000 }, { ttlMs: 180_000, forceRefresh }).catch(() => []),
-            merakiGet<any[]>(`/organizations/${org.id}/devices`, { perPage: 1000 }, { ttlMs: 120_000, forceRefresh }).catch(() => []),
-            merakiGet<any[]>(`/organizations/${org.id}/devices/statuses`, { perPage: 1000 }, { ttlMs: 90_000, forceRefresh }).catch(() => []),
-            merakiGet<any[]>(`/organizations/${org.id}/uplinks/statuses`, { perPage: 1000 }, { ttlMs: 90_000, forceRefresh }).catch(() => []),
-        ]);
+        for (const org of targetOrgs) {
+            const [rawNets, rawDevs, rawStatuses, rawUplinks] = await Promise.all([
+                merakiGet<any[]>(`/organizations/${org.id}/networks`, { perPage: 1000 }, { ttlMs: 600_000, forceRefresh }).catch(() => []),
+                merakiGet<any[]>(`/organizations/${org.id}/devices`, { perPage: 1000 }, { ttlMs: 600_000, forceRefresh }).catch(() => []),
+                merakiGet<any[]>(`/organizations/${org.id}/devices/statuses`, { perPage: 1000 }, { ttlMs: 600_000, forceRefresh }).catch(() => []),
+                merakiGet<any[]>(`/organizations/${org.id}/uplinks/statuses`, { perPage: 1000 }, { ttlMs: 600_000, forceRefresh }).catch(() => []),
+            ]);
 
         const netMap = new Map<string, MerakiNetwork>();
         for (const n of rawNets || []) {
@@ -769,6 +856,7 @@ export async function getMerakiFleetOverview(options?: {
     const fetchedAtMs = Date.now();
     const fetchedAtIso = new Date(fetchedAtMs).toISOString();
     const expiresAtMs = fetchedAtMs + OVERVIEW_CACHE_TTL_MS;
+    const expiresAtIso = new Date(expiresAtMs).toISOString();
 
     const freshResponse: MerakiFleetOverviewResponse = {
         organizations: orgSummaries,
@@ -782,24 +870,46 @@ export async function getMerakiFleetOverview(options?: {
             fetchedAt: fetchedAtIso,
             ageSeconds: 0,
             ttlSeconds: Math.round(OVERVIEW_CACHE_TTL_MS / 1000),
-            expiresAt: new Date(expiresAtMs).toISOString(),
+            pollIntervalSeconds: Math.round(BACKGROUND_POLL_INTERVAL_MS / 1000),
+            expiresAt: expiresAtIso,
+            nextAutoPollAt: expiresAtIso,
         },
     };
 
-    overviewSnapshots.set(orgKey, {
+    // Store the full ("ALL") snapshot and pre-populate per-organization slices so org tab switching is instant
+    overviewSnapshots.set("ALL", {
         response: freshResponse,
         fetchedAtMs,
         expiresAt: expiresAtMs,
     });
+    for (const orgSummary of orgSummaries) {
+        overviewSnapshots.set(orgSummary.id, {
+            response: sliceOverviewByOrg(freshResponse, orgSummary.id),
+            fetchedAtMs,
+            expiresAt: expiresAtMs,
+        });
+    }
 
     return freshResponse;
     })();
 
-    overviewInFlight.set(orgKey, buildPromise);
+    overviewInFlight.set("ALL", buildPromise);
     try {
-        return await buildPromise;
+        const fullResult = await buildPromise;
+        return orgKey !== "ALL" ? sliceOverviewByOrg(fullResult, orgKey) : fullResult;
     } finally {
-        overviewInFlight.delete(orgKey);
+        overviewInFlight.delete("ALL");
+    }
+}
+
+// Kick off initial background warm-up 2 seconds after module load so the first user gets instant 0ms response
+if (!globalForMeraki.__merakiPollerStarted) {
+    ensureBackgroundPollerStarted();
+    const warmupTimer = setTimeout(() => {
+        getMerakiFleetOverview({ orgId: "ALL", forceRefresh: false }).catch(() => {});
+    }, 2000);
+    if (typeof (warmupTimer as any)?.unref === "function") {
+        (warmupTimer as any).unref();
     }
 }
 

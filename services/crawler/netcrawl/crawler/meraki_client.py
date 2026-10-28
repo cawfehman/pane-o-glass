@@ -148,11 +148,17 @@ def derive_meraki_site_info(
     return SiteInfo(site=clean_site, idf="mdf", role_code="swas", raw_hostname=short_host)
 
 
+_SHARED_GET_CACHE: Dict[str, Tuple[float, Any]] = {}
+_SHARED_CACHE_LOCK = threading.Lock()
+_MERAKI_CACHE_TTL_SEC = 600.0  # 10-minute shared cache aligned with standalone Meraki poller
+
+
 class MerakiCrawlerEnricher:
     """Thread-safe, strictly read-only Meraki API client for resolving Meraki switches during crawls."""
 
-    def __init__(self, api_key: Optional[str] = None) -> None:
+    def __init__(self, api_key: Optional[str] = None, cache_ttl_sec: float = _MERAKI_CACHE_TTL_SEC) -> None:
         self.api_key = api_key or self._load_api_key()
+        self.cache_ttl_sec = cache_ttl_sec
         self._lock = threading.Lock()
         self._last_req_ts = 0.0
         self._initialized = False
@@ -204,6 +210,12 @@ class MerakiCrawlerEnricher:
             if query:
                 url = f"{url}?{query}"
 
+        if self.cache_ttl_sec > 0:
+            with _SHARED_CACHE_LOCK:
+                cached = _SHARED_GET_CACHE.get(url)
+                if cached and cached[0] > time.time():
+                    return cached[1]
+
         for attempt in range(3):
             with self._lock:
                 elapsed = time.time() - self._last_req_ts
@@ -221,7 +233,11 @@ class MerakiCrawlerEnricher:
             )
             try:
                 with urllib.request.urlopen(req, timeout=12) as resp:
-                    return json.loads(resp.read().decode("utf-8"))
+                    parsed = json.loads(resp.read().decode("utf-8"))
+                    if self.cache_ttl_sec > 0:
+                        with _SHARED_CACHE_LOCK:
+                            _SHARED_GET_CACHE[url] = (time.time() + self.cache_ttl_sec, parsed)
+                    return parsed
             except urllib.error.HTTPError as e:
                 if e.code == 429 and attempt < 2:
                     retry_after = float(e.headers.get("Retry-After", "2") or 2)
