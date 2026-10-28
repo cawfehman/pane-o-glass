@@ -16,8 +16,9 @@ export async function GET(req: NextRequest) {
     try {
         const session = await auth();
         const role = (session?.user as any)?.role;
+        const userId = session?.user?.id;
 
-        if (!session?.user || !(await hasPermission(role, "firewall"))) {
+        if (!session?.user || !(await hasPermission(role, "firewall", userId))) {
             return NextResponse.json({ error: "Forbidden" }, { status: 403 });
         }
 

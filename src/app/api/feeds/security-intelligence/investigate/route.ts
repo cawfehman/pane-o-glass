@@ -13,9 +13,10 @@ async function isAuthorized(session: any): Promise<boolean> {
     if (!session?.user) return false;
     const role = (session.user as any)?.role;
     if (role === "ADMIN") return true;
+    const userId = session.user.id;
     const [hasFw, hasNetscaler] = await Promise.all([
-        hasPermission(role, "firewall"),
-        hasPermission(role, "netscaler")
+        hasPermission(role, "firewall", userId),
+        hasPermission(role, "netscaler", userId)
     ]);
     return Boolean(hasFw || hasNetscaler);
 }

@@ -308,15 +308,25 @@ export async function getPermissionsForRole(role: string) {
 export async function getEffectivePermissions(userId?: string | null, role?: string | null): Promise<string[]> {
     noStore();
     try {
-        const roleUpper = String(role || 'USER').toUpperCase();
+        let resolvedUserId = userId;
+        let resolvedRole = role;
+        if (!resolvedUserId || !resolvedRole) {
+            try {
+                const session = await auth();
+                if (!resolvedUserId) resolvedUserId = session?.user?.id;
+                if (!resolvedRole) resolvedRole = (session?.user as any)?.role;
+            } catch {}
+        }
+
+        const roleUpper = String(resolvedRole || 'USER').toUpperCase();
         const baseRolePerms = await getPermissionsForRole(roleUpper);
 
-        if (!userId) {
+        if (!resolvedUserId) {
             return baseRolePerms;
         }
 
         const overrides = await prisma.userToolOverride.findMany({
-            where: { userId }
+            where: { userId: resolvedUserId }
         });
 
         if (overrides.length === 0) {
@@ -339,26 +349,37 @@ export async function getEffectivePermissions(userId?: string | null, role?: str
 }
 
 export async function hasPermission(role: string, toolId: string, userId?: string | null) {
-    if (role === 'ADMIN') return true;
+    const roleUpper = String(role || '').toUpperCase();
+    if (roleUpper === 'ADMIN') return true;
     try {
         try { noStore(); } catch {}
 
-        // Check user-specific override first if userId is provided
-        if (userId) {
-            const userOverride = await prisma.userToolOverride.findUnique({
-                where: {
-                    userId_toolId: { userId, toolId }
-                }
-            });
-            if (userOverride !== null && userOverride !== undefined) {
-                return userOverride.isEnabled;
-            }
+        // Resolve userId from active session if not explicitly provided
+        let resolvedUserId = userId;
+        if (!resolvedUserId) {
+            try {
+                const session = await auth();
+                resolvedUserId = session?.user?.id;
+            } catch {}
         }
 
-        const roleUpper = String(role).toUpperCase();
         const checkIds = [toolId];
         if (toolId === 'ise-tacacs' || toolId === 'ise-failures') checkIds.push('ise');
         if (toolId === 'etd' || toolId === 'bec') checkIds.push('ironport');
+
+        // Check user-specific override first if resolvedUserId is available
+        if (resolvedUserId) {
+            for (const tid of checkIds) {
+                const userOverride = await prisma.userToolOverride.findUnique({
+                    where: {
+                        userId_toolId: { userId: resolvedUserId, toolId: tid }
+                    }
+                });
+                if (userOverride !== null && userOverride !== undefined) {
+                    return userOverride.isEnabled;
+                }
+            }
+        }
 
         for (const tid of checkIds) {
             const permission = await prisma.toolPermission.findFirst({
@@ -434,7 +455,7 @@ export async function updateUserToolOverride(targetUserId: string, toolId: strin
             await logAudit(
                 "USER_PERMISSION_OVERRIDE",
                 `Removed tool override for '${toolId}' on user '${targetUser?.username}' (reverted to role inheritance)`,
-                session.user?.id
+                session?.user?.id
             );
         } else {
             await prisma.userToolOverride.upsert({
@@ -447,7 +468,7 @@ export async function updateUserToolOverride(targetUserId: string, toolId: strin
             await logAudit(
                 "USER_PERMISSION_OVERRIDE",
                 `Set tool override for '${toolId}' on user '${targetUser?.username}' to ${isEnabled ? 'GRANTED (Enhanced Access)' : 'DENIED'}`,
-                session.user?.id
+                session?.user?.id
             );
         }
 
@@ -492,7 +513,7 @@ export async function saveAllUserToolOverrides(
         await logAudit(
             "USER_PERMISSION_OVERRIDE",
             `Updated tool overrides for user '${targetUser?.username}': [${changes.join(', ')}]`,
-            session.user?.id
+            session?.user?.id
         );
 
         revalidatePath("/", "layout");

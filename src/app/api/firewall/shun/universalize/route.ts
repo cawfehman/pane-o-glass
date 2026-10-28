@@ -7,9 +7,10 @@ export async function GET(req: Request) {
     try {
         const session = await auth();
         const role = (session?.user as any)?.role;
+        const userId = session?.user?.id;
 
-        if (!session?.user || !(await hasPermission(role, "firewall"))) {
-            return new NextResponse("Forbidden", { status: 403 });
+        if (!session?.user || !(await hasPermission(role, "firewall", userId))) {
+            return NextResponse.json({ error: "Forbidden: Access restricted" }, { status: 403 });
         }
 
         const url = new URL(req.url);
@@ -34,9 +35,10 @@ export async function POST(req: Request) {
     try {
         const session = await auth();
         const role = (session?.user as any)?.role;
+        const userId = session?.user?.id;
 
-        if (!session?.user || !(await hasPermission(role, "firewall"))) {
-            return new NextResponse("Forbidden: Access restricted", { status: 403 });
+        if (!session?.user || !(await hasPermission(role, "firewall", userId))) {
+            return NextResponse.json({ error: "Forbidden: Access restricted" }, { status: 403 });
         }
 
         const body = await req.json();
@@ -44,7 +46,7 @@ export async function POST(req: Request) {
 
         const forwardedFor = req.headers.get("x-forwarded-for");
         const clientIp = forwardedFor ? forwardedFor.split(",")[0].trim() : "dashboard";
-        const userId = session.user.id || (session.user as any).username || "admin";
+        const opUserId = session.user.id || (session.user as any).username || "admin";
 
         if (mode === "single") {
             if (!ip) {
@@ -52,7 +54,7 @@ export async function POST(req: Request) {
             }
             const result = await replicateShunToFleet(ip, {
                 reason: reason || `Manual universal fleet shun replication requested by operator`,
-                userId,
+                userId: opUserId,
                 clientIp
             });
             return NextResponse.json(result);

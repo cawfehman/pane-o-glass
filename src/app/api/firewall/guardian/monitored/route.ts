@@ -19,8 +19,9 @@ export async function GET() {
     try {
         const session = await auth();
         const role = (session?.user as any)?.role;
+        const userId = session?.user?.id;
 
-        if (!session?.user || !(await hasPermission(role, 'firewall'))) {
+        if (!session?.user || !(await hasPermission(role, 'firewall', userId))) {
             return NextResponse.json({ error: "Forbidden: Access to this tool is restricted." }, { status: 403 });
         }
 
@@ -103,8 +104,9 @@ export async function POST(req: NextRequest) {
     try {
         const session = await auth();
         const role = (session?.user as any)?.role;
+        const userId = session?.user?.id;
 
-        if (!session?.user || !(await hasPermission(role, 'firewall'))) {
+        if (!session?.user || !(await hasPermission(role, 'firewall', userId))) {
             return NextResponse.json({ error: "Forbidden: Access to this tool is restricted." }, { status: 403 });
         }
 
@@ -165,8 +167,9 @@ export async function DELETE(req: NextRequest) {
     try {
         const session = await auth();
         const role = (session?.user as any)?.role;
+        const userId = session?.user?.id;
 
-        if (!session?.user || !(await hasPermission(role, 'firewall'))) {
+        if (!session?.user || !(await hasPermission(role, 'firewall', userId))) {
             return NextResponse.json({ error: "Forbidden: Access to this tool is restricted." }, { status: 403 });
         }
 

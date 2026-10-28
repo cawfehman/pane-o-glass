@@ -9,12 +9,13 @@ export async function GET() {
     try {
         const session = await auth();
         const role = (session?.user as any)?.role;
-        const permitted = await hasPermission(role, 'firewall');
+        const userId = session?.user?.id;
+        const permitted = await hasPermission(role, 'firewall', userId);
 
-        console.log(`[API/Firewall/History] Request by ${session?.user?.name} (Role: ${role}). Permitted: ${permitted}`);
+        console.log(`[API/Firewall/History] Request by ${session?.user?.name} (Role: ${role}, UserID: ${userId}). Permitted: ${permitted}`);
 
         if (!session?.user || !permitted) {
-            return new NextResponse("Forbidden: Access to this tool is restricted.", { status: 403 });
+            return NextResponse.json({ error: "Forbidden: Access to this tool is restricted." }, { status: 403 });
         }
 
         const history = await prisma.firewallQueryHistory.findMany({

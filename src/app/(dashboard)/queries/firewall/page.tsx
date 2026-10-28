@@ -294,11 +294,11 @@ export default function CiscoFirewallPage() {
                         setTargetHost(data.hosts[0].id);
                     }
                 } else {
-                    const err = await res.json();
+                    const err = await res.json().catch(() => ({}));
                     setHostsError(err.error || "Failed to fetch firewall configurations.");
                 }
             } catch (e: any) {
-                setHostsError("Failed to fetch configured firewalls.");
+                setHostsError(e.message || "Failed to fetch configured firewalls.");
             } finally {
                 setLoadingHosts(false);
             }

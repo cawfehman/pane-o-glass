@@ -8,9 +8,10 @@ export async function GET(req: Request) {
     try {
         const session = await auth();
         const role = (session?.user as any)?.role;
+        const userId = session?.user?.id;
 
-        if (!session?.user || !(await hasPermission(role, "firewall"))) {
-            return new NextResponse("Forbidden: Access restricted to firewall operators.", { status: 403 });
+        if (!session?.user || !(await hasPermission(role, "firewall", userId))) {
+            return NextResponse.json({ error: "Forbidden: Access restricted to firewall operators." }, { status: 403 });
         }
 
         const url = new URL(req.url);

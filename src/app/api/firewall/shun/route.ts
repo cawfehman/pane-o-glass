@@ -118,9 +118,10 @@ export async function POST(req: Request) {
     try {
         const session = await auth();
         const role = (session?.user as any)?.role;
+        const userId = session?.user?.id;
 
-        if (!session?.user || !(await hasPermission(role, 'firewall'))) {
-            return new NextResponse("Forbidden: Access to this tool is restricted.", { status: 403 });
+        if (!session?.user || !(await hasPermission(role, 'firewall', userId))) {
+            return NextResponse.json({ error: "Forbidden: Access to this tool is restricted." }, { status: 403 });
         }
 
         const body = await req.json();
