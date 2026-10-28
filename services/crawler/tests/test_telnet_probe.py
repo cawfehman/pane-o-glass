@@ -160,3 +160,36 @@ def test_database_persistence_telnet_fields(tmp_path):
     assert unreach[0]["protocol"] == "telnet"
     assert bool(unreach[0]["telnet_detected"]) is True
     assert bool(unreach[0]["requires_ssh_migration"]) is True
+
+
+def test_mask_sensitive_data_telnet_session_buffer():
+    from netcrawl.audit.sanitizer import mask_sensitive_data
+
+    raw_error = (
+        "NetmikoAuthenticationException: Authentication failure: unable to finish login on: 10.15.10.127\n"
+        "Pattern not detected: \n"
+        "Buffer: User Access Verification\r\n"
+        "Username: admin\r\n"
+        "Password: SuperSecretP@ssword123\r\n"
+        "% Login invalid\r\n"
+    )
+
+    masked = mask_sensitive_data(raw_error, secret_words=["SuperSecretP@ssword123"])
+    assert "SuperSecretP@ssword123" not in masked
+    assert "Password: [REDACTED" in masked
+
+
+def test_cisco_client_obfuscates_password_in_exception():
+    client = CiscoSSHClient(
+        host="10.15.10.127",
+        username="admin",
+        password="MySecretTelnetPassword",
+        protocol="telnet"
+    )
+
+    with patch("netmiko.ConnectHandler", side_effect=Exception("Failed login Buffer: Password: MySecretTelnetPassword")):
+        success, err = client.connect()
+        assert success is False
+        assert "MySecretTelnetPassword" not in err
+        assert "[REDACTED" in err
+

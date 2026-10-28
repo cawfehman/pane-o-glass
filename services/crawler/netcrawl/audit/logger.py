@@ -12,6 +12,8 @@ import sqlite3
 import threading
 from typing import Any, Dict, List, Optional
 
+from netcrawl.audit.sanitizer import mask_sensitive_data, sanitize_dict_or_list
+
 logger = logging.getLogger("netcrawl.audit")
 
 
@@ -124,9 +126,10 @@ class AuditLogger:
         initiator: str = "system",
         details: Optional[Dict[str, Any]] = None,
     ) -> None:
-        """Record an audit event to SQLite (non-blocking queue), JSON-Lines file, and system logger."""
+        """Record an audit event to SQLite (non-blocking queue), JSON-Lines file, and system logger with credentials obfuscated."""
         ts = datetime.now().isoformat()
-        details_dict = details or {}
+        # Automatically obfuscate any passwords, secrets, or credential tokens in details
+        details_dict = sanitize_dict_or_list(details or {})
         details_str = json.dumps(details_dict)
 
         # 1. SQLite record (via non-blocking asynchronous queue to eliminate thread contention)
@@ -199,8 +202,9 @@ class AuditLogger:
             f"Snapshot ID: {snapshot_id or 'N/A'}\n"
             f"================================================================================\n\n"
         )
+        clean_output = mask_sensitive_data(response_output)
         with open(target_file, "w", encoding="utf-8") as f:
-            f.write(header + response_output)
+            f.write(header + clean_output)
 
         return target_file
 

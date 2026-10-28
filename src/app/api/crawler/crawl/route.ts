@@ -555,6 +555,28 @@ export async function POST(request: NextRequest) {
             console.error("Failed to prune old crawler run logs:", e);
         }
 
+        const knownSecrets: string[] = [];
+        if (body.password) knownSecrets.push(String(body.password));
+        if (body.secret) knownSecrets.push(String(body.secret));
+        if (Array.isArray(body.fallbackCredentials)) {
+            for (const fb of body.fallbackCredentials) {
+                if (fb.password) knownSecrets.push(String(fb.password));
+                if (fb.secret) knownSecrets.push(String(fb.secret));
+            }
+        }
+
+        const maskSecretsInLine = (line: string): string => {
+            let sanitized = line;
+            for (const secret of knownSecrets) {
+                if (secret && typeof secret === "string" && secret.trim().length >= 2) {
+                    sanitized = sanitized.split(secret).join("********");
+                }
+            }
+            // Pattern-based masking for password echoes or tokens in terminal session buffers
+            sanitized = sanitized.replace(/((?:password|passwd|pwd|secret)\s*[:=]\s*)(\S+)/gi, "$1[REDACTED]");
+            return sanitized;
+        };
+
         const runLogLines: string[] = [
             `============================================================`,
             `  NETCRAWL EXECUTION AUDIT LOG`,
@@ -617,7 +639,7 @@ export async function POST(request: NextRequest) {
                     const text = chunk.toString("utf-8");
                     const lines = text.split(/\r?\n/).filter(l => l.trim().length > 0);
                     for (const line of lines) {
-                        const cleanLine = line.trim();
+                        const cleanLine = maskSecretsInLine(line.trim());
                         runLogLines.push(`[${new Date().toISOString().substring(11, 19)}] ${cleanLine}`);
                         sendEvent({ type: "log", line: cleanLine });
                     }
@@ -627,7 +649,7 @@ export async function POST(request: NextRequest) {
                     const text = chunk.toString("utf-8");
                     const lines = text.split(/\r?\n/).filter(l => l.trim().length > 0);
                     for (const line of lines) {
-                        const cleanLine = line.trim();
+                        const cleanLine = maskSecretsInLine(line.trim());
                         runLogLines.push(`[${new Date().toISOString().substring(11, 19)}] [STDERR] ${cleanLine}`);
                         sendEvent({ type: "stderr", line: cleanLine });
                     }

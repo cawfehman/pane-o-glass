@@ -98,10 +98,28 @@ class NetworkCrawler:
         self.reseed_points: List[Dict[str, Any]] = [] # devices at boundary with unvisited neighbors at max_hops + 1
         self.unverified_devices: List[Device] = [] # frontier boundary devices beyond hop limit
 
+    def _get_all_secrets(self) -> List[str]:
+        """Aggregate all primary and fallback credentials to ensure 100% complete log obfuscation."""
+        secrets: List[str] = []
+        if self.password:
+            secrets.append(self.password)
+        if self.secret:
+            secrets.append(self.secret)
+        for fb in self.fallback_credentials:
+            p = fb.get("password")
+            if p:
+                secrets.append(p)
+            s = fb.get("secret")
+            if s:
+                secrets.append(s)
+        return secrets
+
     def _notify(self, level: str, message: str) -> None:
+        from netcrawl.audit.sanitizer import mask_sensitive_data
+        safe_msg = mask_sensitive_data(message, secret_words=self._get_all_secrets())
         if self.progress_callback:
-            self.progress_callback(level, message)
-        logger.info(f"[{level.upper()}] {message}")
+            self.progress_callback(level, safe_msg)
+        logger.info(f"[{level.upper()}] {safe_msg}")
 
     def _determine_role(self, hostname: str, routes: list, intfs: dict, vlans: list, site_info: Optional[any]) -> DeviceRole:
         """Heuristic to determine if a device is a Router, L3 Switch, or L2 Switch."""
@@ -317,6 +335,8 @@ class NetworkCrawler:
                             err = f"SSH failed ({err}); Telnet fallback also failed: {t_err}"
 
             if not success:
+                from netcrawl.audit.sanitizer import mask_sensitive_data
+                clean_err = mask_sensitive_data(err, secret_words=self._get_all_secrets())
                 host_label = pre_known_name or f"Unknown-{target_ip}"
                 site_info = parse_site_info(host_label, self.hostname_regex)
                 final_disc_via = discovered_via
@@ -330,7 +350,7 @@ class NetworkCrawler:
                     ip_address=target_ip,
                     platform=pre_known_platform,
                     status=fail_status,
-                    failure_reason=err,
+                    failure_reason=clean_err,
                     discovered_via=final_disc_via,
                     credential_used=None,
                     auth_time_ms=auth_time_ms,

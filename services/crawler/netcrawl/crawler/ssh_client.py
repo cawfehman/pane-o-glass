@@ -354,7 +354,8 @@ class CiscoSSHClient:
             )
             return True, None
         except Exception as exc:
-            err_msg = str(exc)
+            from netcrawl.audit.sanitizer import mask_sensitive_data
+            err_msg = mask_sensitive_data(str(exc), secret_words=[self.password, self.secret])
             fail_type = "CONNECTION_ERROR"
             if "Authentication failed" in err_msg or "password" in err_msg.lower():
                 fail_type = "AUTH_FAILED"
