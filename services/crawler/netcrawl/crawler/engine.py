@@ -126,7 +126,7 @@ class NetworkCrawler:
         lower_host = hostname.lower()
         
         # Check site_info role code first
-        if site_info:
+        if site_info and getattr(site_info, "role_code", None):
             code = site_info.role_code.lower()
             if any(k in code for k in ["cr", "rt", "gw", "router"]):
                 return DeviceRole.ROUTER

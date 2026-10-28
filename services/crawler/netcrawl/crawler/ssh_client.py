@@ -280,27 +280,54 @@ class CiscoSSHClient:
                 self.connection = ConnectHandler(**device_params)
             except Exception as initial_exc:
                 err_str = str(initial_exc).lower()
-                # If cisco_ios failed with prompt/driver pattern, attempt cisco_nxos fallback (SSH only)
-                is_fatal_error = any(msg in err_str for msg in [
-                    "authentication failed",
-                    "password",
-                    "tcp connection",
-                    "connection refused",
-                    "timed out",
-                    "timeout",
-                    "no route",
-                    "ssh-rsa",
+                # 1. If negotiation failed due to legacy crypto (e.g. Cisco Catalyst 3560/3750 with older IOS 12.2),
+                # retry with legacy algorithm set (disable SHA-2 signature requirement & restrict KEX to DH group14/group1)
+                is_negotiation_issue = any(msg in err_str for msg in [
                     "negotiation failed",
                     "key exchange",
                     "incompatible ssh",
                 ])
-                if self.protocol == "ssh" and target_device_type == "cisco_ios" and not is_fatal_error:
-                    logger.info("Retrying connection to %s using device_type='cisco_nxos'...", self.host)
-                    device_params["device_type"] = "cisco_nxos"
-                    self.connection = ConnectHandler(**device_params)
-                    self.device_type = "cisco_nxos"
+                if self.protocol == "ssh" and target_device_type == "cisco_ios" and is_negotiation_issue:
+                    logger.info("SSH negotiation failed with %s; retrying with legacy Cisco IOS algorithm set (disable_sha2_fix + legacy DH)...", self.host)
+                    try:
+                        legacy_params = dict(device_params)
+                        legacy_params["disable_sha2_fix"] = True
+                        legacy_params["disabled_algorithms"] = {
+                            "pubkeys": ["rsa-sha2-256", "rsa-sha2-512"],
+                            "kex": [
+                                "curve25519-sha256@libssh.org",
+                                "ecdh-sha2-nistp256",
+                                "ecdh-sha2-nistp384",
+                                "ecdh-sha2-nistp521",
+                                "diffie-hellman-group16-sha512",
+                            ],
+                        }
+                        self.connection = ConnectHandler(**legacy_params)
+                        self.is_legacy_ssh = True
+                    except Exception:
+                        raise initial_exc
                 else:
-                    raise
+                    # 2. If cisco_ios failed with prompt/driver pattern, attempt cisco_nxos fallback (SSH only)
+                    is_fatal_error = any(msg in err_str for msg in [
+                        "authentication failed",
+                        "password",
+                        "tcp connection",
+                        "connection refused",
+                        "timed out",
+                        "timeout",
+                        "no route",
+                        "ssh-rsa",
+                        "negotiation failed",
+                        "key exchange",
+                        "incompatible ssh",
+                    ])
+                    if self.protocol == "ssh" and target_device_type == "cisco_ios" and not is_fatal_error:
+                        logger.info("Retrying connection to %s using device_type='cisco_nxos'...", self.host)
+                        device_params["device_type"] = "cisco_nxos"
+                        self.connection = ConnectHandler(**device_params)
+                        self.device_type = "cisco_nxos"
+                    else:
+                        raise
 
             # Detect negotiated cryptographic algorithms if SSH
             if self.protocol == "ssh":
@@ -370,7 +397,7 @@ class CiscoSSHClient:
             )
             return False, f"{fail_type}: {err_msg}"
 
-    def send_command(self, command: str) -> str:
+    def send_command(self, command: str, read_timeout: Optional[float] = None) -> str:
         """
         Send a read-only command to the device.
         Strictly enforces read-only safety before transmitting!
@@ -387,7 +414,17 @@ class CiscoSSHClient:
         audit = get_audit_logger()
         
         t0 = time.time()
-        output = self.connection.send_command(command, read_timeout=self.timeout)
+        # Ensure sufficient time for large bulk command dumps on large/stacked switches
+        if read_timeout is None:
+            cmd_lower = command.lower()
+            if any(heavy in cmd_lower for heavy in ["show interfaces", "show running", "show ip route", "show ip arp", "show tech"]):
+                actual_timeout = max(float(self.timeout) * 2, 60.0)
+            else:
+                actual_timeout = float(self.timeout)
+        else:
+            actual_timeout = float(read_timeout)
+
+        output = self.connection.send_command(command, read_timeout=actual_timeout)
         duration = time.time() - t0
         
         audit.log(

@@ -611,7 +611,7 @@ class MockSSHClient:
         )
         return True, None
 
-    def send_command(self, command: str) -> str:
+    def send_command(self, command: str, *args, **kwargs) -> str:
         if not self.device:
             raise RuntimeError(f"Host {self.host} not connected.")
         output = self.device.run_command(command)

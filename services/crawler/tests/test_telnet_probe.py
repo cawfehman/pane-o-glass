@@ -193,3 +193,78 @@ def test_cisco_client_obfuscates_password_in_exception():
         assert "MySecretTelnetPassword" not in err
         assert "[REDACTED" in err
 
+
+def test_determine_role_with_none_role_code():
+    """Verify that non-standard hostnames resulting in role_code=None do not raise AttributeError."""
+    crawler = NetworkCrawler(seed_devices=["10.15.10.38"], username="admin", use_mock=False)
+    
+    # Simulate site_info where role_code is None
+    from netcrawl.models import SiteInfo
+    site_info = SiteInfo(
+        site="HIM",
+        idf="MDF",
+        raw_hostname="HIM_Phone_2960x_24_01",
+        role_code=None,
+    )
+
+    role = crawler._determine_role(
+        hostname="HIM_Phone_2960x_24_01",
+        routes=[],
+        intfs={},
+        vlans=["10", "20"],
+        site_info=site_info,
+    )
+    assert role == DeviceRole.L2_SWITCH
+
+
+def test_cisco_ssh_client_negotiation_failed_retry():
+    """Verify that Negotiation failed triggers legacy algorithm fallback with disable_sha2_fix."""
+    client = CiscoSSHClient(
+        host="10.15.10.31",
+        username="admin",
+        password="pwd",
+        protocol="ssh",
+    )
+
+    attempt_calls = []
+
+    def mock_connect_handler(**kwargs):
+        attempt_calls.append(kwargs)
+        if len(attempt_calls) == 1:
+            raise Exception("A paramiko SSHException occurred during connection creation: Negotiation failed.")
+        mock_conn = MagicMock()
+        mock_conn.device_type = "cisco_ios"
+        return mock_conn
+
+    with patch("netmiko.ConnectHandler", side_effect=mock_connect_handler):
+        success, err = client.connect()
+        assert success is True
+        assert err is None
+        assert len(attempt_calls) == 2
+        # Verify first attempt was standard
+        assert "disable_sha2_fix" not in attempt_calls[0]
+        # Verify second attempt used legacy compatibility parameters
+        assert attempt_calls[1].get("disable_sha2_fix") is True
+        assert "rsa-sha2-256" in attempt_calls[1].get("disabled_algorithms", {}).get("pubkeys", [])
+
+
+def test_cisco_ssh_client_send_command_timeout_adaptive():
+    """Verify that bulk show commands automatically adapt read_timeout to at least 60s."""
+    client = CiscoSSHClient(host="10.15.10.129", username="admin", password="pwd", timeout=15)
+    mock_conn = MagicMock()
+    mock_conn.send_command.return_value = "GigabitEthernet1/0/1 is up..."
+    client.connection = mock_conn
+
+    # 1. Standard lightweight command uses default timeout (15s)
+    client.send_command("show ip interface brief")
+    assert mock_conn.send_command.call_args[1]["read_timeout"] == 15.0
+
+    # 2. Heavy bulk command adapts to at least 60s
+    client.send_command("show interfaces")
+    assert mock_conn.send_command.call_args[1]["read_timeout"] >= 60.0
+
+    # 3. Explicit read_timeout overrides
+    client.send_command("show interfaces", read_timeout=90.0)
+    assert mock_conn.send_command.call_args[1]["read_timeout"] == 90.0
+
+
