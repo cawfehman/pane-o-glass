@@ -495,7 +495,18 @@ export default function UserTableClient({ initialUsers }: { initialUsers: any[] 
                 isOpen={!!overrideUser}
                 onClose={() => setOverrideUser(null)}
                 user={overrideUser}
-                onSaved={() => {
+                onSaved={(updatedOverrides) => {
+                    if (overrideUser && updatedOverrides !== undefined) {
+                        setUsers(prev => prev.map(u => {
+                            if (u.id === overrideUser.id) {
+                                return {
+                                    ...u,
+                                    toolOverrides: updatedOverrides
+                                };
+                            }
+                            return u;
+                        }));
+                    }
                     router.refresh();
                 }}
             />

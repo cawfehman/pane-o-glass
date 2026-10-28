@@ -76,7 +76,7 @@ interface UserToolOverrideModalProps {
         lastName?: string | null;
         role: string;
     } | null;
-    onSaved?: () => void;
+    onSaved?: (updatedOverrides?: any[]) => void;
 }
 
 export default function UserToolOverrideModal({
@@ -166,8 +166,8 @@ export default function UserToolOverrideModal({
     const handleSave = async () => {
         setSaving(true);
         try {
-            await saveAllUserToolOverrides(user.id, overrides);
-            if (onSaved) onSaved();
+            const res = await saveAllUserToolOverrides(user.id, overrides);
+            if (onSaved) onSaved(res?.overrides);
             onClose();
         } catch (err: any) {
             alert("Failed to save tool overrides: " + (err.message || String(err)));

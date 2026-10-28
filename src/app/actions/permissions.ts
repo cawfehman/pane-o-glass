@@ -493,14 +493,33 @@ export async function saveAllUserToolOverrides(
             select: { username: true, role: true }
         });
 
+        // Fetch currently existing overrides for this user
+        const existingOverrides = await prisma.userToolOverride.findMany({
+            where: { userId: targetUserId }
+        });
+
         const changes: string[] = [];
+        const desiredToolIds = new Set(
+            Object.keys(overrides).filter(t => overrides[t] === true || overrides[t] === false)
+        );
+
+        // 1. Delete any existing database overrides that are not in desiredToolIds or set to null
+        const toDelete = existingOverrides.filter(e => !desiredToolIds.has(e.toolId) || overrides[e.toolId] === null);
+        if (toDelete.length > 0) {
+            await prisma.userToolOverride.deleteMany({
+                where: {
+                    userId: targetUserId,
+                    toolId: { in: toDelete.map(d => d.toolId) }
+                }
+            });
+            for (const d of toDelete) {
+                changes.push(`${d.toolId}: REVERTED_TO_INHERIT`);
+            }
+        }
+
+        // 2. Upsert active overrides (true or false)
         for (const [toolId, state] of Object.entries(overrides)) {
-            if (state === null) {
-                await prisma.userToolOverride.deleteMany({
-                    where: { userId: targetUserId, toolId }
-                });
-                changes.push(`${toolId}: INHERIT`);
-            } else {
+            if (state === true || state === false) {
                 await prisma.userToolOverride.upsert({
                     where: { userId_toolId: { userId: targetUserId, toolId } },
                     update: { isEnabled: state },
@@ -510,16 +529,31 @@ export async function saveAllUserToolOverrides(
             }
         }
 
-        await logAudit(
-            "USER_PERMISSION_OVERRIDE",
-            `Updated tool overrides for user '${targetUser?.username}': [${changes.join(', ')}]`,
-            session?.user?.id
-        );
+        if (changes.length > 0) {
+            await logAudit(
+                "USER_PERMISSION_OVERRIDE",
+                `Updated tool overrides for user '${targetUser?.username}': [${changes.join(', ')}]`,
+                session?.user?.id
+            );
+        }
 
         revalidatePath("/", "layout");
         revalidatePath("/queries", "page");
         revalidatePath("/users", "page");
-        return { success: true };
+
+        // Fetch updated list of overrides to return to client
+        const updatedOverrides = await prisma.userToolOverride.findMany({
+            where: { userId: targetUserId }
+        });
+
+        return { 
+            success: true, 
+            overrides: updatedOverrides.map(o => ({
+                ...o,
+                createdAt: o.createdAt.toISOString(),
+                updatedAt: o.updatedAt.toISOString(),
+            }))
+        };
     } catch (error) {
         logInternalError(`Error batch saving tool overrides for user ${targetUserId}`, error);
         throw error;
