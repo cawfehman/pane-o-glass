@@ -49,6 +49,7 @@ export default function MerakiDashboardClient() {
     const [overview, setOverview] = useState<MerakiFleetOverviewResponse | null>(null);
     const [overviewLoading, setOverviewLoading] = useState<boolean>(true);
     const [overviewError, setOverviewError] = useState<string | null>(null);
+    const [liveAgeSec, setLiveAgeSec] = useState<number>(0);
 
     // Overview Filters
     const [deviceSearch, setDeviceSearch] = useState<string>("");
@@ -116,6 +117,7 @@ export default function MerakiDashboardClient() {
                 const data = await res.json();
                 if (!res.ok) throw new Error(data.error || "Failed to load Meraki overview");
                 setOverview(data);
+                setLiveAgeSec(data.cacheMeta?.ageSeconds ?? 0);
 
                 // Pre-select first online switch if none selected
                 if (!selectedSwitchSerial && data.devices) {
@@ -138,6 +140,26 @@ export default function MerakiDashboardClient() {
     useEffect(() => {
         fetchOverview(false);
     }, [fetchOverview]);
+
+    // Live-ticking age indicator for the shared server cache
+    useEffect(() => {
+        if (!overview?.fetchedAt) return;
+        const updateAge = () => {
+            const diffSec = Math.max(0, Math.round((Date.now() - new Date(overview.fetchedAt).getTime()) / 1000));
+            setLiveAgeSec(diffSec);
+        };
+        updateAge();
+        const interval = setInterval(updateAge, 5000);
+        return () => clearInterval(interval);
+    }, [overview?.fetchedAt]);
+
+    const formatAgeLabel = (sec: number) => {
+        if (sec < 10) return "just now";
+        if (sec < 60) return `${sec}s ago`;
+        const m = Math.floor(sec / 60);
+        const s = sec % 60;
+        return s > 0 ? `${m}m ${s}s ago` : `${m}m ago`;
+    };
 
     // Fetch DHCP Pools
     const fetchDhcpPools = useCallback(
@@ -456,6 +478,30 @@ export default function MerakiDashboardClient() {
                                 </button>
                             ))}
                         </div>
+
+                        {/* Shared Cache Freshness Status Pill */}
+                        {overview && (
+                            <span
+                                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border ${
+                                    overview.cacheMeta?.status === "LIVE" && liveAgeSec < 25
+                                        ? "bg-emerald-500/10 text-emerald-300 border-emerald-500/30"
+                                        : liveAgeSec < 240
+                                        ? "bg-sky-500/10 text-sky-300 border-sky-500/30"
+                                        : "bg-amber-500/10 text-amber-300 border-amber-500/30"
+                                }`}
+                                title={`Shared server snapshot fetched at ${new Date(
+                                    overview.fetchedAt
+                                ).toLocaleTimeString()} (5-minute shared TTL across all concurrent users).`}
+                            >
+                                <Clock size={13} />
+                                {overview.cacheMeta?.status === "LIVE" && liveAgeSec < 20
+                                    ? `Live Pull • ${formatAgeLabel(liveAgeSec)}`
+                                    : `Shared Cache • ${formatAgeLabel(liveAgeSec)}`}
+                                <span className="opacity-70 text-[10px]">
+                                    ({new Date(overview.fetchedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })})
+                                </span>
+                            </span>
+                        )}
 
                         <button
                             onClick={() => {

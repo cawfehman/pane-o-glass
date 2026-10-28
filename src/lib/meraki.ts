@@ -266,16 +266,42 @@ export interface MerakiWirelessFailureSummary {
 }
 
 // ---------------------------------------------------------------------------
-// Internal Cache & Rate Limiter
+// Internal Shared Server Cache, In-Flight Coalescing & Rate Limiter
 // ---------------------------------------------------------------------------
 
 interface CacheEntry<T> {
     data: T;
+    fetchedAtMs: number;
     expiresAt: number;
 }
 
-const apiCache = new Map<string, CacheEntry<any>>();
-const dhcpDeviceCache = new Map<string, { pools: MerakiDhcpPool[]; expiresAt: number }>();
+interface OverviewSnapshotEntry {
+    response: MerakiFleetOverviewResponse;
+    fetchedAtMs: number;
+    expiresAt: number;
+}
+
+const OVERVIEW_CACHE_TTL_MS = 300_000; // 5 minutes shared server-side snapshot TTL
+const MIN_FORCE_REFRESH_COOLDOWN_MS = 15_000; // If refreshed <15s ago by another user, reuse that fresh pull
+
+const globalForMeraki = globalThis as unknown as {
+    __merakiApiCache?: Map<string, CacheEntry<any>>;
+    __merakiInFlight?: Map<string, Promise<any>>;
+    __merakiOverviewSnapshots?: Map<string, OverviewSnapshotEntry>;
+    __merakiOverviewInFlight?: Map<string, Promise<MerakiFleetOverviewResponse>>;
+    __merakiDhcpDeviceCache?: Map<string, { pools: MerakiDhcpPool[]; expiresAt: number }>;
+};
+
+const apiCache = globalForMeraki.__merakiApiCache ?? (globalForMeraki.__merakiApiCache = new Map<string, CacheEntry<any>>());
+const inFlightRequests = globalForMeraki.__merakiInFlight ?? (globalForMeraki.__merakiInFlight = new Map<string, Promise<any>>());
+const overviewSnapshots =
+    globalForMeraki.__merakiOverviewSnapshots ?? (globalForMeraki.__merakiOverviewSnapshots = new Map<string, OverviewSnapshotEntry>());
+const overviewInFlight =
+    globalForMeraki.__merakiOverviewInFlight ??
+    (globalForMeraki.__merakiOverviewInFlight = new Map<string, Promise<MerakiFleetOverviewResponse>>());
+const dhcpDeviceCache =
+    globalForMeraki.__merakiDhcpDeviceCache ??
+    (globalForMeraki.__merakiDhcpDeviceCache = new Map<string, { pools: MerakiDhcpPool[]; expiresAt: number }>());
 
 let cachedEnvKey: string | null = null;
 let cachedEnvMtime = 0;
@@ -377,7 +403,7 @@ export async function merakiGet<T = any>(
     }
 
     const cacheKey = url.toString();
-    const ttlMs = options?.ttlMs ?? 120_000; // Default 2 min cache
+    const ttlMs = options?.ttlMs ?? 300_000; // Default 5 min shared server cache
 
     if (!options?.forceRefresh && ttlMs > 0) {
         const cached = apiCache.get(cacheKey);
@@ -386,45 +412,61 @@ export async function merakiGet<T = any>(
         }
     }
 
-    const apiKey = getMerakiApiKey();
-    const maxRetries = 3;
-
-    for (let attempt = 0; attempt <= maxRetries; attempt++) {
-        await acquireRateLimitSlot();
-
-        const response = await fetch(url.toString(), {
-            method: "GET", // STRICTLY READ-ONLY HTTP GET
-            headers: {
-                "Authorization": `Bearer ${apiKey}`,
-                "Accept": "application/json",
-            },
-            cache: "no-store",
-        });
-
-        if (response.status === 429 && attempt < maxRetries) {
-            const retryAfterHeader = response.headers.get("Retry-After");
-            const retrySec = retryAfterHeader ? parseFloat(retryAfterHeader) : 2;
-            const backoffMs = Math.max(1000, Math.min(10_000, (isNaN(retrySec) ? 2 : retrySec) * 1000));
-            await new Promise((r) => setTimeout(r, backoffMs));
-            continue;
-        }
-
-        if (!response.ok) {
-            const errBody = await response.text().catch(() => "");
-            throw new Error(`Meraki API GET ${normalizedEndpoint} failed (${response.status}): ${errBody.slice(0, 240)}`);
-        }
-
-        const data = (await response.json()) as T;
-        if (ttlMs > 0) {
-            apiCache.set(cacheKey, {
-                data,
-                expiresAt: Date.now() + ttlMs,
-            });
-        }
-        return data;
+    // Coalesce concurrent identical requests (prevents cache stampedes when multiple users open the page simultaneously)
+    if (!options?.forceRefresh && inFlightRequests.has(cacheKey)) {
+        return (await inFlightRequests.get(cacheKey)) as T;
     }
 
-    throw new Error(`Meraki API GET ${normalizedEndpoint} exceeded retry limit due to rate limiting.`);
+    const fetchPromise = (async (): Promise<T> => {
+        const apiKey = getMerakiApiKey();
+        const maxRetries = 3;
+
+        for (let attempt = 0; attempt <= maxRetries; attempt++) {
+            await acquireRateLimitSlot();
+
+            const response = await fetch(url.toString(), {
+                method: "GET", // STRICTLY READ-ONLY HTTP GET
+                headers: {
+                    "Authorization": `Bearer ${apiKey}`,
+                    "Accept": "application/json",
+                },
+                cache: "no-store",
+            });
+
+            if (response.status === 429 && attempt < maxRetries) {
+                const retryAfterHeader = response.headers.get("Retry-After");
+                const retrySec = retryAfterHeader ? parseFloat(retryAfterHeader) : 2;
+                const backoffMs = Math.max(1000, Math.min(10_000, (isNaN(retrySec) ? 2 : retrySec) * 1000));
+                await new Promise((r) => setTimeout(r, backoffMs));
+                continue;
+            }
+
+            if (!response.ok) {
+                const errBody = await response.text().catch(() => "");
+                throw new Error(`Meraki API GET ${normalizedEndpoint} failed (${response.status}): ${errBody.slice(0, 240)}`);
+            }
+
+            const data = (await response.json()) as T;
+            if (ttlMs > 0) {
+                const nowMs = Date.now();
+                apiCache.set(cacheKey, {
+                    data,
+                    fetchedAtMs: nowMs,
+                    expiresAt: nowMs + ttlMs,
+                });
+            }
+            return data;
+        }
+
+        throw new Error(`Meraki API GET ${normalizedEndpoint} exceeded retry limit due to rate limiting.`);
+    })();
+
+    inFlightRequests.set(cacheKey, fetchPromise);
+    try {
+        return await fetchPromise;
+    } finally {
+        inFlightRequests.delete(cacheKey);
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -484,14 +526,57 @@ export interface MerakiFleetOverviewResponse {
         };
     };
     fetchedAt: string;
+    cacheMeta: {
+        status: "LIVE" | "CACHED";
+        fetchedAt: string;
+        ageSeconds: number;
+        ttlSeconds: number;
+        expiresAt: string;
+    };
 }
 
 export async function getMerakiFleetOverview(options?: {
     orgId?: string;
     forceRefresh?: boolean;
 }): Promise<MerakiFleetOverviewResponse> {
+    const orgKey = options?.orgId && options.orgId !== "ALL" ? options.orgId : "ALL";
+    const nowMs = Date.now();
+    const existingSnapshot = overviewSnapshots.get(orgKey);
+
+    // 1. Serve from shared server snapshot cache if still fresh (or if another user just force-refreshed <15s ago)
+    const recentlyRefreshed = existingSnapshot && nowMs - existingSnapshot.fetchedAtMs < MIN_FORCE_REFRESH_COOLDOWN_MS;
+    if (existingSnapshot && (recentlyRefreshed || (!options?.forceRefresh && existingSnapshot.expiresAt > nowMs))) {
+        const ageSeconds = Math.max(0, Math.round((nowMs - existingSnapshot.fetchedAtMs) / 1000));
+        return {
+            ...existingSnapshot.response,
+            cacheMeta: {
+                status: "CACHED",
+                fetchedAt: existingSnapshot.response.fetchedAt,
+                ageSeconds,
+                ttlSeconds: Math.round(OVERVIEW_CACHE_TTL_MS / 1000),
+                expiresAt: new Date(existingSnapshot.expiresAt).toISOString(),
+            },
+        };
+    }
+
+    // 2. If another user's request is already in flight for this orgKey, await that same Promise (1 API call serves all concurrent users)
+    if (overviewInFlight.has(orgKey)) {
+        const sharedResp = await overviewInFlight.get(orgKey)!;
+        const ageSeconds = Math.max(0, Math.round((Date.now() - new Date(sharedResp.fetchedAt).getTime()) / 1000));
+        return {
+            ...sharedResp,
+            cacheMeta: {
+                ...sharedResp.cacheMeta,
+                status: "CACHED",
+                ageSeconds,
+            },
+        };
+    }
+
     const forceRefresh = options?.forceRefresh ?? false;
-    const allOrgs = await getMerakiOrganizations(forceRefresh);
+
+    const buildPromise = (async (): Promise<MerakiFleetOverviewResponse> => {
+        const allOrgs = await getMerakiOrganizations(forceRefresh);
 
     const targetOrgs =
         options?.orgId && options.orgId !== "ALL"
@@ -681,15 +766,41 @@ export async function getMerakiFleetOverview(options?: {
     }
 
     const topologyGroups = buildTopologyGroups(devicesAll);
+    const fetchedAtMs = Date.now();
+    const fetchedAtIso = new Date(fetchedAtMs).toISOString();
+    const expiresAtMs = fetchedAtMs + OVERVIEW_CACHE_TTL_MS;
 
-    return {
+    const freshResponse: MerakiFleetOverviewResponse = {
         organizations: orgSummaries,
         networks: networksAll,
         devices: devicesAll,
         topologyGroups,
         summary,
-        fetchedAt: new Date().toISOString(),
+        fetchedAt: fetchedAtIso,
+        cacheMeta: {
+            status: "LIVE",
+            fetchedAt: fetchedAtIso,
+            ageSeconds: 0,
+            ttlSeconds: Math.round(OVERVIEW_CACHE_TTL_MS / 1000),
+            expiresAt: new Date(expiresAtMs).toISOString(),
+        },
     };
+
+    overviewSnapshots.set(orgKey, {
+        response: freshResponse,
+        fetchedAtMs,
+        expiresAt: expiresAtMs,
+    });
+
+    return freshResponse;
+    })();
+
+    overviewInFlight.set(orgKey, buildPromise);
+    try {
+        return await buildPromise;
+    } finally {
+        overviewInFlight.delete(orgKey);
+    }
 }
 
 /**
