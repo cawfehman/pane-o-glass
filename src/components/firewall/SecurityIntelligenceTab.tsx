@@ -5,14 +5,16 @@ import {
     Shield, Search, AlertTriangle, CheckCircle2, ShieldAlert, 
     RefreshCw, Trash2, Plus, ExternalLink, Activity, Network, ArrowRight,
     Copy, Check, Clock, UserCheck, Flame, Server, Zap, ShieldCheck,
-    ChevronLeft, ChevronRight, Filter, Ban, Unlock, Lock, Sparkles
+    ChevronLeft, ChevronRight, Filter, Ban, Unlock, Lock, Sparkles, Eye
 } from "lucide-react";
 import { SmartSearchBar } from "@/components/common/SmartSearchBar";
 import { LiveFeedInspector } from "./LiveFeedInspector";
+import { MonitoredWatchlistTab } from "./MonitoredWatchlistTab";
 
 export function SecurityIntelligenceTab() {
-    // Sub-Tab Switcher State (Reputation Ledger vs Live FMC Feed Inspector)
-    const [activeSubTab, setActiveSubTab] = useState<"reputation" | "feedInspector">("reputation");
+    // Sub-Tab Switcher State (Reputation Ledger vs Live FMC Feed Inspector vs Monitored Watchlist)
+    const [activeSubTab, setActiveSubTab] = useState<"reputation" | "feedInspector" | "monitored">("reputation");
+    const [monitoredCount, setMonitoredCount] = useState<number | null>(null);
 
     // Timeframe Filter State
     const [timeframe, setTimeframe] = useState<"1h" | "6h" | "24h" | "7d" | "30d" | "90d" | "all">("24h");
@@ -105,8 +107,24 @@ export function SecurityIntelligenceTab() {
         }
     };
 
+    // Fetch initial Guardian monitored count for sub-tab badge
+    const fetchMonitoredCount = async () => {
+        try {
+            const res = await fetch("/api/firewall/guardian/monitored");
+            if (res.ok) {
+                const data = await res.json();
+                if (data.items) {
+                    setMonitoredCount(data.items.length);
+                }
+            }
+        } catch {
+            // silent fail
+        }
+    };
+
     useEffect(() => {
         fetchFeedStats();
+        fetchMonitoredCount();
         fetchReputation(timeframe, page, pageSize, activeSearch, statusFilter);
     }, [timeframe, page, pageSize, activeSearch, statusFilter, fetchReputation]);
 
@@ -455,10 +473,26 @@ export function SecurityIntelligenceTab() {
                         {feedMetrics?.total ? `${Number(feedMetrics.total).toLocaleString()} IPs` : "Active"}
                     </span>
                 </button>
+                <button
+                    onClick={() => setActiveSubTab("monitored")}
+                    className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
+                        activeSubTab === "monitored"
+                            ? "bg-accent-primary text-white shadow-sm"
+                            : "text-text-muted hover:text-text-primary hover:bg-bg-card border border-border-color/60"
+                    }`}
+                >
+                    <Eye className="w-4 h-4" />
+                    Guardian Monitored Watchlist
+                    <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-cyan-500/20 text-cyan-300 font-mono font-bold">
+                        {monitoredCount !== null ? `${monitoredCount} IPs` : "Active"}
+                    </span>
+                </button>
             </div>
 
             {activeSubTab === "feedInspector" ? (
                 <LiveFeedInspector />
+            ) : activeSubTab === "monitored" ? (
+                <MonitoredWatchlistTab onCountChange={(cnt) => setMonitoredCount(cnt)} />
             ) : (
                 <>
             {/* Top Header & Timeframe Bar */}
