@@ -1846,27 +1846,34 @@ export async function getMerakiClientsAndWireless(options: {
     if (options.networkId && options.networkId !== "AUTO") {
         const found = overview.networks.find((n) => n.id === options.networkId);
         if (found) targetNetworks = [found];
-    } else if (options.orgId === "905261") {
-        // In Cooper Health, networks are MX/Z3 appliance spokes; pick networks with online devices or name match
-        const cooperNets = overview.networks.filter((n) => n.organizationId === "905261");
-        if (searchLower) {
-            targetNetworks = cooperNets.filter((n) => n.name.toLowerCase().includes(searchLower)).slice(0, 10);
+    } else if (searchLower) {
+        // Prioritize networks matching the text query (e.g. "Bob Johnson - Teleworker", "Cherry Hill", user name, or clinic)
+        const nameMatches = overview.networks.filter(
+            (n) => (options.orgId ? n.organizationId === options.orgId : true) && n.name.toLowerCase().includes(searchLower)
+        );
+        if (nameMatches.length > 0) {
+            targetNetworks = nameMatches.slice(0, 10);
         }
-        if (targetNetworks.length === 0) {
+    }
+
+    if (targetNetworks.length === 0) {
+        if (options.orgId === "905261") {
+            // In Cooper Health, networks are MX/Z3 appliance spokes; pick networks with online devices
+            const cooperNets = overview.networks.filter((n) => n.organizationId === "905261");
             targetNetworks = cooperNets.slice(0, 6);
+        } else {
+            // Default to networks that have wireless or switches (e.g., Cape Regional Medical Center first)
+            const sortedNets = [...overview.networks].sort((a, b) => {
+                const aHasWireless = a.productTypes.includes("wireless") ? 1 : 0;
+                const bHasWireless = b.productTypes.includes("wireless") ? 1 : 0;
+                if (aHasWireless !== bHasWireless) return bHasWireless - aHasWireless;
+                const aHasSwitch = a.productTypes.includes("switch") ? 1 : 0;
+                const bHasSwitch = b.productTypes.includes("switch") ? 1 : 0;
+                if (aHasSwitch !== bHasSwitch) return bHasSwitch - aHasSwitch;
+                return a.name.localeCompare(b.name);
+            });
+            targetNetworks = sortedNets.slice(0, 4);
         }
-    } else {
-        // Default to networks that have wireless or switches (e.g., Cape Regional Medical Center first)
-        const sortedNets = [...overview.networks].sort((a, b) => {
-            const aHasWireless = a.productTypes.includes("wireless") ? 1 : 0;
-            const bHasWireless = b.productTypes.includes("wireless") ? 1 : 0;
-            if (aHasWireless !== bHasWireless) return bHasWireless - aHasWireless;
-            const aHasSwitch = a.productTypes.includes("switch") ? 1 : 0;
-            const bHasSwitch = b.productTypes.includes("switch") ? 1 : 0;
-            if (aHasSwitch !== bHasSwitch) return bHasSwitch - aHasSwitch;
-            return a.name.localeCompare(b.name);
-        });
-        targetNetworks = sortedNets.slice(0, 4);
     }
 
     for (const net of targetNetworks) {

@@ -73,9 +73,9 @@ export default function MerakiDashboardClient() {
     });
     const [copiedText, setCopiedText] = useState<string | null>(null);
 
-    // Quick MAC / IP Resolver
+    // Quick MAC / IP / User / Label / Device Search
     const [quickLookupInput, setQuickLookupInput] = useState<string>("");
-    const [quickLookupResult, setQuickLookupResult] = useState<MerakiDeviceUnified | null | undefined>(undefined);
+    const [quickLookupMatches, setQuickLookupMatches] = useState<MerakiDeviceUnified[] | null>(null);
     const [quickLookupClient, setQuickLookupClient] = useState<MerakiNetworkClient | null>(null);
     const [quickLookupSearchingClients, setQuickLookupSearchingClients] = useState<boolean>(false);
 
@@ -336,37 +336,74 @@ export default function MerakiDashboardClient() {
         }
     }, []);
 
-    // Quick Resolver Handler (Resolves switches, appliances, and client devices plugged into spokes)
+    // Quick Search & Resolver Handler (Matches users, names, labels/tags, notes, models, MACs, IPs, and spoke clients)
     const handleQuickResolve = async () => {
         const q = quickLookupInput.trim().toLowerCase();
         if (!q || !overview) {
-            setQuickLookupResult(undefined);
-            setQuickLookupClient(null);
-            return;
-        }
-        const compactHex = q.replace(/[^0-9a-f]/g, "");
-        const match = overview.devices.find(
-            (d) =>
-                d.serial.toLowerCase() === q ||
-                (d.lanIp && d.lanIp.toLowerCase() === q) ||
-                d.name.toLowerCase() === q ||
-                d.mac.toLowerCase() === q ||
-                (compactHex.length === 12 && d.macCompact === compactHex)
-        );
-        if (match) {
-            setQuickLookupResult(match);
+            setQuickLookupMatches(null);
             setQuickLookupClient(null);
             return;
         }
 
-        // If no physical Meraki device matched, search across connected client devices (wired & wireless)
+        const tokens = q.split(/\s+/).filter(Boolean);
+
+        // 1. Search physical Meraki devices across name, network, labels/tags, notes, model, IP, MAC, address, and IDF/site
+        const matches = overview.devices.filter((d) => {
+            return tokens.every((token) => {
+                const tHex = token.replace(/[^0-9a-f]/g, "");
+                const matchName = d.name.toLowerCase().includes(token);
+                const matchNet = d.networkName.toLowerCase().includes(token);
+                const matchSerial = d.serial.toLowerCase().includes(token);
+                const matchModel = d.model.toLowerCase().includes(token);
+                const matchLanIp = d.lanIp ? d.lanIp.toLowerCase().includes(token) : false;
+                const matchPubIp = d.publicIp ? d.publicIp.toLowerCase().includes(token) : false;
+                const matchMac = d.mac.toLowerCase().includes(token) || (tHex.length >= 4 && d.macCompact.includes(tHex));
+                const matchNotes = d.notes ? d.notes.toLowerCase().includes(token) : false;
+                const matchTags = Array.isArray(d.tags) && d.tags.some((t) => t.toLowerCase().includes(token));
+                const matchAddress = d.address ? d.address.toLowerCase().includes(token) : false;
+                const matchGroup = d.grouping
+                    ? d.grouping.siteName.toLowerCase().includes(token) || d.grouping.groupTitle.toLowerCase().includes(token)
+                    : false;
+
+                return (
+                    matchName ||
+                    matchNet ||
+                    matchSerial ||
+                    matchModel ||
+                    matchLanIp ||
+                    matchPubIp ||
+                    matchMac ||
+                    matchNotes ||
+                    matchTags ||
+                    matchAddress ||
+                    matchGroup
+                );
+            });
+        });
+
+        // Sort exact hits (exact serial, IP, MAC, or full name) to the very top
+        matches.sort((a, b) => {
+            const aExact = a.serial.toLowerCase() === q || a.lanIp?.toLowerCase() === q || a.mac.toLowerCase() === q || a.name.toLowerCase() === q;
+            const bExact = b.serial.toLowerCase() === q || b.lanIp?.toLowerCase() === q || b.mac.toLowerCase() === q || b.name.toLowerCase() === q;
+            if (aExact && !bExact) return -1;
+            if (!aExact && bExact) return 1;
+            return a.name.localeCompare(b.name);
+        });
+
+        if (matches.length > 0) {
+            setQuickLookupMatches(matches);
+            setQuickLookupClient(null);
+            return;
+        }
+
+        // 2. If no physical Meraki device matched, search across connected client endpoints (wired & wireless)
         setQuickLookupSearchingClients(true);
         try {
             const res = await fetch(`/api/meraki/wireless?search=${encodeURIComponent(q)}&timespan=86400`);
             const data = await res.json();
             if (data?.clients && data.clients.length > 0) {
                 setQuickLookupClient(data.clients[0]);
-                setQuickLookupResult(null);
+                setQuickLookupMatches(null);
                 return;
             }
         } catch {
@@ -375,39 +412,65 @@ export default function MerakiDashboardClient() {
             setQuickLookupSearchingClients(false);
         }
 
-        setQuickLookupResult(null);
+        setQuickLookupMatches([]);
         setQuickLookupClient(null);
     };
 
-    // Filtered Fleet Devices
+    // Filtered Fleet Devices (Tab 1)
     const filteredDevices = useMemo(() => {
         if (!overview?.devices) return [];
         const q = deviceSearch.trim().toLowerCase();
-        const qHex = q.replace(/[^0-9a-f]/g, "");
+        if (!q) {
+            return overview.devices.filter((d) => {
+                if (productFilter !== "ALL" && d.productType !== productFilter) return false;
+                if (statusFilter !== "ALL" && d.status !== statusFilter) return false;
+                return true;
+            });
+        }
+
+        const tokens = q.split(/\s+/).filter(Boolean);
 
         return overview.devices.filter((d) => {
             if (productFilter !== "ALL" && d.productType !== productFilter) return false;
             if (statusFilter !== "ALL" && d.status !== statusFilter) return false;
 
-            if (q) {
-                const matchName = d.name.toLowerCase().includes(q);
-                const matchNet = d.networkName.toLowerCase().includes(q);
-                const matchSerial = d.serial.toLowerCase().includes(q);
-                const matchModel = d.model.toLowerCase().includes(q);
-                const matchLanIp = d.lanIp ? d.lanIp.toLowerCase().includes(q) : false;
-                const matchPubIp = d.publicIp ? d.publicIp.toLowerCase().includes(q) : false;
-                const matchMac = d.mac.toLowerCase().includes(q) || (qHex.length >= 4 && d.macCompact.includes(qHex));
+            return tokens.every((token) => {
+                const tHex = token.replace(/[^0-9a-f]/g, "");
+                const matchName = d.name.toLowerCase().includes(token);
+                const matchNet = d.networkName.toLowerCase().includes(token);
+                const matchSerial = d.serial.toLowerCase().includes(token);
+                const matchModel = d.model.toLowerCase().includes(token);
+                const matchLanIp = d.lanIp ? d.lanIp.toLowerCase().includes(token) : false;
+                const matchPubIp = d.publicIp ? d.publicIp.toLowerCase().includes(token) : false;
+                const matchMac = d.mac.toLowerCase().includes(token) || (tHex.length >= 4 && d.macCompact.includes(tHex));
+                const matchNotes = d.notes ? d.notes.toLowerCase().includes(token) : false;
+                const matchTags = Array.isArray(d.tags) && d.tags.some((t) => t.toLowerCase().includes(token));
+                const matchAddress = d.address ? d.address.toLowerCase().includes(token) : false;
+                const matchGroup = d.grouping
+                    ? d.grouping.siteName.toLowerCase().includes(token) || d.grouping.groupTitle.toLowerCase().includes(token)
+                    : false;
                 const matchUplink = d.uplinks.some(
                     (u) =>
-                        (u.ip && u.ip.toLowerCase().includes(q)) ||
-                        (u.publicIp && u.publicIp.toLowerCase().includes(q)) ||
-                        (u.provider && u.provider.toLowerCase().includes(q))
+                        (u.ip && u.ip.toLowerCase().includes(token)) ||
+                        (u.publicIp && u.publicIp.toLowerCase().includes(token)) ||
+                        (u.provider && u.provider.toLowerCase().includes(token))
                 );
-                if (!matchName && !matchNet && !matchSerial && !matchModel && !matchLanIp && !matchPubIp && !matchMac && !matchUplink) {
-                    return false;
-                }
-            }
-            return true;
+
+                return (
+                    matchName ||
+                    matchNet ||
+                    matchSerial ||
+                    matchModel ||
+                    matchLanIp ||
+                    matchPubIp ||
+                    matchMac ||
+                    matchNotes ||
+                    matchTags ||
+                    matchAddress ||
+                    matchGroup ||
+                    matchUplink
+                );
+            });
         });
     }, [overview, deviceSearch, productFilter, statusFilter]);
 
@@ -665,7 +728,7 @@ export default function MerakiDashboardClient() {
                         ))}
                     </div>
 
-                    {/* Instant Crawler MAC / IP / Serial Lookup */}
+                    {/* Text / User / Label / MAC / IP Search Bar */}
                     <div className="flex items-center gap-2">
                         <div className="relative flex items-center">
                             <Search size={14} className="absolute left-3 text-text-muted" />
@@ -674,29 +737,32 @@ export default function MerakiDashboardClient() {
                                 value={quickLookupInput}
                                 onChange={(e) => {
                                     setQuickLookupInput(e.target.value);
-                                    if (!e.target.value.trim()) setQuickLookupResult(undefined);
+                                    if (!e.target.value.trim()) {
+                                        setQuickLookupMatches(null);
+                                        setQuickLookupClient(null);
+                                    }
                                 }}
                                 onKeyDown={(e) => e.key === "Enter" && handleQuickResolve()}
-                                placeholder="Quick resolve MAC (e.g. 683a1eaf84be) or IP..."
-                                className="pl-8 pr-3 py-1.5 rounded-lg bg-bg-surface border border-border-color text-xs text-text-primary w-64 focus:outline-none focus:border-emerald-400"
+                                placeholder="Search user (e.g. Bob Johnson), device, tag, MAC, IP, serial..."
+                                className="pl-8 pr-3 py-1.5 rounded-lg bg-bg-surface border border-border-color text-xs text-text-primary w-72 md:w-96 focus:outline-none focus:border-emerald-400"
                             />
                         </div>
                         <button
                             onClick={handleQuickResolve}
                             disabled={quickLookupSearchingClients}
-                            className="px-3 py-1.5 rounded-lg text-xs font-bold bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 hover:bg-emerald-500/25 cursor-pointer flex items-center gap-1.5"
+                            className="px-3.5 py-1.5 rounded-lg text-xs font-bold bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 hover:bg-emerald-500/25 cursor-pointer flex items-center gap-1.5"
                         >
                             {quickLookupSearchingClients ? (
                                 <RefreshCw size={12} className="animate-spin" />
                             ) : null}
-                            Resolve
+                            Search
                         </button>
                     </div>
                 </div>
 
-                {/* Quick Lookup Result Banner - Client Device Match (Connected to Spoke Appliance / Switch) */}
+                {/* Quick Lookup Result Banner - Connected Client Device Match */}
                 {quickLookupClient && (
-                    <div className="p-3 rounded-xl bg-bg-surface border border-indigo-500/40 flex flex-wrap items-center justify-between gap-3 text-xs shadow-lg">
+                    <div className="p-3.5 rounded-xl bg-bg-surface border border-indigo-500/40 flex flex-wrap items-center justify-between gap-3 text-xs shadow-lg animate-fadeIn">
                         <div className="flex items-center gap-3 flex-wrap">
                             <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 flex items-center gap-1">
                                 <Laptop size={12} />
@@ -728,8 +794,9 @@ export default function MerakiDashboardClient() {
                                         const dev = overview?.devices.find((d) => d.serial === quickLookupClient.recentDeviceSerial);
                                         if (dev) fetchSpokeClients(dev);
                                     }}
-                                    className="px-3 py-1 rounded-lg bg-indigo-500/20 text-indigo-300 border border-indigo-500/40 font-bold cursor-pointer hover:bg-indigo-500/30"
+                                    className="px-3 py-1 rounded-lg bg-indigo-500/20 text-indigo-300 border border-indigo-500/40 font-bold cursor-pointer hover:bg-indigo-500/30 flex items-center gap-1"
                                 >
+                                    <Users size={12} />
                                     Inspect Spoke Gateway →
                                 </button>
                             )}
@@ -743,83 +810,190 @@ export default function MerakiDashboardClient() {
                     </div>
                 )}
 
-                {/* Quick Lookup Result Banner - Physical Meraki Hardware Match */}
-                {quickLookupResult !== undefined && !quickLookupClient && (
-                    <div className="p-3 rounded-xl bg-bg-surface border border-emerald-500/30 flex flex-wrap items-center justify-between gap-3 text-xs">
-                        {quickLookupResult ? (
-                            <>
-                                <div className="flex items-center gap-3 flex-wrap">
-                                    {getStatusBadge(quickLookupResult.status)}
-                                    <span className="font-bold text-text-primary text-sm">
-                                        {quickLookupResult.name}
-                                    </span>
-                                    <span className="font-mono px-2 py-0.5 rounded bg-black/30 text-emerald-300 border border-emerald-500/20">
-                                        {quickLookupResult.model} ({quickLookupResult.productType})
-                                    </span>
-                                    <span className="text-text-secondary">
-                                        Network: <strong className="text-text-primary">{quickLookupResult.networkName}</strong> ({quickLookupResult.organizationName})
-                                    </span>
-                                    <span className="font-mono text-text-secondary">
-                                        LAN IP: <strong className="text-cyan-300">{quickLookupResult.lanIp || "N/A"}</strong>
-                                    </span>
-                                    <span className="font-mono text-text-secondary">
-                                        MAC: <strong className="text-amber-300">{quickLookupResult.mac}</strong> ({quickLookupResult.macCompact})
-                                    </span>
-                                    <span className="font-mono text-text-muted">
-                                        Serial: {quickLookupResult.serial}
-                                    </span>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                    {quickLookupResult.productType === "switch" && (
-                                        <button
-                                            onClick={() => {
-                                                setSelectedSwitchSerial(quickLookupResult.serial);
-                                                setActiveTab("switch");
-                                            }}
-                                            className="px-3 py-1 rounded-lg bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 font-bold cursor-pointer"
-                                        >
-                                            Inspect Switchports & CDP →
-                                        </button>
-                                    )}
-                                    {quickLookupResult.productType === "appliance" && (
-                                        <div className="flex items-center gap-1.5">
-                                            <button
-                                                onClick={() => fetchSpokeClients(quickLookupResult)}
-                                                className="px-3 py-1 rounded-lg bg-indigo-500/20 text-indigo-300 border border-indigo-500/40 font-bold cursor-pointer hover:bg-indigo-500/30 flex items-center gap-1"
-                                            >
-                                                <Users size={12} />
-                                                View Clients →
-                                            </button>
-                                            <button
-                                                onClick={() => {
-                                                    setActiveTab("dhcp");
-                                                    fetchDhcpPools({ serial: quickLookupResult.serial, batchSize: 5 });
-                                                }}
-                                                className="px-3 py-1 rounded-lg bg-amber-500/20 text-amber-300 border border-amber-500/40 font-bold cursor-pointer"
-                                            >
-                                                DHCP Pools →
-                                            </button>
-                                        </div>
-                                    )}
-                                    <button
-                                        onClick={() => setQuickLookupResult(undefined)}
-                                        className="text-text-muted hover:text-text-primary px-2 py-1 cursor-pointer bg-transparent border-none"
-                                    >
-                                        ✕
-                                    </button>
-                                </div>
-                            </>
-                        ) : (
-                            <div className="flex items-center justify-between w-full">
+                {/* Quick Lookup Result Banner - Physical Meraki Hardware Matches */}
+                {quickLookupMatches !== null && !quickLookupClient && (
+                    <div className="rounded-xl bg-bg-surface border border-emerald-500/30 text-xs shadow-lg overflow-hidden animate-fadeIn">
+                        {quickLookupMatches.length === 0 ? (
+                            <div className="p-3 flex items-center justify-between w-full">
                                 <span className="text-rose-400 font-medium">
-                                    No Meraki hardware or connected client device matched &ldquo;{quickLookupInput}&rdquo; across Cooper Health or Cape Regional.
+                                    No Meraki hardware, user names, labels/tags, notes, or connected clients matched &ldquo;{quickLookupInput}&rdquo; across Cooper Health or Cape Regional.
                                 </span>
                                 <button
-                                    onClick={() => setQuickLookupResult(undefined)}
+                                    onClick={() => setQuickLookupMatches(null)}
                                     className="text-text-muted hover:text-text-primary px-2 py-1 cursor-pointer bg-transparent border-none"
                                 >
                                     ✕
                                 </button>
+                            </div>
+                        ) : quickLookupMatches.length === 1 ? (
+                            (() => {
+                                const d = quickLookupMatches[0];
+                                return (
+                                    <div className="p-3.5 flex flex-wrap items-center justify-between gap-3">
+                                        <div className="flex items-center gap-3 flex-wrap">
+                                            {getStatusBadge(d.status)}
+                                            <span className="font-bold text-text-primary text-sm">
+                                                {d.name}
+                                            </span>
+                                            <span className="font-mono px-2 py-0.5 rounded bg-black/30 text-emerald-300 border border-emerald-500/20">
+                                                {d.model} ({d.productType})
+                                            </span>
+                                            <span className="text-text-secondary">
+                                                Network: <strong className="text-text-primary">{d.networkName}</strong> ({d.organizationName})
+                                            </span>
+                                            <span className="font-mono text-text-secondary">
+                                                LAN IP: <strong className="text-cyan-300">{d.lanIp || "N/A"}</strong>
+                                            </span>
+                                            <span className="font-mono text-text-secondary">
+                                                MAC: <strong className="text-amber-300">{d.mac}</strong> ({d.macCompact})
+                                            </span>
+                                            {d.tags && d.tags.length > 0 && (
+                                                <div className="flex items-center gap-1">
+                                                    {d.tags.map((tag) => (
+                                                        <span key={tag} className="px-1.5 py-0.5 rounded text-[10px] bg-purple-500/15 text-purple-300 border border-purple-500/30">
+                                                            #{tag}
+                                                        </span>
+                                                    ))}
+                                                </div>
+                                            )}
+                                            {d.notes && (
+                                                <span className="text-text-muted italic max-w-xs truncate" title={d.notes}>
+                                                    Note: {d.notes}
+                                                </span>
+                                            )}
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            {d.productType === "switch" && (
+                                                <button
+                                                    onClick={() => {
+                                                        setSelectedSwitchSerial(d.serial);
+                                                        setActiveTab("switch");
+                                                    }}
+                                                    className="px-3 py-1 rounded-lg bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 font-bold cursor-pointer hover:bg-cyan-500/30"
+                                                >
+                                                    Inspect Switchports & CDP →
+                                                </button>
+                                            )}
+                                            {d.productType === "appliance" && (
+                                                <div className="flex items-center gap-1.5">
+                                                    <button
+                                                        onClick={() => fetchSpokeClients(d)}
+                                                        className="px-3 py-1 rounded-lg bg-indigo-500/20 text-indigo-300 border border-indigo-500/40 font-bold cursor-pointer hover:bg-indigo-500/30 flex items-center gap-1"
+                                                    >
+                                                        <Users size={12} />
+                                                        View Clients →
+                                                    </button>
+                                                    <button
+                                                        onClick={() => {
+                                                            setActiveTab("dhcp");
+                                                            fetchDhcpPools({ serial: d.serial, batchSize: 5 });
+                                                        }}
+                                                        className="px-3 py-1 rounded-lg bg-amber-500/20 text-amber-300 border border-amber-500/40 font-bold cursor-pointer hover:bg-amber-500/30"
+                                                    >
+                                                        DHCP Pools →
+                                                    </button>
+                                                </div>
+                                            )}
+                                            <button
+                                                onClick={() => {
+                                                    setDeviceSearch(d.serial);
+                                                    setActiveTab("overview");
+                                                }}
+                                                className="px-2.5 py-1 rounded-lg bg-bg-surface hover:bg-white/10 text-text-secondary border border-border-color font-bold text-xs cursor-pointer"
+                                                title="Filter Fleet Table to this device"
+                                            >
+                                                Locate in Fleet
+                                            </button>
+                                            <button
+                                                onClick={() => setQuickLookupMatches(null)}
+                                                className="text-text-muted hover:text-text-primary px-2 py-1 cursor-pointer bg-transparent border-none"
+                                            >
+                                                ✕
+                                            </button>
+                                        </div>
+                                    </div>
+                                );
+                            })()
+                        ) : (
+                            <div className="flex flex-col">
+                                <div className="p-3 bg-black/20 border-b border-border-color flex items-center justify-between gap-3">
+                                    <span className="font-bold text-text-primary text-xs">
+                                        Found <strong className="text-emerald-400">{quickLookupMatches.length}</strong> Meraki devices matching &ldquo;{quickLookupInput}&rdquo;:
+                                    </span>
+                                    <div className="flex items-center gap-2">
+                                        <button
+                                            onClick={() => {
+                                                setDeviceSearch(quickLookupInput);
+                                                setActiveTab("overview");
+                                            }}
+                                            className="px-3 py-1 rounded-lg bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 font-bold hover:bg-emerald-500/30 cursor-pointer"
+                                        >
+                                            Filter Fleet Table ({quickLookupMatches.length} devices) →
+                                        </button>
+                                        <button
+                                            onClick={() => setQuickLookupMatches(null)}
+                                            className="text-text-muted hover:text-text-primary px-2 py-1 cursor-pointer bg-transparent border-none"
+                                        >
+                                            ✕
+                                        </button>
+                                    </div>
+                                </div>
+                                <div className="max-h-64 overflow-y-auto divide-y divide-border-color custom-scrollbar">
+                                    {quickLookupMatches.slice(0, 8).map((d) => (
+                                        <div key={d.serial} className="p-2.5 px-3.5 flex items-center justify-between gap-3 hover:bg-white/5 transition-colors">
+                                            <div className="flex items-center gap-2.5 min-w-0">
+                                                {getStatusBadge(d.status)}
+                                                <div className="min-w-0">
+                                                    <div className="font-bold text-text-primary truncate flex items-center gap-2">
+                                                        <span>{d.name}</span>
+                                                        <span className="font-mono text-[10px] px-1.5 py-0.2 rounded bg-black/30 text-emerald-300 border border-emerald-500/20">
+                                                            {d.model}
+                                                        </span>
+                                                        {d.tags && d.tags.length > 0 && (
+                                                            <span className="text-[10px] text-purple-300 truncate">
+                                                                #{d.tags.join(" #")}
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                    <div className="font-mono text-[11px] text-text-muted truncate">
+                                                        {d.networkName} • LAN: {d.lanIp || "N/A"} • MAC: {d.mac}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div className="flex items-center gap-1.5 shrink-0">
+                                                {d.productType === "appliance" && (
+                                                    <button
+                                                        onClick={() => fetchSpokeClients(d)}
+                                                        className="px-2.5 py-1 rounded bg-indigo-500/20 text-indigo-300 border border-indigo-500/40 font-bold hover:bg-indigo-500/30 cursor-pointer flex items-center gap-1"
+                                                    >
+                                                        <Users size={11} />
+                                                        Clients
+                                                    </button>
+                                                )}
+                                                {d.productType === "switch" && (
+                                                    <button
+                                                        onClick={() => {
+                                                            setSelectedSwitchSerial(d.serial);
+                                                            setActiveTab("switch");
+                                                        }}
+                                                        className="px-2.5 py-1 rounded bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 font-bold hover:bg-cyan-500/30 cursor-pointer"
+                                                    >
+                                                        Ports
+                                                    </button>
+                                                )}
+                                                <button
+                                                    onClick={() => {
+                                                        setDeviceSearch(d.serial);
+                                                        setActiveTab("overview");
+                                                    }}
+                                                    className="px-2 py-1 rounded bg-bg-surface hover:bg-white/10 text-text-secondary border border-border-color text-[11px] font-bold cursor-pointer"
+                                                >
+                                                    Locate
+                                                </button>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
                             </div>
                         )}
                     </div>
@@ -1024,7 +1198,7 @@ export default function MerakiDashboardClient() {
                                         type="text"
                                         value={deviceSearch}
                                         onChange={(e) => setDeviceSearch(e.target.value)}
-                                        placeholder="Filter by name, IDF, IP, MAC, serial..."
+                                        placeholder="Filter by user (e.g. Bob Johnson), tag, name, IDF, IP, MAC, serial..."
                                         className="pl-8 pr-3 py-1.5 rounded-lg bg-bg-default border border-border-color text-xs text-text-primary w-full focus:outline-none focus:border-cyan-400"
                                     />
                                 </div>
