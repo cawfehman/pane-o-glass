@@ -87,25 +87,40 @@ def validate_readonly_command(command: str, host: Optional[str] = None) -> None:
 
 def enable_legacy_ssh_support() -> None:
     """
-    Dynamically register legacy Diffie-Hellman Key Exchange (KEX) algorithms and ssh-rsa
-    host keys into Paramiko.
+    Dynamically register legacy Diffie-Hellman Key Exchange (KEX) algorithms,
+    ssh-rsa host keys, and CBC ciphers into Paramiko.
     
-    Modern Paramiko (v3.0+) deprecated 1024-bit Diffie-Hellman and SHA-1 KEX algorithms.
-    Older Cisco Catalyst switches (e.g. 2960, 3560, 3750, older IOS 12/15) only support:
-      - diffie-hellman-group14-sha1
-      - diffie-hellman-group-exchange-sha1
-      - diffie-hellman-group1-sha1
-      - ssh-rsa host keys
+    Modern Paramiko (v3.0+) deprecated 1024-bit Diffie-Hellman and SHA-1 KEX/RSA algorithms.
+    Older Cisco Catalyst switches (e.g. 2960, 3560, 3750, older IOS 12/15) require:
+      - diffie-hellman-group14-sha1, diffie-hellman-group-exchange-sha1, diffie-hellman-group1-sha1
+      - ssh-rsa host key verification and signature verification
+      - CBC ciphers (aes128-cbc, aes256-cbc, aes192-cbc, 3des-cbc)
+      - HMAC-SHA1 MAC algorithms
     """
     try:
         import paramiko
         from hashlib import sha1
+        from cryptography.hazmat.primitives import hashes
+        from paramiko.rsakey import RSAKey
         from paramiko.kex_group14 import KexGroup14SHA256
         from paramiko.kex_gex import KexGexSHA256
 
-        if "diffie-hellman-group14-sha1" in paramiko.Transport._kex_info:
-            return
+        # 1. Register 'ssh-rsa' host key algorithm and signature hashing in Paramiko 3.x
+        if "ssh-rsa" not in paramiko.Transport._key_info:
+            paramiko.Transport._key_info["ssh-rsa"] = RSAKey
+        if "ssh-rsa-cert-v01@openssh.com" not in paramiko.Transport._key_info:
+            paramiko.Transport._key_info["ssh-rsa-cert-v01@openssh.com"] = RSAKey
 
+        if "ssh-rsa" not in paramiko.rsakey.RSAKey.HASHES:
+            paramiko.rsakey.RSAKey.HASHES["ssh-rsa"] = hashes.SHA1
+        if "ssh-rsa-cert-v01@openssh.com" not in paramiko.rsakey.RSAKey.HASHES:
+            paramiko.rsakey.RSAKey.HASHES["ssh-rsa-cert-v01@openssh.com"] = hashes.SHA1
+
+        for k in ("ssh-rsa", "ssh-rsa-cert-v01@openssh.com"):
+            if k not in paramiko.Transport._preferred_keys:
+                paramiko.Transport._preferred_keys += (k,)
+
+        # 2. Register legacy Diffie-Hellman Key Exchange (KEX)
         class KexGroup14SHA1(KexGroup14SHA256):
             name = "diffie-hellman-group14-sha1"
             hash_algo = sha1
@@ -128,19 +143,32 @@ def enable_legacy_ssh_support() -> None:
         class KexGexSHA1(KexGexSHA256):
             name = "diffie-hellman-group-exchange-sha1"
             hash_algo = sha1
+            min_bits = 1024
+            preferred_bits = 1024
+            max_bits = 2048
 
         paramiko.Transport._kex_info["diffie-hellman-group14-sha1"] = KexGroup14SHA1
         paramiko.Transport._kex_info["diffie-hellman-group-exchange-sha1"] = KexGexSHA1
         paramiko.Transport._kex_info["diffie-hellman-group1-sha1"] = KexGroup1SHA1
 
-        for kex in ("diffie-hellman-group14-sha1", "diffie-hellman-group-exchange-sha1", "diffie-hellman-group1-sha1"):
+        for kex in (
+            "diffie-hellman-group14-sha1",
+            "diffie-hellman-group-exchange-sha1",
+            "diffie-hellman-group1-sha1",
+        ):
             if kex not in paramiko.Transport._preferred_kex:
                 paramiko.Transport._preferred_kex += (kex,)
 
-        if "ssh-rsa" not in paramiko.Transport._preferred_keys:
-            paramiko.Transport._preferred_keys += ("ssh-rsa",)
+        # 3. Ensure legacy CBC ciphers and HMAC-SHA1 MACs are allowed
+        for c in ("aes128-cbc", "aes256-cbc", "aes192-cbc", "3des-cbc"):
+            if c not in paramiko.Transport._preferred_ciphers:
+                paramiko.Transport._preferred_ciphers += (c,)
 
-        logger.info("Enabled legacy SSH KEX and host-key algorithms (diffie-hellman-group14/1/gex-sha1, ssh-rsa).")
+        for m in ("hmac-sha1", "hmac-sha1-96", "hmac-md5", "hmac-md5-96"):
+            if m not in paramiko.Transport._preferred_macs:
+                paramiko.Transport._preferred_macs += (m,)
+
+        logger.info("Enabled legacy SSH algorithms (diffie-hellman-group14/1/gex-sha1, ssh-rsa, CBC ciphers, HMAC-SHA1).")
     except Exception as e:
         logger.warning("Could not register legacy SSH algorithms: %s", e)
 
@@ -213,8 +241,22 @@ class CiscoSSHClient:
                 self.connection = ConnectHandler(**device_params)
             except Exception as initial_exc:
                 err_str = str(initial_exc).lower()
-                # If cisco_ios failed with prompt/driver pattern, attempt cisco_nxos fallback
-                if target_device_type == "cisco_ios" and not ("authentication failed" in err_str or "password" in err_str):
+                # If cisco_ios failed with prompt/driver pattern, attempt cisco_nxos fallback,
+                # but NOT if it was an authentication failure, TCP connection failure, or cryptographic error.
+                is_fatal_error = any(msg in err_str for msg in [
+                    "authentication failed",
+                    "password",
+                    "tcp connection",
+                    "connection refused",
+                    "timed out",
+                    "timeout",
+                    "no route",
+                    "ssh-rsa",
+                    "negotiation failed",
+                    "key exchange",
+                    "incompatible ssh",
+                ])
+                if target_device_type == "cisco_ios" and not is_fatal_error:
                     logger.info("Retrying connection to %s using device_type='cisco_nxos'...", self.host)
                     device_params["device_type"] = "cisco_nxos"
                     self.connection = ConnectHandler(**device_params)
@@ -337,3 +379,7 @@ class CiscoSSHClient:
                 pass
             finally:
                 self.connection = None
+
+
+# Initialize legacy algorithm registration upon module import
+enable_legacy_ssh_support()
