@@ -543,6 +543,54 @@ export interface MerakiFleetOverviewResponse {
 }
 
 const LKG_SNAPSHOT_PATH = path.join(process.cwd(), "data", "meraki-lkg-snapshot.json");
+const LKG_SWITCHES_PATH = path.join(process.cwd(), "data", "meraki-lkg-switches.json");
+
+interface SwitchRawCacheEntry {
+    rawPorts: any[];
+    rawStatuses: any[];
+    rawLldpCdp: any;
+    rawSvis: any[];
+    fetchedAt: string;
+}
+
+const globalSwitchLkg = globalThis as unknown as {
+    __merakiSwitchRawMap?: Record<string, SwitchRawCacheEntry>;
+    __merakiSwitchWarmInProgress?: boolean;
+};
+
+function getSwitchRawMap(): Record<string, SwitchRawCacheEntry> {
+    if (globalSwitchLkg.__merakiSwitchRawMap) {
+        return globalSwitchLkg.__merakiSwitchRawMap;
+    }
+    try {
+        if (fs.existsSync(LKG_SWITCHES_PATH)) {
+            const parsed = JSON.parse(fs.readFileSync(LKG_SWITCHES_PATH, "utf-8"));
+            if (parsed && typeof parsed === "object") {
+                globalSwitchLkg.__merakiSwitchRawMap = parsed;
+                return parsed;
+            }
+        }
+    } catch {
+        // Ignore unreadable file
+    }
+    globalSwitchLkg.__merakiSwitchRawMap = {};
+    return globalSwitchLkg.__merakiSwitchRawMap;
+}
+
+function saveSwitchRawMapToDisk(): void {
+    try {
+        const map = getSwitchRawMap();
+        const dir = path.dirname(LKG_SWITCHES_PATH);
+        if (!fs.existsSync(dir)) {
+            fs.mkdirSync(dir, { recursive: true });
+        }
+        const tmpPath = `${LKG_SWITCHES_PATH}.tmp`;
+        fs.writeFileSync(tmpPath, JSON.stringify(map), "utf-8");
+        fs.renameSync(tmpPath, LKG_SWITCHES_PATH);
+    } catch {
+        // Non-fatal
+    }
+}
 
 /**
  * Atomically persists the Last-Known-Good (LKG) Meraki fleet snapshot to disk (`data/meraki-lkg-snapshot.json`)
@@ -936,6 +984,7 @@ export async function getMerakiFleetOverview(options?: {
 
             // Persist Last-Known-Good (LKG) snapshot to disk on every successful poll
             saveLkgSnapshotToDisk(freshResponse);
+            warmSwitchesInBackground(devicesAll);
 
             return freshResponse;
         } catch (err: any) {
@@ -1223,21 +1272,82 @@ export async function resolveMerakiDeviceByMacOrIp(query: string): Promise<Merak
 // MS Switch Port, PoE, L3 SVI & CDP/LLDP Inspector
 // ---------------------------------------------------------------------------
 
+function warmSwitchesInBackground(devices: MerakiDeviceUnified[]): void {
+    if (globalSwitchLkg.__merakiSwitchWarmInProgress) return;
+    globalSwitchLkg.__merakiSwitchWarmInProgress = true;
+
+    (async () => {
+        try {
+            const switches = devices.filter((d) => d.productType === "switch" && d.status !== "dormant");
+            const rawMap = getSwitchRawMap();
+            const nowMs = Date.now();
+
+            for (const sw of switches) {
+                const serial = sw.serial.toUpperCase();
+                const existing = rawMap[serial];
+                if (existing && nowMs - new Date(existing.fetchedAt).getTime() < BACKGROUND_POLL_INTERVAL_MS - 30_000) {
+                    continue;
+                }
+                const ttlMs = OVERVIEW_CACHE_TTL_MS;
+                const [rawPorts, rawStatuses, rawLldpCdp, rawSvis] = await Promise.all([
+                    merakiGet<any[]>(`/devices/${serial}/switch/ports`, undefined, { ttlMs }).catch(() => []),
+                    merakiGet<any[]>(`/devices/${serial}/switch/ports/statuses`, undefined, { ttlMs }).catch(() => []),
+                    merakiGet<any>(`/devices/${serial}/lldpCdp`, undefined, { ttlMs }).catch(() => null),
+                    merakiGet<any[]>(`/devices/${serial}/switch/routing/interfaces`, undefined, { ttlMs }).catch(() => []),
+                ]);
+                if (Array.isArray(rawPorts) && rawPorts.length > 0) {
+                    rawMap[serial] = {
+                        rawPorts,
+                        rawStatuses: Array.isArray(rawStatuses) ? rawStatuses : [],
+                        rawLldpCdp,
+                        rawSvis: Array.isArray(rawSvis) ? rawSvis : [],
+                        fetchedAt: new Date().toISOString(),
+                    };
+                }
+            }
+            saveSwitchRawMapToDisk();
+        } catch {
+            // Non-fatal background warm-up
+        } finally {
+            globalSwitchLkg.__merakiSwitchWarmInProgress = false;
+        }
+    })();
+}
+
 export async function getMerakiSwitchDetails(
     serial: string,
     forceRefresh = false
 ): Promise<MerakiSwitchInspection> {
     const cleanSerial = serial.trim().toUpperCase();
-    const overview = await getMerakiFleetOverview({ forceRefresh });
+    const overview = await getMerakiFleetOverview({ forceRefresh: false });
     const device = overview.devices.find((d) => d.serial.toUpperCase() === cleanSerial) || null;
+    const rawMap = getSwitchRawMap();
+    const cachedSwitch = rawMap[cleanSerial];
 
-    const ttlMs = 60_000;
-    const [rawPorts, rawStatuses, rawLldpCdp, rawSvIs] = await Promise.all([
+    const ttlMs = OVERVIEW_CACHE_TTL_MS; // 12-minute cache TTL aligned with background poller
+    let [rawPorts, rawStatuses, rawLldpCdp, rawSvIs] = await Promise.all([
         merakiGet<any[]>(`/devices/${cleanSerial}/switch/ports`, undefined, { ttlMs, forceRefresh }).catch(() => []),
         merakiGet<any[]>(`/devices/${cleanSerial}/switch/ports/statuses`, undefined, { ttlMs, forceRefresh }).catch(() => []),
         merakiGet<any>(`/devices/${cleanSerial}/lldpCdp`, undefined, { ttlMs, forceRefresh }).catch(() => null),
         merakiGet<any[]>(`/devices/${cleanSerial}/switch/routing/interfaces`, undefined, { ttlMs, forceRefresh }).catch(() => []),
     ]);
+
+    if (Array.isArray(rawPorts) && rawPorts.length > 0) {
+        rawMap[cleanSerial] = {
+            rawPorts,
+            rawStatuses: Array.isArray(rawStatuses) ? rawStatuses : [],
+            rawLldpCdp,
+            rawSvis: Array.isArray(rawSvIs) ? rawSvIs : [],
+            fetchedAt: new Date().toISOString(),
+        };
+        saveSwitchRawMapToDisk();
+    } else if (cachedSwitch) {
+        // Fallback to Last-Known-Good switch telemetry from disk if Meraki API is unreachable
+        rawPorts = cachedSwitch.rawPorts;
+        rawStatuses = cachedSwitch.rawStatuses;
+        rawLldpCdp = cachedSwitch.rawLldpCdp;
+        rawSvIs = cachedSwitch.rawSvis;
+    }
 
     const statusByPortId = new Map<string, any>();
     for (const st of rawStatuses || []) {

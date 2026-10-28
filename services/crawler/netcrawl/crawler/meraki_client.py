@@ -256,6 +256,12 @@ class MerakiCrawlerEnricher:
                 return
             self._initialized = True
 
+        # 1. Primary path: Load directly from the 10-minute background poller's shared snapshot cache on disk (0 API calls)
+        self._load_lkg_snapshot_from_disk()
+        if self.by_serial:
+            return
+
+        # 2. Fallback path: Only query the Meraki API if no cached snapshot exists on disk yet
         orgs = self._get_json("/organizations") or []
         for org in orgs:
             org_id = str(org.get("id", ""))
@@ -308,10 +314,6 @@ class MerakiCrawlerEnricher:
                     self.by_mac[mac_compact] = record
                 if raw_name:
                     self.by_name[raw_name.lower()] = record
-
-        # If Meraki Cloud API / WAN was unreachable, fall back to the Last-Known-Good (LKG) snapshot on disk
-        if not self.by_serial:
-            self._load_lkg_snapshot_from_disk()
 
     def _load_lkg_snapshot_from_disk(self) -> None:
         curr = Path(__file__).resolve()
@@ -379,6 +381,23 @@ class MerakiCrawlerEnricher:
                 return self.by_mac[hex_only]
         return None
 
+    @staticmethod
+    def _load_switch_from_disk_cache(serial: str) -> Optional[Dict[str, Any]]:
+        clean_serial = serial.strip().upper()
+        curr = Path(__file__).resolve()
+        for parent in [curr.parent, *curr.parents]:
+            sw_file = parent / "data" / "meraki-lkg-switches.json"
+            if sw_file.is_file():
+                try:
+                    payload = json.loads(sw_file.read_text(encoding="utf-8", errors="ignore"))
+                    if isinstance(payload, dict) and clean_serial in payload:
+                        entry = payload[clean_serial]
+                        if isinstance(entry, dict) and entry.get("rawPorts"):
+                            return entry
+                except Exception:
+                    pass
+        return None
+
     def build_crawler_device(
         self,
         record: Dict[str, Any],
@@ -386,7 +405,7 @@ class MerakiCrawlerEnricher:
         discovered_via: Optional[str],
         current_hop: int,
     ) -> Device:
-        """Fetch live switchports, VLANs, L3 SVIs, and CDP/LLDP neighbors from Meraki API and return a Device."""
+        """Read switchports, VLANs, L3 SVIs, and CDP/LLDP neighbors from the 10m background cache (or fallback to API)."""
         t0 = time.time()
         serial = record["serial"]
         product_type = record.get("productType", "switch")
@@ -400,10 +419,17 @@ class MerakiCrawlerEnricher:
         routes: List[Route] = []
 
         if product_type == "switch":
-            raw_ports = self._get_json(f"/devices/{serial}/switch/ports") or []
-            raw_statuses = self._get_json(f"/devices/{serial}/switch/ports/statuses") or []
-            raw_lldp_cdp = self._get_json(f"/devices/{serial}/lldpCdp") or {}
-            raw_svis = self._get_json(f"/devices/{serial}/switch/routing/interfaces") or []
+            cached_sw = self._load_switch_from_disk_cache(serial)
+            if cached_sw:
+                raw_ports = cached_sw.get("rawPorts") or []
+                raw_statuses = cached_sw.get("rawStatuses") or []
+                raw_lldp_cdp = cached_sw.get("rawLldpCdp") or {}
+                raw_svis = cached_sw.get("rawSvis") or []
+            else:
+                raw_ports = self._get_json(f"/devices/{serial}/switch/ports") or []
+                raw_statuses = self._get_json(f"/devices/{serial}/switch/ports/statuses") or []
+                raw_lldp_cdp = self._get_json(f"/devices/{serial}/lldpCdp") or {}
+                raw_svis = self._get_json(f"/devices/{serial}/switch/routing/interfaces") or []
 
             try:
                 from netcrawl.audit.logger import get_audit_logger
