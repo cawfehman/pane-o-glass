@@ -150,7 +150,7 @@ def derive_meraki_site_info(
 
 _SHARED_GET_CACHE: Dict[str, Tuple[float, Any]] = {}
 _SHARED_CACHE_LOCK = threading.Lock()
-_MERAKI_CACHE_TTL_SEC = 600.0  # 10-minute shared cache aligned with standalone Meraki poller
+_MERAKI_CACHE_TTL_SEC = 720.0  # 12-minute shared cache (2m overlap buffer over the 10-minute background poller)
 
 
 class MerakiCrawlerEnricher:

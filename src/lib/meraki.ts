@@ -281,7 +281,7 @@ interface OverviewSnapshotEntry {
     expiresAt: number;
 }
 
-const OVERVIEW_CACHE_TTL_MS = 600_000; // 10 minutes shared server-side snapshot TTL
+const OVERVIEW_CACHE_TTL_MS = 720_000; // 12-minute cache TTL (provides a 2-minute overlap buffer over the 10-minute poller)
 const BACKGROUND_POLL_INTERVAL_MS = 600_000; // 10-minute automatic background poller
 const MIN_FORCE_REFRESH_COOLDOWN_MS = 15_000; // If refreshed <15s ago by another user, reuse that fresh pull
 
@@ -407,7 +407,7 @@ export async function merakiGet<T = any>(
     }
 
     const cacheKey = url.toString();
-    const ttlMs = options?.ttlMs ?? 600_000; // Default 10 min shared server cache aligned with background poller
+    const ttlMs = options?.ttlMs ?? 720_000; // Default 12 min shared server cache (2m buffer over 10m background poller)
 
     if (!options?.forceRefresh && ttlMs > 0) {
         const cached = apiCache.get(cacheKey);
@@ -627,7 +627,7 @@ export async function getMerakiFleetOverview(options?: {
     const nowMs = Date.now();
     const existingSnapshot = overviewSnapshots.get(orgKey) ?? overviewSnapshots.get("ALL");
 
-    // 1. Serve from 10-minute shared server snapshot cache if still fresh (or if refreshed <15s ago)
+    // 1. Serve from 12-minute shared server snapshot cache if still fresh (2m overlap buffer over the 10m poller)
     const recentlyRefreshed = existingSnapshot && nowMs - existingSnapshot.fetchedAtMs < MIN_FORCE_REFRESH_COOLDOWN_MS;
     if (existingSnapshot && (recentlyRefreshed || (!options?.forceRefresh && existingSnapshot.expiresAt > nowMs))) {
         const ageSeconds = Math.max(0, Math.round((nowMs - existingSnapshot.fetchedAtMs) / 1000));
@@ -644,7 +644,7 @@ export async function getMerakiFleetOverview(options?: {
                 ttlSeconds: Math.round(OVERVIEW_CACHE_TTL_MS / 1000),
                 pollIntervalSeconds: Math.round(BACKGROUND_POLL_INTERVAL_MS / 1000),
                 expiresAt: new Date(existingSnapshot.expiresAt).toISOString(),
-                nextAutoPollAt: new Date(existingSnapshot.expiresAt).toISOString(),
+                nextAutoPollAt: new Date(existingSnapshot.fetchedAtMs + BACKGROUND_POLL_INTERVAL_MS).toISOString(),
             },
         };
     }
@@ -676,10 +676,10 @@ export async function getMerakiFleetOverview(options?: {
 
         for (const org of targetOrgs) {
             const [rawNets, rawDevs, rawStatuses, rawUplinks] = await Promise.all([
-                merakiGet<any[]>(`/organizations/${org.id}/networks`, { perPage: 1000 }, { ttlMs: 600_000, forceRefresh }).catch(() => []),
-                merakiGet<any[]>(`/organizations/${org.id}/devices`, { perPage: 1000 }, { ttlMs: 600_000, forceRefresh }).catch(() => []),
-                merakiGet<any[]>(`/organizations/${org.id}/devices/statuses`, { perPage: 1000 }, { ttlMs: 600_000, forceRefresh }).catch(() => []),
-                merakiGet<any[]>(`/organizations/${org.id}/uplinks/statuses`, { perPage: 1000 }, { ttlMs: 600_000, forceRefresh }).catch(() => []),
+                merakiGet<any[]>(`/organizations/${org.id}/networks`, { perPage: 1000 }, { ttlMs: 720_000, forceRefresh }).catch(() => []),
+                merakiGet<any[]>(`/organizations/${org.id}/devices`, { perPage: 1000 }, { ttlMs: 720_000, forceRefresh }).catch(() => []),
+                merakiGet<any[]>(`/organizations/${org.id}/devices/statuses`, { perPage: 1000 }, { ttlMs: 720_000, forceRefresh }).catch(() => []),
+                merakiGet<any[]>(`/organizations/${org.id}/uplinks/statuses`, { perPage: 1000 }, { ttlMs: 720_000, forceRefresh }).catch(() => []),
             ]);
 
         const netMap = new Map<string, MerakiNetwork>();
@@ -872,7 +872,7 @@ export async function getMerakiFleetOverview(options?: {
             ttlSeconds: Math.round(OVERVIEW_CACHE_TTL_MS / 1000),
             pollIntervalSeconds: Math.round(BACKGROUND_POLL_INTERVAL_MS / 1000),
             expiresAt: expiresAtIso,
-            nextAutoPollAt: expiresAtIso,
+            nextAutoPollAt: new Date(fetchedAtMs + BACKGROUND_POLL_INTERVAL_MS).toISOString(),
         },
     };
 
