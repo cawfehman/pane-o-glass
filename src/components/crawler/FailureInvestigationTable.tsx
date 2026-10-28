@@ -395,6 +395,7 @@ export default function FailureInvestigationTable({
                             {paginatedItems.map((item, idx) => {
                                 const rowNumber = (page - 1) * limit + idx + 1;
                                 const reason = item.investigationReason || item.failureReason || item.error || "Connection timed out on TCP/22";
+                                const isTelnetOnly = reason.toUpperCase().includes("TELNET") || Boolean(item.telnetDetected || item.requiresSshMigration);
                                 const isAuth = reason.toLowerCase().includes("auth") || reason.toLowerCase().includes("tacacs");
                                 const isTimeout = reason.toLowerCase().includes("timeout") || reason.toLowerCase().includes("timed out");
                                 const discHost = item.discoveredVia || item.discovered_by;
@@ -415,7 +416,7 @@ export default function FailureInvestigationTable({
                                         {/* Hostname & IP */}
                                         <td className="py-3 px-4">
                                             <div className="flex items-center gap-2">
-                                                <span className={`font-bold ${isVendor ? "text-purple-300" : "text-red-300 group-hover:text-red-200"}`}>
+                                                <span className={`font-bold ${isVendor ? "text-purple-300" : isTelnetOnly ? "text-amber-300 group-hover:text-amber-200" : "text-red-300 group-hover:text-red-200"}`}>
                                                     {item.hostname}
                                                 </span>
                                                 <button
@@ -428,6 +429,12 @@ export default function FailureInvestigationTable({
                                                 {isVendor && (
                                                     <span className="px-1.5 py-0.2 rounded text-[10px] font-sans font-bold bg-purple-950/80 text-purple-300 border border-purple-800/80">
                                                         Vendor Managed
+                                                    </span>
+                                                )}
+                                                {isTelnetOnly && (
+                                                    <span className="px-1.5 py-0.2 rounded text-[10px] font-sans font-bold bg-amber-950/80 text-amber-300 border border-amber-700/80 flex items-center gap-1">
+                                                        <AlertTriangle className="w-3 h-3 text-amber-400" />
+                                                        Telnet Only
                                                     </span>
                                                 )}
                                                 {(item.isMultiCloset || item.flaggedForInvestigation) && (
@@ -500,9 +507,11 @@ export default function FailureInvestigationTable({
                                                 <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-sans font-bold uppercase mb-1 ${
                                                     isVendor 
                                                         ? "bg-purple-950/80 text-purple-300 border border-purple-800/60"
-                                                        : "bg-red-950/80 text-red-400 border border-red-800/60"
+                                                        : isTelnetOnly
+                                                            ? "bg-amber-950/80 text-amber-300 border border-amber-700/60"
+                                                            : "bg-red-950/80 text-red-400 border border-red-800/60"
                                                 }`}>
-                                                    {isVendor ? "Vendor Managed" : isAuth ? "Auth Failure" : isTimeout ? "SSH Timeout" : "Unreachable"}
+                                                    {isVendor ? "Vendor Managed" : isTelnetOnly ? "⚠️ Telnet Only (SSH Disabled)" : isAuth ? "Auth Failure" : isTimeout ? "SSH Timeout" : "Unreachable"}
                                                 </span>
                                                 <p className="text-[11px] text-slate-300 truncate" title={reason}>
                                                     {reason}
@@ -516,6 +525,11 @@ export default function FailureInvestigationTable({
                                                 <span className="text-purple-300/90 flex items-center gap-1.5">
                                                     <ShieldCheck className="w-3.5 h-3.5 shrink-0 text-purple-400" />
                                                     Flagged as vendor managed (excluded from topology graph)
+                                                </span>
+                                            ) : isTelnetOnly ? (
+                                                <span className="text-amber-300/90 flex items-center gap-1.5 font-mono text-[10.5px]">
+                                                    <AlertTriangle className="w-3.5 h-3.5 shrink-0 text-amber-400" />
+                                                    Generate RSA key (&apos;crypto key generate rsa&apos;) &amp; enable SSH (&apos;transport input ssh&apos;)
                                                 </span>
                                             ) : isAuth ? (
                                                 <span className="text-amber-300/90 flex items-center gap-1.5">

@@ -62,6 +62,7 @@ export default function CrawlModal({ isOpen, onClose, onSuccess, initialSeed, in
     const [maxHops, setMaxHops] = useState<number>(initialMaxHops ?? 0);
     const [enableLldp, setEnableLldp] = useState<boolean>(false);
     const [enableEigrp, setEnableEigrp] = useState<boolean>(true);
+    const [allowTelnet, setAllowTelnet] = useState<boolean>(false);
 
     // Ephemeral credentials for live crawl (supports Primary + sequential Fallbacks)
     const [authMode, setAuthMode] = useState<"server" | "custom">("server");
@@ -213,6 +214,7 @@ export default function CrawlModal({ isOpen, onClose, onSuccess, initialSeed, in
                 maxHops: Math.min(Math.max(maxHops, 0), 10),
                 enableLldp,
                 enableEigrp,
+                allowTelnet,
                 seeds: mode === "live" ? seeds.split(",").map(s => s.trim()).filter(Boolean) : undefined,
             };
 
@@ -601,6 +603,25 @@ export default function CrawlModal({ isOpen, onClose, onSuccess, initialSeed, in
                                         checked={enableEigrp}
                                         onChange={(e) => setEnableEigrp(e.target.checked)}
                                         className="accent-blue-500 rounded cursor-pointer h-4 w-4"
+                                    />
+                                </label>
+
+                                {/* Allow Cleartext Telnet Fallback Checkbox */}
+                                <label className="flex items-center justify-between p-2.5 rounded-xl bg-slate-900/50 border border-slate-800 hover:border-amber-500/40 transition cursor-pointer">
+                                    <div className="pr-2">
+                                        <span className="text-xs font-semibold text-amber-300 flex items-center gap-1.5">
+                                            <AlertCircle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                                            Allow Cleartext Telnet Fallback (Port 23)
+                                        </span>
+                                        <span className="text-[10px] text-slate-400 block mt-0.5">
+                                            If SSH fails, crawl switch via unencrypted Telnet. If unchecked, switches with Telnet will only be safely probed without transmitting credentials.
+                                        </span>
+                                    </div>
+                                    <input
+                                        type="checkbox"
+                                        checked={allowTelnet}
+                                        onChange={(e) => setAllowTelnet(e.target.checked)}
+                                        className="accent-amber-500 rounded cursor-pointer h-4 w-4 shrink-0"
                                     />
                                 </label>
 

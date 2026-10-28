@@ -9,7 +9,7 @@ import time
 from typing import Callable, Dict, List, Optional, Set, Tuple
 
 from netcrawl.crawler.mock_network import MockSSHClient
-from netcrawl.crawler.ssh_client import CiscoSSHClient
+from netcrawl.crawler.ssh_client import CiscoSSHClient, probe_telnet_service
 from netcrawl.models import (
     Device,
     CrawlProfile,
@@ -54,6 +54,7 @@ class NetworkCrawler:
         enable_lldp: bool = False,
         lldp_fallback_on_cdp_fail: bool = True,
         enable_eigrp: bool = True,
+        allow_telnet: bool = False,
         hostname_regex: Optional[str] = None,
         excluded_platform_patterns: Optional[List[str]] = None,
         excluded_role_patterns: Optional[List[str]] = None,
@@ -78,6 +79,7 @@ class NetworkCrawler:
         self.enable_lldp = enable_lldp
         self.lldp_fallback_on_cdp_fail = lldp_fallback_on_cdp_fail
         self.enable_eigrp = enable_eigrp
+        self.allow_telnet = allow_telnet
         self.hostname_regex = hostname_regex
         self.excluded_platform_patterns = excluded_platform_patterns
         self.excluded_role_patterns = excluded_role_patterns
@@ -211,6 +213,108 @@ class NetworkCrawler:
                 fail_status = DeviceStatus.TIMEOUT
             else:
                 fail_status = DeviceStatus.UNREACHABLE
+
+            if not success and not self.use_mock:
+                # If SSH failed, safely probe whether TCP port 23 (Telnet) is listening.
+                # STRICT SAFETY: ZERO credentials are sent during this TCP probe!
+                is_telnet_open, telnet_banner = probe_telnet_service(target_ip, timeout=2.0)
+                if is_telnet_open:
+                    try:
+                        from netcrawl.audit.logger import get_audit_logger
+                        get_audit_logger().log(
+                            event_type="TELNET_SERVICE_DETECTED",
+                            severity="WARNING",
+                            device_ip=target_ip,
+                            details={
+                                "port": 23,
+                                "ssh_failure": err,
+                                "allow_telnet_enabled": self.allow_telnet,
+                                "banner": telnet_banner,
+                            },
+                        )
+                    except Exception:
+                        pass
+
+                    if not self.allow_telnet:
+                        # Cleartext Telnet fallback is disabled: strictly avoid sending credentials
+                        host_label = pre_known_name or f"Telnet-{target_ip}"
+                        site_info = parse_site_info(host_label, self.hostname_regex)
+                        final_disc_via = discovered_via
+                        if pre_known_desc and final_disc_via and pre_known_desc not in final_disc_via:
+                            final_disc_via = f"{final_disc_via} [{pre_known_desc}]"
+                        elif pre_known_desc and not final_disc_via:
+                            final_disc_via = f"Peer port desc: [{pre_known_desc}]"
+
+                        telnet_reason = (
+                            "TELNET_DETECTED_SSH_DISABLED: Device has SSH (port 22) disabled, "
+                            "but is listening on cleartext Telnet (port 23). Cleartext Telnet is disabled in crawl settings. "
+                            "Remediation: generate RSA key ('crypto key generate rsa modulus 2048') and enable SSH ('transport input ssh') or upgrade IOS version."
+                        )
+                        self._notify("warning", f"Device {target_ip} ({host_label}) is Telnet-only; SSH disabled. Cleartext Telnet fallback is OFF.")
+
+                        return Device(
+                            hostname=host_label,
+                            ip_address=target_ip,
+                            platform=pre_known_platform,
+                            status=DeviceStatus.UNREACHABLE,
+                            failure_reason=telnet_reason,
+                            discovered_via=final_disc_via,
+                            credential_used=None,
+                            auth_time_ms=auth_time_ms,
+                            hop_distance=current_hop,
+                            site_info=site_info,
+                            protocol="telnet",
+                            telnet_detected=True,
+                            requires_ssh_migration=True,
+                            security_warning="CLEARTEXT_TELNET_ONLY: Device requires SSH configuration or IOS upgrade.",
+                        )
+                    else:
+                        # Cleartext Telnet fallback is approved by user in crawl settings
+                        self._notify("warning", f"Device {target_ip}: SSH failed, attempting authorized cleartext Telnet fallback...")
+                        telnet_client = CiscoSSHClient(
+                            host=target_ip,
+                            username=self.username,
+                            password=self.password,
+                            secret=self.secret,
+                            port=23,
+                            timeout=self.ssh_timeout,
+                            device_type="cisco_ios_telnet",
+                            protocol="telnet",
+                        )
+                        t_telnet_start = time.time()
+                        t_success, t_err = telnet_client.connect()
+                        t_auth_ms = int((time.time() - t_telnet_start) * 1000)
+
+                        if not t_success and self.fallback_credentials:
+                            for fallback in self.fallback_credentials:
+                                fb_telnet = CiscoSSHClient(
+                                    host=target_ip,
+                                    username=fallback.get("username", self.username),
+                                    password=fallback.get("password", ""),
+                                    secret=fallback.get("secret", ""),
+                                    port=23,
+                                    timeout=self.ssh_timeout,
+                                    device_type="cisco_ios_telnet",
+                                    protocol="telnet",
+                                )
+                                fb_t_start = time.time()
+                                fb_t_success, fb_t_err = fb_telnet.connect()
+                                if fb_t_success:
+                                    telnet_client = fb_telnet
+                                    t_success = True
+                                    t_err = None
+                                    credential_used = "Local (Telnet)"
+                                    t_auth_ms = int((time.time() - fb_t_start) * 1000)
+                                    break
+
+                        if t_success:
+                            client = telnet_client
+                            success = True
+                            err = None
+                            credential_used = credential_used or "TACACS (Telnet)"
+                            auth_time_ms = t_auth_ms
+                        else:
+                            err = f"SSH failed ({err}); Telnet fallback also failed: {t_err}"
 
             if not success:
                 host_label = pre_known_name or f"Unknown-{target_ip}"
@@ -386,6 +490,7 @@ class NetworkCrawler:
             },
         )
 
+        is_telnet_session = getattr(client, "protocol", "ssh") == "telnet"
         return Device(
             hostname=hostname,
             ip_address=target_ip,
@@ -409,6 +514,10 @@ class NetworkCrawler:
             is_legacy_ssh=getattr(client, "is_legacy_ssh", False),
             ssh_kex=getattr(client, "negotiated_kex", None),
             ssh_key=getattr(client, "negotiated_key", None),
+            protocol="telnet" if is_telnet_session else "ssh",
+            telnet_detected=is_telnet_session,
+            requires_ssh_migration=is_telnet_session,
+            security_warning="UNENCRYPTED_TELNET: Crawled over unencrypted Telnet (port 23). Recommend migrating device to SSH." if is_telnet_session else None,
         )
 
     def crawl(self) -> Tuple[List[Device], List[Device]]:

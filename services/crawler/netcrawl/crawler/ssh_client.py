@@ -173,8 +173,38 @@ def enable_legacy_ssh_support() -> None:
         logger.warning("Could not register legacy SSH algorithms: %s", e)
 
 
+def probe_telnet_service(host: str, timeout: float = 2.0) -> Tuple[bool, Optional[str]]:
+    """
+    Safely probes whether TCP port 23 (Telnet) is listening on a target host.
+    STRICT SECURITY RULE: Zero credential transmission during probing!
+    Only checks TCP socket connectivity and non-intrusively captures an initial banner/greeting.
+    Returns (is_listening, banner_or_greeting).
+    """
+    import socket
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.settimeout(timeout)
+            res = s.connect_ex((host, 23))
+            if res == 0:
+                banner = None
+                try:
+                    s.settimeout(0.6)
+                    data = s.recv(512)
+                    if data:
+                        cleaned = "".join(c for c in data.decode("latin1", errors="replace") if c.isprintable() or c in "\r\n\t").strip()
+                        if cleaned:
+                            banner = cleaned
+                except Exception:
+                    pass
+                return True, banner or "Telnet service active (TCP port 23 open)"
+            return False, None
+    except Exception as exc:
+        logger.debug("Telnet probe error on %s: %s", host, exc)
+        return False, None
+
+
 class CiscoSSHClient:
-    """Manages secure, read-only SSH connections to Cisco IOS and NX-OS devices."""
+    """Manages secure, read-only SSH or Telnet connections to Cisco IOS and NX-OS devices."""
     
     def __init__(
         self,
@@ -186,40 +216,48 @@ class CiscoSSHClient:
         port: int = 22,
         timeout: int = 15,
         device_type: Optional[str] = None,
+        protocol: str = "ssh",
     ):
         self.host = host
         self.username = username
         self.password = password
         self.secret = secret
         self.key_file = key_file
-        self.port = port
+        self.protocol = (protocol or "ssh").lower()
+        if self.protocol == "telnet":
+            self.port = 23 if port == 22 else port
+            self.device_type = device_type or "cisco_ios_telnet"
+        else:
+            self.port = port
+            self.device_type = device_type
         self.timeout = timeout
-        self.device_type = device_type
         self.connection = None
         self.is_legacy_ssh = False
         self.negotiated_kex: Optional[str] = None
         self.negotiated_key: Optional[str] = None
 
     def connect(self) -> Tuple[bool, Optional[str]]:
-        """Establish SSH connection to Cisco IOS / NX-OS device with full audit tracking."""
+        """Establish SSH or Telnet connection to Cisco device with full audit tracking."""
         from netcrawl.audit.logger import get_audit_logger
         audit = get_audit_logger()
+        proto_upper = self.protocol.upper()
         audit.log(
-            event_type="SSH_CONNECT_ATTEMPT",
-            severity="INFO",
+            event_type=f"{proto_upper}_CONNECT_ATTEMPT",
+            severity="WARNING" if self.protocol == "telnet" else "INFO",
             device_ip=self.host,
             details={
+                "protocol": self.protocol,
                 "port": self.port,
                 "user": self.username,
                 "auth_method": "key" if self.key_file else "password",
                 "timeout": self.timeout,
-                "device_type": self.device_type or "cisco_ios",
+                "device_type": self.device_type or ("cisco_ios_telnet" if self.protocol == "telnet" else "cisco_ios"),
             },
         )
         try:
             from netmiko import ConnectHandler
             
-            target_device_type = self.device_type or "cisco_ios"
+            target_device_type = self.device_type or ("cisco_ios_telnet" if self.protocol == "telnet" else "cisco_ios")
             device_params = {
                 "device_type": target_device_type,
                 "host": self.host,
@@ -232,17 +270,17 @@ class CiscoSSHClient:
                 "banner_timeout": self.timeout,
                 "global_delay_factor": 1,
             }
-            if self.key_file:
+            if self.key_file and self.protocol == "ssh":
                 device_params["use_keys"] = True
                 device_params["key_file"] = self.key_file
 
-            enable_legacy_ssh_support()
+            if self.protocol == "ssh":
+                enable_legacy_ssh_support()
             try:
                 self.connection = ConnectHandler(**device_params)
             except Exception as initial_exc:
                 err_str = str(initial_exc).lower()
-                # If cisco_ios failed with prompt/driver pattern, attempt cisco_nxos fallback,
-                # but NOT if it was an authentication failure, TCP connection failure, or cryptographic error.
+                # If cisco_ios failed with prompt/driver pattern, attempt cisco_nxos fallback (SSH only)
                 is_fatal_error = any(msg in err_str for msg in [
                     "authentication failed",
                     "password",
@@ -256,7 +294,7 @@ class CiscoSSHClient:
                     "key exchange",
                     "incompatible ssh",
                 ])
-                if target_device_type == "cisco_ios" and not is_fatal_error:
+                if self.protocol == "ssh" and target_device_type == "cisco_ios" and not is_fatal_error:
                     logger.info("Retrying connection to %s using device_type='cisco_nxos'...", self.host)
                     device_params["device_type"] = "cisco_nxos"
                     self.connection = ConnectHandler(**device_params)
@@ -264,28 +302,28 @@ class CiscoSSHClient:
                 else:
                     raise
 
-            # Detect negotiated cryptographic algorithms from underlying Paramiko Transport
-            try:
-                raw_transport = getattr(getattr(self.connection, "remote_conn", None), "transport", None)
-                if not raw_transport:
-                    raw_client = getattr(self.connection, "remote_conn_pre", None)
-                    raw_transport = getattr(raw_client, "_transport", None) or getattr(raw_client, "transport", None)
+            # Detect negotiated cryptographic algorithms if SSH
+            if self.protocol == "ssh":
+                try:
+                    raw_transport = getattr(getattr(self.connection, "remote_conn", None), "transport", None)
+                    if not raw_transport:
+                        raw_client = getattr(self.connection, "remote_conn_pre", None)
+                        raw_transport = getattr(raw_client, "_transport", None) or getattr(raw_client, "transport", None)
 
-                if raw_transport:
-                    kex_engine = getattr(raw_transport, "kex_engine", None)
-                    if kex_engine and hasattr(kex_engine, "name"):
-                        self.negotiated_kex = str(kex_engine.name)
-                    remote_key = getattr(raw_transport, "host_key_type", None) or getattr(raw_transport, "remote_key", None)
-                    if remote_key:
-                        self.negotiated_key = str(remote_key)
+                    if raw_transport:
+                        kex_engine = getattr(raw_transport, "kex_engine", None)
+                        if kex_engine and hasattr(kex_engine, "name"):
+                            self.negotiated_kex = str(kex_engine.name)
+                        remote_key = getattr(raw_transport, "host_key_type", None) or getattr(raw_transport, "remote_key", None)
+                        if remote_key:
+                            self.negotiated_key = str(remote_key)
 
-                    # Flag as legacy SSH if SHA-1 KEX, group1, or older ssh-rsa was negotiated
-                    if self.negotiated_kex and any(leg in self.negotiated_kex.lower() for leg in ["sha1", "group1", "diffie-hellman-group1-"]):
-                        self.is_legacy_ssh = True
-                    elif self.negotiated_key and "ssh-rsa" == self.negotiated_key.lower():
-                        self.is_legacy_ssh = True
-            except Exception as kex_diag_err:
-                logger.debug("Could not inspect SSH transport algorithms on %s: %s", self.host, kex_diag_err)
+                        if self.negotiated_kex and any(leg in self.negotiated_kex.lower() for leg in ["sha1", "group1", "diffie-hellman-group1-"]):
+                            self.is_legacy_ssh = True
+                        elif self.negotiated_key and "ssh-rsa" == self.negotiated_key.lower():
+                            self.is_legacy_ssh = True
+                except Exception as kex_diag_err:
+                    logger.debug("Could not inspect SSH transport algorithms on %s: %s", self.host, kex_diag_err)
 
             # On NX-OS, login is direct privilege 15/network-admin; enable mode does not exist
             is_nxos = getattr(self.connection, "device_type", "") == "cisco_nxos" or self.device_type == "cisco_nxos"
@@ -301,10 +339,11 @@ class CiscoSSHClient:
                         raise
                 
             audit.log(
-                event_type="SSH_CONNECT_SUCCESS",
-                severity="INFO",
+                event_type=f"{proto_upper}_CONNECT_SUCCESS",
+                severity="WARNING" if self.protocol == "telnet" else "INFO",
                 device_ip=self.host,
                 details={
+                    "protocol": self.protocol,
                     "port": self.port,
                     "user": self.username,
                     "device_type": self.connection.device_type,
@@ -323,10 +362,10 @@ class CiscoSSHClient:
                 fail_type = "TIMEOUT"
 
             audit.log(
-                event_type=f"SSH_CONNECT_{fail_type}",
+                event_type=f"{proto_upper}_CONNECT_{fail_type}",
                 severity="WARNING",
                 device_ip=self.host,
-                details={"port": self.port, "user": self.username, "error": err_msg},
+                details={"protocol": self.protocol, "port": self.port, "user": self.username, "error": err_msg},
             )
             return False, f"{fail_type}: {err_msg}"
 
@@ -364,16 +403,17 @@ class CiscoSSHClient:
         return output
 
     def disconnect(self) -> None:
-        """Safely close SSH session and audit disconnection."""
+        """Safely close SSH or Telnet session and audit disconnection."""
         if self.connection:
             try:
                 self.connection.disconnect()
                 from netcrawl.audit.logger import get_audit_logger
+                proto_upper = getattr(self, "protocol", "ssh").upper()
                 get_audit_logger().log(
-                    event_type="SSH_DISCONNECT",
+                    event_type=f"{proto_upper}_DISCONNECT",
                     severity="INFO",
                     device_ip=self.host,
-                    details={"status": "closed"},
+                    details={"status": "closed", "protocol": getattr(self, "protocol", "ssh")},
                 )
             except Exception:
                 pass

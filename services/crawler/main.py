@@ -103,6 +103,7 @@ def cmd_crawl(args, cfg: dict):
 
     workers = args.workers or cfg.get("crawler", {}).get("max_workers", 15)
     use_mock = args.mock
+    allow_telnet = bool(getattr(args, "allow_telnet", False) or os.getenv("NETCRAWL_ALLOW_TELNET", "").lower() in ("1", "true", "yes"))
 
     db_path = cfg.get("storage", {}).get("database_path", "data/crawler.db")
     snapshots_dir = cfg.get("storage", {}).get("snapshots_dir", "snapshots")
@@ -112,7 +113,7 @@ def cmd_crawl(args, cfg: dict):
         f"[bold cyan]NetCrawl Network Discovery[/bold cyan]\n"
         f"Seeds: [yellow]{', '.join(seeds)}[/yellow]\n"
         f"Auth User: [white]{username}[/white] | Key: [dim]{key_file or 'None'}[/dim] | Fallbacks: [cyan]{len(fallback_creds)} profile(s)[/cyan]\n"
-        f"Mode: [green]{'VIRTUAL MOCK LAB' if use_mock else 'LIVE SSH (Strict Read-Only)'}[/green]\n"
+        f"Mode: [green]{'VIRTUAL MOCK LAB' if use_mock else 'LIVE SSH (Strict Read-Only)'}[/green] | Telnet Fallback: [{'yellow]ENABLED (Cleartext)' if allow_telnet else 'dim]Disabled'}[/]\n"
         f"Concurrency: [cyan]{workers} workers[/cyan]",
         title="[CRAWLER START]",
     ))
@@ -143,6 +144,7 @@ def cmd_crawl(args, cfg: dict):
         enable_lldp=getattr(args, "enable_lldp", False),
         lldp_fallback_on_cdp_fail=not getattr(args, "no_lldp_fallback", False),
         enable_eigrp=getattr(args, "enable_eigrp", True),
+        allow_telnet=allow_telnet,
         hostname_regex=cfg.get("crawler", {}).get("hostname_regex"),
         excluded_platform_patterns=cfg.get("crawler", {}).get("filters", {}).get("excluded_platform_patterns"),
         excluded_role_patterns=cfg.get("crawler", {}).get("filters", {}).get("excluded_role_patterns"),
@@ -399,6 +401,7 @@ def main():
     p_crawl.add_argument("--no-lldp-fallback", action="store_true", help="Disable LLDP fallback when CDP yields no neighbors")
     p_crawl.add_argument("--enable-eigrp", dest="enable_eigrp", action="store_true", default=True, help="Enable EIGRP L3 neighbor discovery (default: True)")
     p_crawl.add_argument("--no-eigrp", dest="enable_eigrp", action="store_false", help="Disable EIGRP L3 neighbor discovery")
+    p_crawl.add_argument("--allow-telnet", dest="allow_telnet", action="store_true", default=False, help="Allow cleartext Telnet fallback (port 23) if SSH fails (WARNING: transmits credentials unencrypted)")
 
     # map
     p_map = subparsers.add_parser("map", help="Generate network topology map")

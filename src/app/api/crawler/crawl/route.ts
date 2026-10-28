@@ -491,6 +491,7 @@ export async function POST(request: NextRequest) {
         const maxHops = Math.min(Math.max(isNaN(rawHops) ? 0 : rawHops, 0), 10);
         const enableLldp = Boolean(body.enableLldp);
         const enableEigrp = body.enableEigrp !== false;
+        const allowTelnet = Boolean(body.allowTelnet);
 
         const crawlerDir = path.join(process.cwd(), "services", "crawler");
         const pythonBin = await resolvePythonCommand();
@@ -510,6 +511,9 @@ export async function POST(request: NextRequest) {
         if (!enableEigrp) {
             args.push("--no-eigrp");
         }
+        if (allowTelnet) {
+            args.push("--allow-telnet");
+        }
 
         const customEnv: Record<string, string> = {
             PYTHONPATH: crawlerDir,
@@ -518,6 +522,7 @@ export async function POST(request: NextRequest) {
             NO_COLOR: "1", // Disable ANSI escape sequences for pure clean streaming logs
             NETCRAWL_DISABLE_SQLITE: "1" // Rely 100% on PostgreSQL, avoid redundant SQLite disk writes during web crawls
         };
+        if (allowTelnet) customEnv.NETCRAWL_ALLOW_TELNET = "1";
         if (body.username) customEnv.NETCRAWL_USER = String(body.username).trim();
         if (body.password) customEnv.NETCRAWL_PASS = String(body.password);
         if (body.secret) customEnv.NETCRAWL_SECRET = String(body.secret);
@@ -559,9 +564,10 @@ export async function POST(request: NextRequest) {
             `Seed Devices: ${seeds.join(", ")}`,
             `Profile:      ${profile.toUpperCase()}`,
             `Max Hops:     ${maxHops}`,
-            `Mode:         ${useMock ? "VIRTUAL LAB SIMULATION" : "LIVE CISCO SSH"}`,
+            `Mode:         ${useMock ? "VIRTUAL LAB SIMULATION" : "LIVE CISCO SSH"}${allowTelnet ? " [TELNET FALLBACK PERMITTED]" : ""}`,
             `Primary User: ${body.username || "server-default"}`,
             `Fallbacks:    ${Array.isArray(body.fallbackCredentials) && body.fallbackCredentials.length > 0 ? body.fallbackCredentials.map((f: any) => f.username).join(", ") : "None configured"}`,
+            `Telnet Opt-In: ${allowTelnet ? "Enabled (Cleartext port 23 allowed)" : "Disabled (Safe port 23 probe only)"}`,
             `Python Exec:  ${pythonBin}`,
             `============================================================\n`
         ];
@@ -583,7 +589,7 @@ export async function POST(request: NextRequest) {
                     sendEvent({ type, [type === "log" || type === "stderr" ? "line" : "message"]: message });
                 };
 
-                logAndSend("status", `[INIT] Resolved Python: ${pythonBin} | Profile: ${profile.toUpperCase()} | Depth: ${maxHops} Hop(s)`);
+                logAndSend("status", `[INIT] Resolved Python: ${pythonBin} | Profile: ${profile.toUpperCase()} | Depth: ${maxHops} Hop(s)${allowTelnet ? " | Telnet: ENABLED" : ""}`);
 
                 if (!useMock) {
                     const fallbackCount = Array.isArray(body.fallbackCredentials) ? body.fallbackCredentials.length : 0;

@@ -100,6 +100,13 @@ class DatabaseManager:
                 ("credential_used", "TEXT"),
                 ("auth_time_ms", "INTEGER"),
                 ("hop_distance", "INTEGER DEFAULT 0"),
+                ("protocol", "TEXT DEFAULT 'ssh'"),
+                ("telnet_detected", "INTEGER DEFAULT 0"),
+                ("requires_ssh_migration", "INTEGER DEFAULT 0"),
+                ("security_warning", "TEXT"),
+                ("is_legacy_ssh", "INTEGER DEFAULT 0"),
+                ("ssh_kex", "TEXT"),
+                ("ssh_key", "TEXT"),
             ]:
                 try:
                     cursor.execute(f"ALTER TABLE devices ADD COLUMN {col} {typ}")
@@ -244,8 +251,10 @@ class DatabaseManager:
                     INSERT INTO devices (
                         snapshot_id, hostname, ip_address, platform, os_version, serial_number,
                         role, status, failure_reason, discovered_via, credential_used, auth_time_ms,
-                        hop_distance, site, idf, role_code, iterator
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        hop_distance, site, idf, role_code, iterator,
+                        protocol, telnet_detected, requires_ssh_migration, security_warning,
+                        is_legacy_ssh, ssh_kex, ssh_key
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         snapshot_id,
@@ -265,6 +274,13 @@ class DatabaseManager:
                         idf,
                         role_code,
                         iterator,
+                        dev.protocol,
+                        1 if dev.telnet_detected else 0,
+                        1 if dev.requires_ssh_migration else 0,
+                        dev.security_warning,
+                        1 if dev.is_legacy_ssh else 0,
+                        dev.ssh_kex,
+                        dev.ssh_key,
                     ),
                 )
 
@@ -589,6 +605,13 @@ class DatabaseManager:
                     vlans=vlans,
                     cdp_neighbors=cdp_neighbors,
                     arp_table=arp_table,
+                    is_legacy_ssh=bool(dr["is_legacy_ssh"]) if "is_legacy_ssh" in dr.keys() and dr["is_legacy_ssh"] else False,
+                    ssh_kex=dr["ssh_kex"] if "ssh_kex" in dr.keys() else None,
+                    ssh_key=dr["ssh_key"] if "ssh_key" in dr.keys() else None,
+                    protocol=dr["protocol"] if "protocol" in dr.keys() and dr["protocol"] else "ssh",
+                    telnet_detected=bool(dr["telnet_detected"]) if "telnet_detected" in dr.keys() and dr["telnet_detected"] else False,
+                    requires_ssh_migration=bool(dr["requires_ssh_migration"]) if "requires_ssh_migration" in dr.keys() and dr["requires_ssh_migration"] else False,
+                    security_warning=dr["security_warning"] if "security_warning" in dr.keys() else None,
                 )
                 devices.append(dev)
 
@@ -604,7 +627,8 @@ class DatabaseManager:
             cursor = conn.cursor()
             cursor.execute(
                 """
-                SELECT hostname, ip_address, role, status, failure_reason, discovered_via, site, idf
+                SELECT hostname, ip_address, role, status, failure_reason, discovered_via, site, idf,
+                       protocol, telnet_detected, requires_ssh_migration, security_warning
                 FROM devices
                 WHERE snapshot_id = ? AND status != 'REACHABLE'
                 ORDER BY hostname ASC

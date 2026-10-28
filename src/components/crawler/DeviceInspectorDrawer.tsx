@@ -525,6 +525,15 @@ export default function DeviceInspectorDrawer({
                                     Legacy SSH (Upgrade Candidate)
                                 </span>
                             )}
+                            {(device.protocol === "telnet" || device.telnetDetected || device.requiresSshMigration) && (
+                                <span 
+                                    className="px-2 py-0.5 text-[10px] font-bold rounded border bg-amber-950/80 text-amber-300 border-amber-700/80 flex items-center gap-1 cursor-help"
+                                    title={device.securityWarning || "Crawled via unencrypted Telnet (port 23). Device requires SSH enablement ('crypto key generate rsa') or IOS upgrade."}
+                                >
+                                    <AlertTriangle className="w-3 h-3 text-amber-400" />
+                                    Telnet (SSH Disabled)
+                                </span>
+                            )}
                         </div>
                         <div className="flex flex-wrap items-center gap-2 text-xs text-slate-400 mt-1">
                             <span className="font-mono text-slate-300">{primaryIp || "No Mgmt IP"}</span>

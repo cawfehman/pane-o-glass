@@ -133,6 +133,10 @@ class Device(BaseModel):
     is_legacy_ssh: bool = False
     ssh_kex: Optional[str] = None
     ssh_key: Optional[str] = None
+    protocol: str = "ssh" # "ssh" or "telnet"
+    telnet_detected: bool = False
+    requires_ssh_migration: bool = False
+    security_warning: Optional[str] = None
 
 
 class TopologyLink(BaseModel):
