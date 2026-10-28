@@ -633,11 +633,22 @@ class NetworkCrawler:
                         )
 
                     if device.status == DeviceStatus.REACHABLE:
-                        canonical_h = device.hostname.split(".")[0].split("(")[0].strip().lower()
+                        is_meraki_dev = bool(device.platform and "meraki" in device.platform.lower())
+                        if is_meraki_dev:
+                            canonical_h = device.hostname.strip().lower()
+                        else:
+                            canonical_h = device.hostname.split(".")[0].split("(")[0].strip().lower()
                         
                         # Check if this switch was already collected under another management/SVI IP
                         existing_dev = next(
-                            (d for d in reachable_devices if d.hostname.split(".")[0].split("(")[0].strip().lower() == canonical_h),
+                            (
+                                d for d in reachable_devices
+                                if (
+                                    d.hostname.strip().lower()
+                                    if (d.platform and "meraki" in d.platform.lower())
+                                    else d.hostname.split(".")[0].split("(")[0].strip().lower()
+                                ) == canonical_h
+                            ),
                             None
                         )
                         if existing_dev:
@@ -827,12 +838,14 @@ class NetworkCrawler:
                                     continue
 
                                 neighbor_ip = neighbor.management_ip
-                                neighbor_host = neighbor.destination_host.split(".")[0].split("(")[0].strip()
+                                raw_dest_host = neighbor.destination_host.strip()
+                                neighbor_host = raw_dest_host.split(".")[0].split("(")[0].strip()
                                 neighbor_plat = getattr(neighbor, "platform", None)
+                                m_rec = None
 
                                 # Resolve Meraki neighbor by MAC/hostname/IP before queueing for Hop N+1
                                 if not self.use_mock and self.meraki_enricher and self.meraki_enricher.is_enabled:
-                                    m_rec = self.meraki_enricher.lookup(neighbor_ip, neighbor_host)
+                                    m_rec = self.meraki_enricher.lookup(neighbor_ip, raw_dest_host) or self.meraki_enricher.lookup(neighbor_ip, neighbor_host)
                                     if m_rec:
                                         if m_rec.get("productType") == "wireless":
                                             continue
@@ -849,6 +862,8 @@ class NetworkCrawler:
                                     and neighbor_host.lower() not in self.visited_hosts
                                 ):
                                     self.queued_targets.add(neighbor_ip)
+                                    if m_rec and m_rec.get("serial"):
+                                        self.queued_targets.add(f"MERAKI:{m_rec['serial']}")
                                     local_intf_obj = device.interfaces.get(neighbor.local_interface)
                                     peer_desc = local_intf_obj.description if local_intf_obj else None
                                     if peer_desc:
