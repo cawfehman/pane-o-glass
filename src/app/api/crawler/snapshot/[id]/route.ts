@@ -78,9 +78,15 @@ export async function GET(
                     masterVerifiedMap.set(dev.hostname, ts ? new Date(ts).toISOString() : new Date().toISOString());
                 }
 
-                // First encounter across newest snapshots is the device's authoritative state
+                // In Master Topology: A verified REACHABLE record ALWAYS trumps an UNVERIFIED boundary sighting!
+                // This permanently stops boundary neighbors from dancing or demoting known verified switches.
                 if (!deviceMap.has(key)) {
                     deviceMap.set(key, dev);
+                } else {
+                    const existing = deviceMap.get(key);
+                    if (existing.status !== "REACHABLE" && dev.status === "REACHABLE") {
+                        deviceMap.set(key, dev);
+                    }
                 }
             }
 
@@ -168,7 +174,16 @@ export async function GET(
         const unreachable = devices.filter(d => d.status !== "REACHABLE").length;
 
         // Load site directory to enrich site containers with facility names and reconcile verified devices
-        let siteDirectory: Record<string, { name: string; address?: string; status?: string; notes?: string }> = {};
+        let siteDirectory: Record<string, {
+            name: string;
+            address?: string;
+            status?: string;
+            notes?: string;
+            locationType?: string;
+            city?: string;
+            folderPath?: string;
+            isHub?: boolean;
+        }> = {};
         let snapshotFolders: string[] = [];
         try {
             const { ensureSitesExistFromDevices } = await import("@/lib/sites");
@@ -205,6 +220,10 @@ export async function GET(
                 },
                 select: {
                     hostname: true,
+                    ipAddress: true,
+                    site: true,
+                    idf: true,
+                    role: true,
                     createdAt: true,
                     snapshot: {
                         select: { timestamp: true }
@@ -215,6 +234,19 @@ export async function GET(
                 }
             }).catch(() => [])
             : [];
+
+        const historicalVerifiedMap = new Map<string, { site: string | null; idf: string | null; role: string | null; timestamp: string }>();
+        for (const record of historicalSuccesses) {
+            const c = (record.hostname || "").split(".")[0].split("(")[0].trim().toLowerCase();
+            const ts = record.snapshot?.timestamp || record.createdAt;
+            const tsStr = ts ? ts.toISOString() : record.createdAt.toISOString();
+            if (c && !historicalVerifiedMap.has(c)) {
+                historicalVerifiedMap.set(c, { site: record.site, idf: record.idf, role: record.role, timestamp: tsStr });
+            }
+            if (record.ipAddress && !historicalVerifiedMap.has(record.ipAddress.toLowerCase())) {
+                historicalVerifiedMap.set(record.ipAddress.toLowerCase(), { site: record.site, idf: record.idf, role: record.role, timestamp: tsStr });
+            }
+        }
 
         // Build CDP platform & connected peer port description lookup from all reachable neighbor tables
         // Also track discovering closets so unverified devices inherit their neighbor's closet instead of creating phantom IDFs/sites
@@ -349,6 +381,7 @@ export async function GET(
             const cdpPort = cdpPortMap.get(canon) || (ip ? cdpPortMap.get(ip) : null) || null;
             const peerDesc = cdpDescMap.get(canon) || (ip ? cdpDescMap.get(ip) : null) || null;
             const override = overrideMap.get(canon) || (ip ? overrideMap.get(ip) : null);
+            const histVerified = historicalVerifiedMap.get(canon) || (ip ? historicalVerifiedMap.get(ip) : null);
 
             let site = override?.siteOverride ? String(override.siteOverride).trim().toUpperCase() : d.site;
             let idf = override?.idfOverride ? String(override.idfOverride).trim().toUpperCase() : d.idf;
@@ -358,46 +391,59 @@ export async function GET(
             let investigationReason: string | null = null;
             let discoveredClosets: Array<{ site: string; idf: string; discoveringSwitches: string[] }> = [];
 
+            // Precedence for resolving site and IDF:
+            // 1. Explicit user override in CrawlerDeviceOverride (Locked)
+            // 2. If unverified boundary neighbor at ANY hop, but device was previously verified REACHABLE at known site/IDF -> Lock to verified historical location!
+            // 3. Fallback to discovered closet only for completely new / unknown devices
             if (d.status !== "REACHABLE" && !override?.siteOverride && !override?.idfOverride) {
-                const neighborClosets = [
-                    ...(discoveringClosetsMap.get(canon) || []),
-                    ...(ip ? (discoveringClosetsMap.get(ip) || []) : [])
-                ];
+                if (histVerified?.site) {
+                    // Lock to known verified historical location - permanently prevent dancing switches!
+                    site = histVerified.site.toUpperCase();
+                    idf = histVerified.idf ? histVerified.idf.toUpperCase() : idf;
+                    role = histVerified.role || role;
+                    isMultiCloset = false;
+                    flaggedForInvestigation = false;
+                } else {
+                    const neighborClosets = [
+                        ...(discoveringClosetsMap.get(canon) || []),
+                        ...(ip ? (discoveringClosetsMap.get(ip) || []) : [])
+                    ];
 
-                if (neighborClosets.length > 0) {
-                    const uniqueClosetMap = new Map<string, { site: string; idf: string; discoveringSwitches: string[] }>();
-                    for (const nc of neighborClosets) {
-                        const key = `${nc.site}::${nc.idf}`;
-                        if (!uniqueClosetMap.has(key)) {
-                            uniqueClosetMap.set(key, {
-                                site: nc.site,
-                                idf: nc.idf,
-                                discoveringSwitches: [nc.discoveringHostname]
-                            });
-                        } else {
-                            const entry = uniqueClosetMap.get(key)!;
-                            if (!entry.discoveringSwitches.includes(nc.discoveringHostname)) {
-                                entry.discoveringSwitches.push(nc.discoveringHostname);
+                    if (neighborClosets.length > 0) {
+                        const uniqueClosetMap = new Map<string, { site: string; idf: string; discoveringSwitches: string[] }>();
+                        for (const nc of neighborClosets) {
+                            const key = `${nc.site}::${nc.idf}`;
+                            if (!uniqueClosetMap.has(key)) {
+                                uniqueClosetMap.set(key, {
+                                    site: nc.site,
+                                    idf: nc.idf,
+                                    discoveringSwitches: [nc.discoveringHostname]
+                                });
+                            } else {
+                                const entry = uniqueClosetMap.get(key)!;
+                                if (!entry.discoveringSwitches.includes(nc.discoveringHostname)) {
+                                    entry.discoveringSwitches.push(nc.discoveringHostname);
+                                }
                             }
                         }
-                    }
 
-                    discoveredClosets = Array.from(uniqueClosetMap.values());
+                        discoveredClosets = Array.from(uniqueClosetMap.values());
 
-                    if (discoveredClosets.length === 1) {
-                        // Inherit discovering neighbor's site and IDF - avoid creating phantom sites/IDFs
-                        site = discoveredClosets[0].site;
-                        idf = discoveredClosets[0].idf;
-                        isMultiCloset = false;
-                        flaggedForInvestigation = false;
-                    } else if (discoveredClosets.length > 1) {
-                        // Multi-closet conflict! Discovered across multiple distinct closets
-                        isMultiCloset = true;
-                        flaggedForInvestigation = true;
-                        site = discoveredClosets[0].site;
-                        idf = discoveredClosets[0].idf;
-                        const closetSummary = discoveredClosets.map(c => `${c.site}/${c.idf} (via ${c.discoveringSwitches.join(', ')})`).join(' and ');
-                        investigationReason = `Multi-closet conflict: Discovered by neighbors in multiple closets (${closetSummary}). Unverified device cannot be authoritatively placed into a single closet.`;
+                        if (discoveredClosets.length === 1) {
+                            // Inherit discovering neighbor's site and IDF - avoid creating phantom sites/IDFs
+                            site = discoveredClosets[0].site;
+                            idf = discoveredClosets[0].idf;
+                            isMultiCloset = false;
+                            flaggedForInvestigation = false;
+                        } else if (discoveredClosets.length > 1) {
+                            // Multi-closet conflict! Discovered across multiple distinct closets
+                            isMultiCloset = true;
+                            flaggedForInvestigation = true;
+                            site = discoveredClosets[0].site;
+                            idf = discoveredClosets[0].idf;
+                            const closetSummary = discoveredClosets.map(c => `${c.site}/${c.idf} (via ${c.discoveringSwitches.join(', ')})`).join(' and ');
+                            investigationReason = `Multi-closet conflict: Discovered by neighbors in multiple closets (${closetSummary}). Unverified device cannot be authoritatively placed into a single closet.`;
+                        }
                     }
                 }
             }

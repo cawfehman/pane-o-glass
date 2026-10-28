@@ -112,6 +112,29 @@ export async function GET(request: NextRequest) {
             console.warn("Could not query crawler overrides in unreachable route:", e);
         }
 
+        // Query historical verified locations for unreachable devices so boundary sightings don't cause dancing switches
+        const unreachHostnames = unreachableDevices.map(d => d.hostname).filter(Boolean);
+        const histSuccesses = unreachHostnames.length > 0
+            ? await prisma.crawlDevice.findMany({
+                where: {
+                    hostname: { in: unreachHostnames },
+                    status: "REACHABLE"
+                },
+                select: { hostname: true, ipAddress: true, site: true, idf: true, role: true },
+                orderBy: { createdAt: "desc" }
+            }).catch(() => [])
+            : [];
+        const histVerifiedMap = new Map<string, { site: string | null; idf: string | null; role: string | null }>();
+        for (const h of histSuccesses) {
+            const c = (h.hostname || "").split(".")[0].split("(")[0].trim().toLowerCase();
+            if (c && !histVerifiedMap.has(c)) {
+                histVerifiedMap.set(c, { site: h.site, idf: h.idf, role: h.role });
+            }
+            if (h.ipAddress && !histVerifiedMap.has(h.ipAddress.toLowerCase())) {
+                histVerifiedMap.set(h.ipAddress.toLowerCase(), { site: h.site, idf: h.idf, role: h.role });
+            }
+        }
+
         // Build CDP platform & connected peer port description lookup from all reachable neighbor tables
         // Also track discovering closets so unverified devices inherit their neighbor's closet instead of creating phantom IDFs/sites
         const cdpPlatformMap = new Map<string, string>();
@@ -218,51 +241,55 @@ export async function GET(request: NextRequest) {
             const cdpPort = cdpPortMap.get(canon) || (ip ? cdpPortMap.get(ip) : null) || null;
             const peerDesc = cdpDescMap.get(canon) || (ip ? cdpDescMap.get(ip) : null) || null;
             const override = overrideMap.get(canon) || (ip ? overrideMap.get(ip) : null);
+            const histVerified = histVerifiedMap.get(canon) || (ip ? histVerifiedMap.get(ip) : null);
 
-            let site = d.site;
-            let idf = d.idf;
+            let site = override?.siteOverride ? String(override.siteOverride).trim().toUpperCase() : (histVerified?.site || d.site);
+            let idf = override?.idfOverride ? String(override.idfOverride).trim().toUpperCase() : (histVerified?.idf || d.idf);
+            let role = override?.roleOverride || histVerified?.role || d.role;
             let isMultiCloset = false;
             let flaggedForInvestigation = false;
             let investigationReason: string | null = null;
             let discoveredClosets: Array<{ site: string; idf: string; discoveringSwitches: string[] }> = [];
 
-            const neighborClosets = [
-                ...(discoveringClosetsMap.get(canon) || []),
-                ...(ip ? (discoveringClosetsMap.get(ip) || []) : [])
-            ];
+            if (!override?.siteOverride && !override?.idfOverride && !histVerified?.site) {
+                const neighborClosets = [
+                    ...(discoveringClosetsMap.get(canon) || []),
+                    ...(ip ? (discoveringClosetsMap.get(ip) || []) : [])
+                ];
 
-            if (neighborClosets.length > 0) {
-                const uniqueClosetMap = new Map<string, { site: string; idf: string; discoveringSwitches: string[] }>();
-                for (const nc of neighborClosets) {
-                    const key = `${nc.site}::${nc.idf}`;
-                    if (!uniqueClosetMap.has(key)) {
-                        uniqueClosetMap.set(key, {
-                            site: nc.site,
-                            idf: nc.idf,
-                            discoveringSwitches: [nc.discoveringHostname]
-                        });
-                    } else {
-                        const entry = uniqueClosetMap.get(key)!;
-                        if (!entry.discoveringSwitches.includes(nc.discoveringHostname)) {
-                            entry.discoveringSwitches.push(nc.discoveringHostname);
+                if (neighborClosets.length > 0) {
+                    const uniqueClosetMap = new Map<string, { site: string; idf: string; discoveringSwitches: string[] }>();
+                    for (const nc of neighborClosets) {
+                        const key = `${nc.site}::${nc.idf}`;
+                        if (!uniqueClosetMap.has(key)) {
+                            uniqueClosetMap.set(key, {
+                                site: nc.site,
+                                idf: nc.idf,
+                                discoveringSwitches: [nc.discoveringHostname]
+                            });
+                        } else {
+                            const entry = uniqueClosetMap.get(key)!;
+                            if (!entry.discoveringSwitches.includes(nc.discoveringHostname)) {
+                                entry.discoveringSwitches.push(nc.discoveringHostname);
+                            }
                         }
                     }
-                }
 
-                discoveredClosets = Array.from(uniqueClosetMap.values());
+                    discoveredClosets = Array.from(uniqueClosetMap.values());
 
-                if (discoveredClosets.length === 1) {
-                    site = discoveredClosets[0].site;
-                    idf = discoveredClosets[0].idf;
-                    isMultiCloset = false;
-                    flaggedForInvestigation = false;
-                } else if (discoveredClosets.length > 1) {
-                    isMultiCloset = true;
-                    flaggedForInvestigation = true;
-                    site = discoveredClosets[0].site;
-                    idf = discoveredClosets[0].idf;
-                    const closetSummary = discoveredClosets.map(c => `${c.site}/${c.idf} (via ${c.discoveringSwitches.join(', ')})`).join(' and ');
-                    investigationReason = `Multi-closet conflict: Discovered by neighbors in multiple closets (${closetSummary}). Unverified device cannot be authoritatively placed into a single closet.`;
+                    if (discoveredClosets.length === 1) {
+                        site = discoveredClosets[0].site;
+                        idf = discoveredClosets[0].idf;
+                        isMultiCloset = false;
+                        flaggedForInvestigation = false;
+                    } else if (discoveredClosets.length > 1) {
+                        isMultiCloset = true;
+                        flaggedForInvestigation = true;
+                        site = discoveredClosets[0].site;
+                        idf = discoveredClosets[0].idf;
+                        const closetSummary = discoveredClosets.map(c => `${c.site}/${c.idf} (via ${c.discoveringSwitches.join(', ')})`).join(' and ');
+                        investigationReason = `Multi-closet conflict: Discovered by neighbors in multiple closets (${closetSummary}). Unverified device cannot be authoritatively placed into a single closet.`;
+                    }
                 }
             }
 

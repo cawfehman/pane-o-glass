@@ -756,7 +756,8 @@ class NetworkCrawler:
                                     b_host = b_neighbor["destination_host"]
                                     b_ip = b_neighbor["management_ip"]
                                     b_plat = b_neighbor.get("platform") or ""
-                                    b_site_info = device.site_info
+                                    # Anchor boundary neighbor to its own parsed site/IDF first, preventing it from dancing into discovering device's closet
+                                    b_site_info = parse_site_info(b_host, self.hostname_regex)
                                     if not self.use_mock and self.meraki_enricher and self.meraki_enricher.is_enabled:
                                         m_rec = self.meraki_enricher.lookup(b_ip, b_host)
                                         if m_rec:
@@ -769,6 +770,8 @@ class NetworkCrawler:
                                                 device_name=b_host,
                                                 model=m_rec["model"],
                                             )
+                                    if not b_site_info:
+                                        b_site_info = device.site_info
                                     if b_host.lower() not in self.visited_hosts and b_ip not in self.visited_ips:
                                         self.visited_hosts.add(b_host.lower())
                                         self.visited_ips.add(b_ip)

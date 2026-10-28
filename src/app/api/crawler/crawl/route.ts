@@ -356,6 +356,23 @@ async function persistLatestSnapshot(
         if (ov.hostname) overrideMap.set(ov.hostname.toLowerCase(), ov);
     }
 
+    // Query historical verified reachable devices so boundary devices at ANY hop don't dance into discovering closet
+    const knownReachable = await prisma.crawlDevice.findMany({
+        where: { status: "REACHABLE" },
+        select: { hostname: true, ipAddress: true, site: true, idf: true, role: true },
+        orderBy: { createdAt: "desc" }
+    }).catch(() => []);
+    const knownReachableMap = new Map<string, { site: string | null; idf: string | null; role: string | null }>();
+    for (const kr of knownReachable) {
+        const c = (kr.hostname || "").split(".")[0].split("(")[0].trim().toLowerCase();
+        if (c && !knownReachableMap.has(c)) {
+            knownReachableMap.set(c, { site: kr.site, idf: kr.idf, role: kr.role });
+        }
+        if (kr.ipAddress && !knownReachableMap.has(kr.ipAddress.toLowerCase())) {
+            knownReachableMap.set(kr.ipAddress.toLowerCase(), { site: kr.site, idf: kr.idf, role: kr.role });
+        }
+    }
+
     for (const dev of rawDevices) {
         const shortHost = dev.hostname ? dev.hostname.split(".")[0].trim() : "";
         const fallbackSite = shortHost.length >= 3 ? shortHost.slice(0, 3).toUpperCase() : null;
@@ -369,10 +386,27 @@ async function persistLatestSnapshot(
 
         const canon = (dev.hostname || "").split(".")[0].split("(")[0].trim().toLowerCase();
         const ov = overrideMap.get(canon) || (dev.ip_address ? overrideMap.get(dev.ip_address.toLowerCase()) : null);
+        const histVerified = knownReachableMap.get(canon) || (dev.ip_address ? knownReachableMap.get(dev.ip_address.toLowerCase()) : null);
 
-        const resolvedSite = ov?.siteOverride ? String(ov.siteOverride).toUpperCase() : (dev.site_info?.site ? dev.site_info.site.toUpperCase() : fallbackSite);
-        const resolvedIdf = ov?.idfOverride ? String(ov.idfOverride).toUpperCase() : (dev.site_info?.idf ? dev.site_info.idf.toUpperCase() : fallbackIdf);
-        const resolvedRole = ov?.roleOverride || dev.role;
+        // Precedence:
+        // 1. Manual user override (Absolute lock)
+        // 2. If device is unverified boundary neighbor, but was previously verified REACHABLE at known site/IDF -> Lock to verified historical location!
+        // 3. Own site_info from hostname parsing
+        // 4. Fallback site/IDF
+        const resolvedSite = ov?.siteOverride
+            ? String(ov.siteOverride).toUpperCase()
+            : (dev.status !== "REACHABLE" && histVerified?.site
+                ? histVerified.site.toUpperCase()
+                : (dev.site_info?.site ? dev.site_info.site.toUpperCase() : fallbackSite));
+
+        const resolvedIdf = ov?.idfOverride
+            ? String(ov.idfOverride).toUpperCase()
+            : (dev.status !== "REACHABLE" && histVerified?.idf
+                ? histVerified.idf.toUpperCase()
+                : (dev.site_info?.idf ? dev.site_info.idf.toUpperCase() : fallbackIdf));
+
+        const resolvedRole = ov?.roleOverride
+            || (dev.status !== "REACHABLE" && histVerified?.role ? histVerified.role : dev.role);
 
         // Ensure each interface has both oper_status and status populated
         const normalizedInterfaces = (() => {
