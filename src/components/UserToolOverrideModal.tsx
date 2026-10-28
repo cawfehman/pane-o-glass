@@ -53,7 +53,8 @@ const TOOL_CATEGORIES: ToolCategory[] = [
             { id: "etd", name: "Cisco ETD Retrospective Center", description: "Post-delivery malicious email retrospective tracking" },
             { id: "netscaler", name: "NetScaler Gateway & ADC", description: "Citrix ADC telemetry, foreign authentication, and CVE mitigations" },
             { id: "notification-center", name: "Breach Notification Center", description: "Automated breach alerts and security campaign dispatches" },
-            { id: "crawler", name: "Network Crawler & Topology", description: "Network topology discovery, switch port lookup, and hierarchy" }
+            { id: "crawler", name: "Network Crawler & Topology", description: "Network topology discovery, switch port lookup, and hierarchy" },
+            { id: "meraki", name: "Cisco Meraki Infrastructure", description: "Multi-org Meraki MS switchport & CDP/LLDP inspector, MX DHCP pool monitor, and MR wireless telemetry" }
         ]
     },
     {

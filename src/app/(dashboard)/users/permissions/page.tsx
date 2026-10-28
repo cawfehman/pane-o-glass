@@ -14,7 +14,7 @@ import {
     saveCurrentAsRoleDefaults,
     resetRoleDefaultsToFactory
 } from "@/app/actions/permissions";
-import { SYSTEM_DEFAULT_PERMISSIONS_MAP } from "@/lib/permissions-constants";
+import { TOOLS, ROLES, SYSTEM_DEFAULT_PERMISSIONS_MAP } from "@/lib/permissions-constants";
 import { 
     Shield, 
     Sliders, 
@@ -29,29 +29,6 @@ import {
     CheckCircle2,
     XCircle
 } from "lucide-react";
-
-const TOOLS = [
-    { id: 'firewall', name: 'Cisco Firewall' },
-    { id: 'ise', name: 'Cisco ISE Center' },
-    { id: 'ise-tacacs', name: 'Cisco ISE TACACS' },
-    { id: 'vpn', name: 'VPN Troubleshooting' },
-    { id: 'vpn-reporting', name: 'VPN Reporting & Audit Suite' },
-    { id: 'vpn-s2s', name: 'Cisco S2S VPN Monitor' },
-    { id: 'netscaler', name: 'NetScaler Gateway & ADC' },
-    { id: 'ironport', name: 'Cisco IronPort Telemetry' },
-    { id: 'bec', name: 'M365 BEC Threat Hunter' },
-    { id: 'etd', name: 'Cisco ETD Retrospective Center' },
-    { id: 'hibp-account', name: 'HIBP Account Security' },
-    { id: 'hibp-domain', name: 'HIBP Domain Security' },
-    { id: 'vectra', name: 'Vectra Forensic Analysis' },
-    { id: 'crawler', name: 'Netcrawler & Site Hierarchy' },
-    { id: 'threat-intel', name: 'Threat Intelligence reputation' },
-    { id: 'notification-center', name: 'Breach Notification Center' },
-    { id: 'graylog-exporter', name: 'Graylog Bulk Exporter' },
-    { id: 'account-lockout', name: 'Account Lockout Investigator' },
-];
-
-const ROLES = ["ADMIN", "ANALYST", "IAM", "NETWORK", "DESKTOP", "SYSTEMS", "USER"];
 
 export default function PermissionsPage() {
     const router = useRouter();
