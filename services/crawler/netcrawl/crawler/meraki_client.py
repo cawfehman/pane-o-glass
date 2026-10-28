@@ -302,6 +302,10 @@ class MerakiCrawlerEnricher:
             if not candidate:
                 continue
             c = candidate.strip()
+            if c.upper().startswith("MERAKI:"):
+                ser_key = c.split(":", 1)[1].strip().upper()
+                if ser_key in self.by_serial:
+                    return self.by_serial[ser_key]
             if c in self.by_ip:
                 return self.by_ip[c]
             if c.upper() in self.by_serial:
@@ -338,6 +342,28 @@ class MerakiCrawlerEnricher:
             raw_statuses = self._get_json(f"/devices/{serial}/switch/ports/statuses") or []
             raw_lldp_cdp = self._get_json(f"/devices/{serial}/lldpCdp") or {}
             raw_svis = self._get_json(f"/devices/{serial}/switch/routing/interfaces") or []
+
+            try:
+                from netcrawl.audit.logger import get_audit_logger
+                audit = get_audit_logger()
+                audit.archive_command_response(
+                    snapshot_id=None,
+                    device_hostname=hostname,
+                    device_ip=str(ip_addr),
+                    command="meraki_api_switch_ports_and_lldp_cdp",
+                    response_output=json.dumps(
+                        {
+                            "serial": serial,
+                            "ports_count": len(raw_ports),
+                            "statuses_count": len(raw_statuses),
+                            "lldp_cdp": raw_lldp_cdp,
+                            "routed_interfaces": raw_svis,
+                        },
+                        indent=2,
+                    ),
+                )
+            except Exception:
+                pass
 
             status_by_port = {str(s.get("portId")): s for s in raw_statuses if s.get("portId") is not None}
             nb_ports = (raw_lldp_cdp or {}).get("ports") or {}

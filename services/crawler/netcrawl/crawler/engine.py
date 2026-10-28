@@ -677,20 +677,33 @@ class NetworkCrawler:
                             # Inspect neighbors to detect unvisited switches beyond the hop limit (e.g. at hop 11 when max_hops=10)
                             unvisited_boundary = []
                             for neighbor in all_neighbors:
-                                if neighbor.is_ap or not neighbor.management_ip:
+                                if neighbor.is_ap:
                                     continue
-                                n_host = neighbor.destination_host.split(".")[0].strip().lower()
+                                n_ip = neighbor.management_ip
+                                n_host_raw = neighbor.destination_host.split(".")[0].strip()
+                                n_plat = neighbor.platform
+                                if not self.use_mock and self.meraki_enricher and self.meraki_enricher.is_enabled:
+                                    m_rec = self.meraki_enricher.lookup(n_ip, n_host_raw)
+                                    if m_rec:
+                                        if m_rec.get("productType") == "wireless":
+                                            continue
+                                        n_host_raw = m_rec["name"]
+                                        n_ip = m_rec.get("lanIp") or n_ip or f"MERAKI:{m_rec['serial']}"
+                                        n_plat = f"Meraki {m_rec.get('model', '')}".strip()
+                                if not n_ip:
+                                    continue
+                                n_host = n_host_raw.lower()
                                 if (
-                                    neighbor.management_ip not in self.visited_ips
-                                    and neighbor.management_ip not in self.queued_targets
+                                    n_ip not in self.visited_ips
+                                    and n_ip not in self.queued_targets
                                     and n_host not in self.visited_hosts
                                 ):
                                     unvisited_boundary.append({
-                                        "destination_host": neighbor.destination_host.split(".")[0].strip(),
-                                        "management_ip": neighbor.management_ip,
+                                        "destination_host": n_host_raw,
+                                        "management_ip": n_ip,
                                         "local_interface": neighbor.local_interface,
                                         "remote_interface": neighbor.remote_interface,
-                                        "platform": neighbor.platform,
+                                        "platform": n_plat,
                                     })
 
                             # Also inspect EIGRP neighbors at boundary if enabled
@@ -815,6 +828,17 @@ class NetworkCrawler:
 
                                 neighbor_ip = neighbor.management_ip
                                 neighbor_host = neighbor.destination_host.split(".")[0].split("(")[0].strip()
+                                neighbor_plat = getattr(neighbor, "platform", None)
+
+                                # Resolve Meraki neighbor by MAC/hostname/IP before queueing for Hop N+1
+                                if not self.use_mock and self.meraki_enricher and self.meraki_enricher.is_enabled:
+                                    m_rec = self.meraki_enricher.lookup(neighbor_ip, neighbor_host)
+                                    if m_rec:
+                                        if m_rec.get("productType") == "wireless":
+                                            continue
+                                        neighbor_host = m_rec["name"]
+                                        neighbor_ip = m_rec.get("lanIp") or neighbor_ip or f"MERAKI:{m_rec['serial']}"
+                                        neighbor_plat = f"Meraki {m_rec.get('model', '')}".strip()
 
                                 if not neighbor_ip:
                                     continue
@@ -838,9 +862,9 @@ class NetworkCrawler:
                                         f"{device.hostname} ({neighbor.local_interface} -> {neighbor.remote_interface}){desc_suffix}"
                                     )
                                     self.known_hostname_map[neighbor_ip] = neighbor_host
-                                    if getattr(neighbor, "platform", None):
-                                        self.known_platform_map[neighbor_ip] = neighbor.platform
-                                        self.known_platform_by_host[neighbor_host.lower()] = neighbor.platform
+                                    if neighbor_plat:
+                                        self.known_platform_map[neighbor_ip] = neighbor_plat
+                                        self.known_platform_by_host[neighbor_host.lower()] = neighbor_plat
                                     pending_targets.append((neighbor_ip, current_hop + 1))
                                     self._notify(
                                         "spider",
