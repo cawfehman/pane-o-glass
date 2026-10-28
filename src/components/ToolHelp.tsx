@@ -1017,6 +1017,60 @@ export const helpData: Record<string, TooltipDetails> = {
             "Cisco ISE MnT REST API: Real-time authentication session cache (last 24 hours).",
             "OG Graylog ISE 3.0 Stream: 60ff11b8950aa8572f333457 (High-volume RADIUS accounting archive > 24 hours)."
         ]
+    },
+    "meraki": {
+        title: "Cisco Meraki Cloud Infrastructure & DHCP Monitor",
+        version: "1.0.0",
+        category: "Multi-Org MS Switch, MX SD-WAN / DHCP & MR Wireless Telemetry",
+        description: "Strictly read-only Cisco Meraki Dashboard API v1 suite spanning Cooper University Health System (905261) and Cape Regional / CRMC (262100). Provides MX WAN uplink health, DHCP pool exhaustion monitoring, MS switchport & CDP/LLDP neighbor inspection, MR wireless failure breakdown, and instant Netcrawl MAC/IP device resolution.",
+        capabilities: [
+            {
+                title: "Multi-Organization Fleet & WAN Uplink Health",
+                detail: "Simultaneously queries Cooper University Health System (420 networks, 409 MX appliances, 1 MS switch) and Cape Regional / CRMC (12 networks, 49 MS switches, 88 MR wireless APs, 11 MX appliances). Tracks live online/alerting/offline states and WAN1/WAN2/Cellular failover uplinks.",
+                tag: "Multi-Org Fleet"
+            },
+            {
+                title: "MX DHCP Pool Exhaustion & Subnet Utilization",
+                detail: "Queries live DHCP lease counters (/devices/{serial}/appliance/dhcp/subnets) across MX security appliances. Calculates used vs. free IP leases, flags CRITICAL (>=90%) and WARNING (>=75%) subnet exhaustion on tight /27 and /24 clinic subnets, and caches scanned pools with a 10-minute TTL.",
+                tag: "DHCP Exhaustion"
+            },
+            {
+                title: "MS Switch Faceplate, PoE, L3 SVI & CDP/LLDP Inspector",
+                detail: "Renders an interactive 24/48-port switch faceplate for any MS switch (MS225, MS210, MS350, MS425). Displays port status, access/trunk VLANs, Voice VLANs, PoE power draw (Wh), Layer 3 routed SVIs, and live CDP/LLDP upstream/downstream neighbors.",
+                tag: "Switch & CDP"
+            },
+            {
+                title: "Instant Netcrawl MAC / IP Resolver (Phase 2 Bridge)",
+                detail: "Resolves compact 12-hex MAC addresses (e.g. '683a1eaf84be' from Cisco IOS ARP/MAC tables where SSH is unsupported on Meraki switches), colon MACs, LAN IPs, or serials directly to the exact Meraki hardware model, network, and switchport table.",
+                tag: "Crawler Bridge"
+            },
+            {
+                title: "MR Wireless 802.11 Failure Stage Breakdown & Client Finder",
+                detail: "Searches wired and wireless clients by IP, MAC, hostname, or username across networks, and breaks down 802.11 wireless connection failures across Association (assoc), Authentication (auth), DHCP (dhcp), and DNS (dns) stages.",
+                tag: "Wireless & Clients"
+            },
+            {
+                title: "Strict Read-Only API Guard (HTTP GET Only)",
+                detail: "Enforces read-only GET requests at the core transport layer (src/lib/meraki.ts) with token-bucket rate limiting and 429 Retry-After backoff. Explicitly blocks all state-changing methods and action paths (/reboot, /cycle, /blinkLeds).",
+                tag: "Read-Only Guard"
+            }
+        ],
+        colors: [
+            { name: "🟢 ONLINE / HEALTHY (<75% DHCP)", meaning: "Device is online and reporting normally, or DHCP subnet has ample free IP addresses.", rgb: "#10b981" },
+            { name: "🟡 ALERTING / WARNING (75–89% DHCP)", meaning: "Device has a degraded uplink/port warning, or DHCP pool utilization is between 75% and 89%.", rgb: "#f59e0b" },
+            { name: "🔴 OFFLINE / CRITICAL (≥90% DHCP)", meaning: "Device is unreachable/offline, or DHCP subnet is >=90% exhausted and at risk of lease starvation.", rgb: "#ef4444" },
+            { name: "🔵 CYAN PORT [N] (CDP/LLDP Neighbor)", meaning: "Connected switchport with an active CDP or LLDP infrastructure neighbor discovered.", rgb: "#06b6d4" },
+            { name: "🟣 PURPLE [T] / WIRELESS", meaning: "802.1Q Trunk switchport or MR Wireless client session.", rgb: "#a855f7" }
+        ],
+        shortcuts: [
+            "Paste any unverified MAC address from the Network Crawler (e.g. 683a1eaf84be) into the top 'Quick resolve MAC or IP' bar and press Enter.",
+            "Click [Inspect Ports & CDP] on any MS switch row to view its live 48-port matrix and upstream Catalyst/Meraki CDP neighbors.",
+            "In the DHCP Pool Exhaustion tab, click [Scan Next 35 MXs] or [Auto-Scan Remaining] to progressively index all Cooper clinic MXs without hitting API rate limits.",
+            "Click any port tile in the MS Switch Faceplate to isolate that specific port in the table below."
+        ],
+        backgroundJobs: [
+            "Meraki Dashboard API v1 Client: Token-bucket rate-limited (<=7 req/sec) GET client with automatic 429 Retry-After handling and 10-minute DHCP pool caching."
+        ]
     }
 };
 

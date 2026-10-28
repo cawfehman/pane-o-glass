@@ -294,6 +294,9 @@ export async function getPermissionsForRole(role: string) {
         if ((roleUpper === 'USER' || roleUpper === 'IAM') && !configured.has('hibp-account')) {
             allowedTools.add('hibp-account');
         }
+        if ((roleUpper === 'ADMIN' || roleUpper === 'NETWORK') && !configured.has('meraki')) {
+            allowedTools.add('meraki');
+        }
 
         return Array.from(allowedTools);
     } catch (error) {
@@ -393,6 +396,7 @@ export async function hasPermission(role: string, toolId: string, userId?: strin
         if (toolId === 'vpn-s2s' && (roleUpper === 'ADMIN' || roleUpper === 'ANALYST' || roleUpper === 'NETWORK')) return true;
         if (toolId === 'account-lockout' && roleUpper !== 'USER') return true;
         if (toolId === 'hibp-account' && (roleUpper === 'IAM' || roleUpper === 'USER')) return true;
+        if (toolId === 'meraki' && (roleUpper === 'ADMIN' || roleUpper === 'NETWORK')) return true;
 
         return false;
     } catch (error) {

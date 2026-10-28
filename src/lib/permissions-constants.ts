@@ -17,6 +17,7 @@ export const TOOLS = [
     { id: 'notification-center', name: 'Breach Notification Center' },
     { id: 'graylog-exporter', name: 'Graylog Bulk Exporter' },
     { id: 'account-lockout', name: 'Account Lockout Investigator' },
+    { id: 'meraki', name: 'Cisco Meraki Infrastructure' },
 ];
 
 export const ROLES = ["ADMIN", "ANALYST", "IAM", "NETWORK", "DESKTOP", "SYSTEMS", "USER"];
@@ -39,5 +40,6 @@ export const SYSTEM_DEFAULT_PERMISSIONS_MAP: Record<string, Record<string, boole
     'threat-intel': { ADMIN: true, ANALYST: true, IAM: false, NETWORK: true, DESKTOP: false, SYSTEMS: false, USER: false },
     'notification-center': { ADMIN: true, ANALYST: true, IAM: false, NETWORK: false, DESKTOP: false, SYSTEMS: true, USER: false },
     'graylog-exporter': { ADMIN: true, ANALYST: true, IAM: false, NETWORK: false, DESKTOP: false, SYSTEMS: false, USER: false },
-    'account-lockout': { ADMIN: true, ANALYST: true, IAM: true, NETWORK: true, DESKTOP: true, SYSTEMS: true, USER: false }
+    'account-lockout': { ADMIN: true, ANALYST: true, IAM: true, NETWORK: true, DESKTOP: true, SYSTEMS: true, USER: false },
+    'meraki': { ADMIN: true, ANALYST: false, IAM: false, NETWORK: true, DESKTOP: false, SYSTEMS: false, USER: false }
 };

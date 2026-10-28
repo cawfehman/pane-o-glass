@@ -1,6 +1,6 @@
 import { auth } from "@/lib/auth";
 import { getEffectivePermissions } from "@/app/actions/permissions";
-import { ShieldAlert, Activity, Lock, Terminal, ShieldCheck, Wifi, Globe, Shield, Server, Network, Mail, FileText, Link2, UserX } from "lucide-react";
+import { ShieldAlert, Activity, Lock, Terminal, ShieldCheck, Wifi, Globe, Shield, Server, Network, Mail, FileText, Link2, UserX, Cloud } from "lucide-react";
 import QueriesPageClient from "./QueriesPageClient";
 
 export default async function QueriesPage() {
@@ -22,6 +22,14 @@ export default async function QueriesPage() {
             href: "/queries/firewall",
             description: "Query IP shuns across edge firewalls and audit background 'Guardian' automation events.",
             icon: <Shield size={24} />
+        },
+        {
+            id: 'meraki',
+            category: 'Perimeter & Access',
+            title: "Cisco Meraki Cloud Infrastructure",
+            href: "/queries/meraki",
+            description: "Multi-org Cooper Health & Cape Regional (CRMC) MS switchport/CDP inspector, MX WAN & DHCP pool exhaustion monitor, and MR wireless telemetry.",
+            icon: <Cloud size={24} className="text-emerald-400" />
         },
         {
             id: 'ise',
@@ -107,6 +115,5 @@ export default async function QueriesPage() {
 
     const visibleTools = tools.filter(tool => hasPermission(tool.id));
 
-    // Convert icon JSX elements to serialized properties if needed, but since we are import/rendering React, Next.js handles server->client JSX injection smoothly.
     return <QueriesPageClient visibleTools={visibleTools} role={role} />;
 }

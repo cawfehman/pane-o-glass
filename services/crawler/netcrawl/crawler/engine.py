@@ -9,6 +9,7 @@ import time
 from typing import Callable, Dict, List, Optional, Set, Tuple
 
 from netcrawl.crawler.mock_network import MockSSHClient
+from netcrawl.crawler.meraki_client import MerakiCrawlerEnricher, derive_meraki_site_info
 from netcrawl.crawler.ssh_client import CiscoSSHClient, probe_telnet_service
 from netcrawl.models import (
     Device,
@@ -97,6 +98,7 @@ class NetworkCrawler:
         self.known_peer_desc_by_host: Dict[str, str] = {} # hostname -> peer connected port description
         self.reseed_points: List[Dict[str, Any]] = [] # devices at boundary with unvisited neighbors at max_hops + 1
         self.unverified_devices: List[Device] = [] # frontier boundary devices beyond hop limit
+        self.meraki_enricher = None if self.use_mock else MerakiCrawlerEnricher()
 
     def _get_all_secrets(self) -> List[str]:
         """Aggregate all primary and fallback credentials to ensure 100% complete log obfuscation."""
@@ -168,6 +170,27 @@ class NetworkCrawler:
             or self.known_peer_desc_by_host.get(target_ip.lower())
             or (self.known_peer_desc_by_host.get(pre_known_name.lower()) if pre_known_name else None)
         )
+
+        # If target matches a known Meraki cloud-managed device (by IP, Serial, or compact MAC),
+        # query the read-only Meraki Dashboard API v1 directly instead of failing on SSH port 22.
+        if not self.use_mock and self.meraki_enricher and self.meraki_enricher.is_enabled:
+            meraki_rec = self.meraki_enricher.lookup(target_ip, pre_known_name)
+            if meraki_rec:
+                final_disc_via = discovered_via
+                if pre_known_desc and final_disc_via and pre_known_desc not in final_disc_via:
+                    final_disc_via = f"{final_disc_via} [{pre_known_desc}]"
+                elif pre_known_desc and not final_disc_via:
+                    final_disc_via = f"Peer port desc: [{pre_known_desc}]"
+                self._notify(
+                    "info",
+                    f"Resolved Meraki device {meraki_rec['name']} ({meraki_rec['model']}, {target_ip}) via Meraki Read-Only API."
+                )
+                return self.meraki_enricher.build_crawler_device(
+                    record=meraki_rec,
+                    target_ip=target_ip,
+                    discovered_via=final_disc_via,
+                    current_hop=current_hop,
+                )
 
         # Detect if target is Cisco Nexus (NX-OS)
         device_type = None
@@ -709,6 +732,19 @@ class NetworkCrawler:
                                     b_host = b_neighbor["destination_host"]
                                     b_ip = b_neighbor["management_ip"]
                                     b_plat = b_neighbor.get("platform") or ""
+                                    b_site_info = device.site_info
+                                    if not self.use_mock and self.meraki_enricher and self.meraki_enricher.is_enabled:
+                                        m_rec = self.meraki_enricher.lookup(b_ip, b_host)
+                                        if m_rec:
+                                            b_host = m_rec["name"]
+                                            b_ip = m_rec.get("lanIp") or b_ip
+                                            b_plat = f"Meraki {m_rec.get('model', '')}".strip()
+                                            b_site_info = derive_meraki_site_info(
+                                                org_id=m_rec["organizationId"],
+                                                network_name=m_rec["networkName"],
+                                                device_name=b_host,
+                                                model=m_rec["model"],
+                                            )
                                     if b_host.lower() not in self.visited_hosts and b_ip not in self.visited_ips:
                                         self.visited_hosts.add(b_host.lower())
                                         self.visited_ips.add(b_ip)
@@ -730,7 +766,7 @@ class NetworkCrawler:
                                             failure_reason=f"Unverified: Hop limit reached ({self.max_hops})",
                                             discovered_via=f"{device.hostname} ({b_neighbor['local_interface']}){b_desc_str}",
                                             hop_distance=current_hop + 1,
-                                            site_info=device.site_info,
+                                            site_info=b_site_info,
                                         )
                                         self.unverified_devices.append(unverified_dev)
 

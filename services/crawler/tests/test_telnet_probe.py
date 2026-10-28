@@ -268,3 +268,36 @@ def test_cisco_ssh_client_send_command_timeout_adaptive():
     assert mock_conn.send_command.call_args[1]["read_timeout"] == 90.0
 
 
+def test_meraki_grouping_cooper_grouped_vs_crmc_individual_idf():
+    """Verify Cooper Health endpoints are grouped together as AutoVPN while Cape Regional switches stay in individual IDFs/sites."""
+    from netcrawl.crawler.meraki_client import derive_meraki_site_info
+
+    # 1. Cooper Health (905261): Headend & AutoVPN spokes grouped together under COOPER-AUTOVPN
+    cooper_headend = derive_meraki_site_info("905261", "Cooper DMZ Headend", "WDC-DMZ-MX250-1", "MX250")
+    cooper_spoke_mx = derive_meraki_site_info("905261", "Cherry Hill Clinic", "Cherry Hill Clinic (MX68)", "MX68")
+    cooper_spoke_z3 = derive_meraki_site_info("905261", "Remote Teleworker 42", "Remote Teleworker 42 (Z3)", "Z3")
+
+    assert cooper_headend.site == "COOPER-AUTOVPN"
+    assert cooper_headend.idf == "dmz-headend"
+    assert cooper_spoke_mx.site == "COOPER-AUTOVPN"
+    assert cooper_spoke_mx.idf == "autovpn-spokes"
+    assert cooper_spoke_z3.site == "COOPER-AUTOVPN"
+    assert cooper_spoke_z3.idf == "autovpn-spokes"
+
+    # 2. Cape Regional (262100): Hospital switches separated by their physical IDF stack
+    crmc_2n = derive_meraki_site_info("262100", "Cape Regional Medical Center", "2N-MERAKI-STACK-SW01", "MS225-48FP")
+    crmc_di = derive_meraki_site_info("262100", "Cape Regional Medical Center", "DI-MERAKI-STACK-SW02", "MS210-48FP")
+    crmc_gs = derive_meraki_site_info("262100", "Cape Regional Medical Center", "GS-MERAKI-STACK-SW01", "MS225-48FP")
+    crmc_mso = derive_meraki_site_info("262100", "Cape Regional Medical Center", "PA(MSO Downstairs)", "MS225-48FP")
+    crmc_vd = derive_meraki_site_info("262100", "Cape Regional Physicians Associates", "VD_225_01", "MS225-48FP")
+    crpa_marmora = derive_meraki_site_info("262100", "CRPA - Marmora", "CRPA-Marmora-SW01", "MS130-48X")
+
+    assert crmc_2n.site == "CRMC" and crmc_2n.idf == "2n"
+    assert crmc_di.site == "CRMC" and crmc_di.idf == "di"
+    assert crmc_gs.site == "CRMC" and crmc_gs.idf == "gs"
+    assert crmc_mso.site == "CRMC" and crmc_mso.idf == "mso"
+    assert crmc_vd.site == "CRMC" and crmc_vd.idf == "vd"
+    assert crpa_marmora.site == "CRPA-MARMORA" and crpa_marmora.idf == "mdf"
+
+
+

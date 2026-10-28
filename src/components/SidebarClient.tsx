@@ -6,7 +6,7 @@ import {
     LayoutDashboard, Wrench, Shield, Server, Network, Lock, 
     ShieldAlert, ShieldCheck, Globe, Map, Users, Key, 
     ClipboardList, Activity, MessageSquare, Mail, BellRing, FileText, Layers,
-    DownloadCloud, Link2, UserX, Archive
+    DownloadCloud, Link2, UserX, Archive, Cloud
 } from "lucide-react";
 import packageJson from "../../package.json";
 import FeedbackModal from "./FeedbackModal";
@@ -67,7 +67,7 @@ export default function SidebarClient({ role, permissions = [] }: { role: string
                     {(isAnalyst || permissions.length > 0) && (
                         <>
                             {/* Perimeter & Access Group */}
-                            {(hasPermission('firewall') || hasPermission('ise') || hasPermission('ise-tacacs') || hasPermission('account-lockout')) && (
+                            {(hasPermission('firewall') || hasPermission('meraki') || hasPermission('ise') || hasPermission('ise-tacacs') || hasPermission('account-lockout')) && (
                                 <>
                                     <div className="nav-section mt-3">Perimeter & Access</div>
                                     <div className={isCollapsed ? "flex flex-col gap-1" : "ml-4 flex flex-col gap-1"}>
@@ -80,6 +80,17 @@ export default function SidebarClient({ role, permissions = [] }: { role: string
                                             >
                                                 <Shield size={18} className="shrink-0" />
                                                 <span className="nav-text">Cisco Firewall Utilities</span>
+                                            </Link>
+                                        )}
+                                        {hasPermission('meraki') && (
+                                            <Link 
+                                                href="/queries/meraki" 
+                                                onClick={closeMobile}
+                                                title={isCollapsed ? "Cisco Meraki Infrastructure" : undefined}
+                                                className={`nav-link text-[0.9rem] ${pathname.startsWith("/queries/meraki") ? "active" : ""}`}
+                                            >
+                                                <Cloud size={18} className="shrink-0 text-emerald-400" />
+                                                <span className="nav-text">Cisco Meraki Cloud</span>
                                             </Link>
                                         )}
                                         {hasPermission('ise') && (
