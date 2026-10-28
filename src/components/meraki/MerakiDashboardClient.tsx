@@ -483,22 +483,29 @@ export default function MerakiDashboardClient() {
                             ))}
                         </div>
 
-                        {/* Shared Cache Freshness Status Pill */}
+                        {/* Shared Cache & Last-Known-Good Freshness Status Pill */}
                         {overview && (
                             <span
                                 className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border ${
-                                    overview.cacheMeta?.status === "LIVE" && liveAgeSec < 25
+                                    overview.cacheMeta?.status === "FALLBACK_LKG"
+                                        ? "bg-amber-500/15 text-amber-300 border-amber-500/40"
+                                        : overview.cacheMeta?.status === "LIVE" && liveAgeSec < 25
                                         ? "bg-emerald-500/10 text-emerald-300 border-emerald-500/30"
                                         : liveAgeSec < 500
                                         ? "bg-sky-500/10 text-sky-300 border-sky-500/30"
                                         : "bg-amber-500/10 text-amber-300 border-amber-500/30"
                                 }`}
-                                title={`Server background poller refreshes Meraki every 10 minutes across all users. Last fetched at ${new Date(
-                                    overview.fetchedAt
-                                ).toLocaleTimeString()}.`}
+                                title={
+                                    overview.cacheMeta?.fallbackReason ||
+                                    `Server background poller refreshes Meraki every 10 minutes (12m cache TTL + on-disk Last-Known-Good snapshot). Last fetched at ${new Date(
+                                        overview.fetchedAt
+                                    ).toLocaleTimeString()}.`
+                                }
                             >
                                 <Clock size={13} />
-                                {overview.cacheMeta?.status === "LIVE" && liveAgeSec < 20
+                                {overview.cacheMeta?.status === "FALLBACK_LKG"
+                                    ? `Last Known Good • ${formatAgeLabel(liveAgeSec)}`
+                                    : overview.cacheMeta?.status === "LIVE" && liveAgeSec < 20
                                     ? `Live Pull • ${formatAgeLabel(liveAgeSec)}`
                                     : `10m Auto-Poll • ${formatAgeLabel(liveAgeSec)}`}
                                 <span className="opacity-70 text-[10px]">
@@ -688,6 +695,25 @@ export default function MerakiDashboardClient() {
                     <div className="p-4 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-sm mb-4 flex items-center gap-3">
                         <AlertTriangle size={18} />
                         <span>{overviewError}</span>
+                    </div>
+                )}
+
+                {overview?.cacheMeta?.status === "FALLBACK_LKG" && (
+                    <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/35 text-amber-200 text-xs mb-4 flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-2.5">
+                            <AlertTriangle size={16} className="text-amber-400 shrink-0" />
+                            <span>
+                                <strong>Resilience Mode (Last Known Good Snapshot):</strong> Meraki Cloud API is currently unreachable. Displaying the last verified poll from{" "}
+                                <strong>{new Date(overview.fetchedAt).toLocaleString()}</strong> ({formatAgeLabel(liveAgeSec)}).
+                            </span>
+                        </div>
+                        <button
+                            onClick={() => fetchOverview(true)}
+                            disabled={overviewLoading}
+                            className="px-3 py-1 rounded-lg bg-amber-500/20 text-amber-200 border border-amber-500/40 font-bold cursor-pointer shrink-0"
+                        >
+                            Retry Live API
+                        </button>
                     </div>
                 )}
 

@@ -531,14 +531,53 @@ export interface MerakiFleetOverviewResponse {
     };
     fetchedAt: string;
     cacheMeta: {
-        status: "LIVE" | "CACHED";
+        status: "LIVE" | "CACHED" | "FALLBACK_LKG";
         fetchedAt: string;
         ageSeconds: number;
         ttlSeconds: number;
         pollIntervalSeconds: number;
         expiresAt: string;
         nextAutoPollAt: string;
+        fallbackReason?: string;
     };
+}
+
+const LKG_SNAPSHOT_PATH = path.join(process.cwd(), "data", "meraki-lkg-snapshot.json");
+
+/**
+ * Atomically persists the Last-Known-Good (LKG) Meraki fleet snapshot to disk (`data/meraki-lkg-snapshot.json`)
+ * on every successful poll so both the UI and Network Crawler remain 100% functional if Meraki Cloud or WAN is down.
+ */
+function saveLkgSnapshotToDisk(snapshot: MerakiFleetOverviewResponse): void {
+    try {
+        if (!snapshot.devices || snapshot.devices.length === 0) return;
+        const dir = path.dirname(LKG_SNAPSHOT_PATH);
+        if (!fs.existsSync(dir)) {
+            fs.mkdirSync(dir, { recursive: true });
+        }
+        const tmpPath = `${LKG_SNAPSHOT_PATH}.tmp`;
+        fs.writeFileSync(tmpPath, JSON.stringify(snapshot), "utf-8");
+        fs.renameSync(tmpPath, LKG_SNAPSHOT_PATH);
+    } catch {
+        // Non-fatal if disk write fails
+    }
+}
+
+/**
+ * Loads the persisted Last-Known-Good (LKG) Meraki fleet snapshot from disk if available.
+ */
+function loadLkgSnapshotFromDisk(): MerakiFleetOverviewResponse | null {
+    try {
+        if (!fs.existsSync(LKG_SNAPSHOT_PATH)) return null;
+        const raw = fs.readFileSync(LKG_SNAPSHOT_PATH, "utf-8");
+        const parsed = JSON.parse(raw) as MerakiFleetOverviewResponse;
+        if (parsed && Array.isArray(parsed.devices) && parsed.devices.length > 0) {
+            return parsed;
+        }
+    } catch {
+        // Ignore corrupted or unreadable snapshot file
+    }
+    return null;
 }
 
 /**
@@ -667,230 +706,261 @@ export async function getMerakiFleetOverview(options?: {
     const forceRefresh = options?.forceRefresh ?? false;
 
     const buildPromise = (async (): Promise<MerakiFleetOverviewResponse> => {
-        const allOrgs = await getMerakiOrganizations(forceRefresh);
-        const targetOrgs = allOrgs;
+        try {
+            const allOrgs = await getMerakiOrganizations(forceRefresh);
+            const targetOrgs = allOrgs;
 
-        const networksAll: MerakiNetwork[] = [];
-        const devicesAll: MerakiDeviceUnified[] = [];
-        const orgSummaries: MerakiFleetOverviewResponse["organizations"] = [];
+            const networksAll: MerakiNetwork[] = [];
+            const devicesAll: MerakiDeviceUnified[] = [];
+            const orgSummaries: MerakiFleetOverviewResponse["organizations"] = [];
 
-        for (const org of targetOrgs) {
-            const [rawNets, rawDevs, rawStatuses, rawUplinks] = await Promise.all([
-                merakiGet<any[]>(`/organizations/${org.id}/networks`, { perPage: 1000 }, { ttlMs: 720_000, forceRefresh }).catch(() => []),
-                merakiGet<any[]>(`/organizations/${org.id}/devices`, { perPage: 1000 }, { ttlMs: 720_000, forceRefresh }).catch(() => []),
-                merakiGet<any[]>(`/organizations/${org.id}/devices/statuses`, { perPage: 1000 }, { ttlMs: 720_000, forceRefresh }).catch(() => []),
-                merakiGet<any[]>(`/organizations/${org.id}/uplinks/statuses`, { perPage: 1000 }, { ttlMs: 720_000, forceRefresh }).catch(() => []),
-            ]);
+            for (const org of targetOrgs) {
+                const [rawNets, rawDevs, rawStatuses, rawUplinks] = await Promise.all([
+                    merakiGet<any[]>(`/organizations/${org.id}/networks`, { perPage: 1000 }, { ttlMs: 720_000, forceRefresh }).catch(() => []),
+                    merakiGet<any[]>(`/organizations/${org.id}/devices`, { perPage: 1000 }, { ttlMs: 720_000, forceRefresh }).catch(() => []),
+                    merakiGet<any[]>(`/organizations/${org.id}/devices/statuses`, { perPage: 1000 }, { ttlMs: 720_000, forceRefresh }).catch(() => []),
+                    merakiGet<any[]>(`/organizations/${org.id}/uplinks/statuses`, { perPage: 1000 }, { ttlMs: 720_000, forceRefresh }).catch(() => []),
+                ]);
 
-        const netMap = new Map<string, MerakiNetwork>();
-        for (const n of rawNets || []) {
-            const net: MerakiNetwork = {
-                id: String(n.id),
-                organizationId: org.id,
-                name: String(n.name || n.id),
-                productTypes: Array.isArray(n.productTypes) ? n.productTypes : [],
-                timeZone: n.timeZone,
-                tags: Array.isArray(n.tags) ? n.tags : [],
-                notes: n.notes,
-            };
-            netMap.set(net.id, net);
-            networksAll.push(net);
-        }
+                const netMap = new Map<string, MerakiNetwork>();
+                for (const n of rawNets || []) {
+                    const net: MerakiNetwork = {
+                        id: String(n.id),
+                        organizationId: org.id,
+                        name: String(n.name || n.id),
+                        productTypes: Array.isArray(n.productTypes) ? n.productTypes : [],
+                        timeZone: n.timeZone,
+                        tags: Array.isArray(n.tags) ? n.tags : [],
+                        notes: n.notes,
+                    };
+                    netMap.set(net.id, net);
+                    networksAll.push(net);
+                }
 
-        const statusBySerial = new Map<string, any>();
-        for (const st of rawStatuses || []) {
-            if (st?.serial) statusBySerial.set(String(st.serial), st);
-        }
+                const statusBySerial = new Map<string, any>();
+                for (const st of rawStatuses || []) {
+                    if (st?.serial) statusBySerial.set(String(st.serial), st);
+                }
 
-        const uplinksBySerial = new Map<string, MerakiUplinkInterface[]>();
-        for (const up of rawUplinks || []) {
-            if (up?.serial && Array.isArray(up.uplinks)) {
-                uplinksBySerial.set(
-                    String(up.serial),
-                    up.uplinks.map((u: any) => ({
-                        interface: String(u.interface || ""),
-                        status: String(u.status || "unknown"),
-                        ip: u.ip || null,
-                        gateway: u.gateway || null,
-                        publicIp: u.publicIp || null,
-                        primaryDns: u.primaryDns || null,
-                        secondaryDns: u.secondaryDns || null,
-                        ipAssignedBy: u.ipAssignedBy || null,
-                        provider: u.provider || null,
-                        model: u.model || null,
-                        signalStat: u.signalStat || null,
-                    }))
-                );
+                const uplinksBySerial = new Map<string, MerakiUplinkInterface[]>();
+                for (const up of rawUplinks || []) {
+                    if (up?.serial && Array.isArray(up.uplinks)) {
+                        uplinksBySerial.set(
+                            String(up.serial),
+                            up.uplinks.map((u: any) => ({
+                                interface: String(u.interface || ""),
+                                status: String(u.status || "unknown"),
+                                ip: u.ip || null,
+                                gateway: u.gateway || null,
+                                publicIp: u.publicIp || null,
+                                primaryDns: u.primaryDns || null,
+                                secondaryDns: u.secondaryDns || null,
+                                ipAssignedBy: u.ipAssignedBy || null,
+                                provider: u.provider || null,
+                                model: u.model || null,
+                                signalStat: u.signalStat || null,
+                            }))
+                        );
+                    }
+                }
+
+                let switches = 0;
+                let appliances = 0;
+                let wireless = 0;
+                let online = 0;
+                let alerting = 0;
+                let offline = 0;
+                let dormant = 0;
+
+                for (const d of rawDevs || []) {
+                    const serial = String(d.serial || "");
+                    if (!serial) continue;
+
+                    const st = statusBySerial.get(serial);
+                    const netId = String(d.networkId || st?.networkId || "");
+                    const netName = netMap.get(netId)?.name || netId || "Unbound Network";
+                    const productType = String(d.productType || st?.productType || "unknown");
+                    const rawStatus = String(st?.status || "unknown").toLowerCase();
+
+                    const status: MerakiDeviceUnified["status"] =
+                        rawStatus === "online" || rawStatus === "alerting" || rawStatus === "offline" || rawStatus === "dormant"
+                            ? (rawStatus as any)
+                            : "unknown";
+
+                    if (productType === "switch") switches++;
+                    else if (productType === "appliance") appliances++;
+                    else if (productType === "wireless") wireless++;
+
+                    if (status === "online") online++;
+                    else if (status === "alerting") alerting++;
+                    else if (status === "offline") offline++;
+                    else if (status === "dormant") dormant++;
+
+                    const macColon = normalizeMacColon(d.mac || st?.mac);
+                    const macCompact = normalizeMacCompact(d.mac || st?.mac);
+                    const modelStr = String(d.model || st?.model || "");
+                    const rawName = String(d.name || st?.name || "").trim();
+                    // On Cooper Health AutoVPN endpoints, d.name is often blank because the clinic/user name is on the Network
+                    const resolvedName = rawName || (netName && netName !== "Unbound Network" ? `${netName} (${modelStr || serial})` : serial);
+
+                    const grouping = classifyDeviceGrouping({
+                        orgId: org.id,
+                        orgName: org.name,
+                        networkId: netId,
+                        networkName: netName,
+                        deviceName: resolvedName,
+                        rawDeviceName: rawName,
+                        model: modelStr,
+                        productType,
+                        serial,
+                    });
+
+                    devicesAll.push({
+                        serial,
+                        name: resolvedName,
+                        model: modelStr,
+                        productType,
+                        mac: macColon,
+                        macCompact,
+                        lanIp: d.lanIp || st?.lanIp || null,
+                        networkId: netId,
+                        networkName: netName,
+                        organizationId: org.id,
+                        organizationName: org.name,
+                        status,
+                        lastReportedAt: st?.lastReportedAt || null,
+                        publicIp: st?.publicIp || null,
+                        gateway: st?.gateway || null,
+                        ipType: st?.ipType || null,
+                        primaryDns: st?.primaryDns || null,
+                        secondaryDns: st?.secondaryDns || null,
+                        firmware: d.firmware || null,
+                        address: d.address || null,
+                        notes: d.notes || null,
+                        tags: Array.isArray(d.tags) ? d.tags : Array.isArray(st?.tags) ? st.tags : [],
+                        uplinks: uplinksBySerial.get(serial) || [],
+                        grouping,
+                    });
+                }
+
+                orgSummaries.push({
+                    id: org.id,
+                    name: org.name,
+                    networkCount: (rawNets || []).length,
+                    deviceCount: (rawDevs || []).length,
+                    switches,
+                    appliances,
+                    wireless,
+                    online,
+                    alerting,
+                    offline,
+                    dormant,
+                });
             }
-        }
 
-        let switches = 0;
-        let appliances = 0;
-        let wireless = 0;
-        let online = 0;
-        let alerting = 0;
-        let offline = 0;
-        let dormant = 0;
+            if (devicesAll.length === 0) {
+                throw new Error("Meraki Cloud API returned zero devices across all organizations.");
+            }
 
-        for (const d of rawDevs || []) {
-            const serial = String(d.serial || "");
-            if (!serial) continue;
+            const summary: MerakiFleetOverviewResponse["summary"] = {
+                totalOrganizations: orgSummaries.length,
+                totalNetworks: networksAll.length,
+                totalDevices: devicesAll.length,
+                byProductType: {
+                    switch: devicesAll.filter((d) => d.productType === "switch").length,
+                    appliance: devicesAll.filter((d) => d.productType === "appliance").length,
+                    wireless: devicesAll.filter((d) => d.productType === "wireless").length,
+                    other: devicesAll.filter((d) => !["switch", "appliance", "wireless"].includes(d.productType)).length,
+                },
+                byStatus: {
+                    online: devicesAll.filter((d) => d.status === "online").length,
+                    alerting: devicesAll.filter((d) => d.status === "alerting").length,
+                    offline: devicesAll.filter((d) => d.status === "offline").length,
+                    dormant: devicesAll.filter((d) => d.status === "dormant").length,
+                },
+                uplinksSummary: {
+                    active: 0,
+                    ready: 0,
+                    failed: 0,
+                    notConnected: 0,
+                },
+            };
 
-            const st = statusBySerial.get(serial);
-            const netId = String(d.networkId || st?.networkId || "");
-            const netName = netMap.get(netId)?.name || netId || "Unbound Network";
-            const productType = String(d.productType || st?.productType || "unknown");
-            const rawStatus = String(st?.status || "unknown").toLowerCase();
+            for (const d of devicesAll) {
+                for (const u of d.uplinks) {
+                    const s = u.status.toLowerCase();
+                    if (s === "active") summary.uplinksSummary.active++;
+                    else if (s === "ready") summary.uplinksSummary.ready++;
+                    else if (s === "failed") summary.uplinksSummary.failed++;
+                    else if (s === "not connected") summary.uplinksSummary.notConnected++;
+                }
+            }
 
-            const status: MerakiDeviceUnified["status"] =
-                rawStatus === "online" || rawStatus === "alerting" || rawStatus === "offline" || rawStatus === "dormant"
-                    ? (rawStatus as any)
-                    : "unknown";
+            const topologyGroups = buildTopologyGroups(devicesAll);
+            const fetchedAtMs = Date.now();
+            const fetchedAtIso = new Date(fetchedAtMs).toISOString();
+            const expiresAtMs = fetchedAtMs + OVERVIEW_CACHE_TTL_MS;
+            const expiresAtIso = new Date(expiresAtMs).toISOString();
 
-            if (productType === "switch") switches++;
-            else if (productType === "appliance") appliances++;
-            else if (productType === "wireless") wireless++;
+            const freshResponse: MerakiFleetOverviewResponse = {
+                organizations: orgSummaries,
+                networks: networksAll,
+                devices: devicesAll,
+                topologyGroups,
+                summary,
+                fetchedAt: fetchedAtIso,
+                cacheMeta: {
+                    status: "LIVE",
+                    fetchedAt: fetchedAtIso,
+                    ageSeconds: 0,
+                    ttlSeconds: Math.round(OVERVIEW_CACHE_TTL_MS / 1000),
+                    pollIntervalSeconds: Math.round(BACKGROUND_POLL_INTERVAL_MS / 1000),
+                    expiresAt: expiresAtIso,
+                    nextAutoPollAt: new Date(fetchedAtMs + BACKGROUND_POLL_INTERVAL_MS).toISOString(),
+                },
+            };
 
-            if (status === "online") online++;
-            else if (status === "alerting") alerting++;
-            else if (status === "offline") offline++;
-            else if (status === "dormant") dormant++;
-
-            const macColon = normalizeMacColon(d.mac || st?.mac);
-            const macCompact = normalizeMacCompact(d.mac || st?.mac);
-            const modelStr = String(d.model || st?.model || "");
-            const rawName = String(d.name || st?.name || "").trim();
-            // On Cooper Health AutoVPN endpoints, d.name is often blank because the clinic/user name is on the Network
-            const resolvedName = rawName || (netName && netName !== "Unbound Network" ? `${netName} (${modelStr || serial})` : serial);
-
-            const grouping = classifyDeviceGrouping({
-                orgId: org.id,
-                orgName: org.name,
-                networkId: netId,
-                networkName: netName,
-                deviceName: resolvedName,
-                rawDeviceName: rawName,
-                model: modelStr,
-                productType,
-                serial,
+            // Store the full ("ALL") snapshot and pre-populate per-organization slices so org tab switching is instant
+            overviewSnapshots.set("ALL", {
+                response: freshResponse,
+                fetchedAtMs,
+                expiresAt: expiresAtMs,
             });
+            for (const orgSummary of orgSummaries) {
+                overviewSnapshots.set(orgSummary.id, {
+                    response: sliceOverviewByOrg(freshResponse, orgSummary.id),
+                    fetchedAtMs,
+                    expiresAt: expiresAtMs,
+                });
+            }
 
-            devicesAll.push({
-                serial,
-                name: resolvedName,
-                model: modelStr,
-                productType,
-                mac: macColon,
-                macCompact,
-                lanIp: d.lanIp || st?.lanIp || null,
-                networkId: netId,
-                networkName: netName,
-                organizationId: org.id,
-                organizationName: org.name,
-                status,
-                lastReportedAt: st?.lastReportedAt || null,
-                publicIp: st?.publicIp || null,
-                gateway: st?.gateway || null,
-                ipType: st?.ipType || null,
-                primaryDns: st?.primaryDns || null,
-                secondaryDns: st?.secondaryDns || null,
-                firmware: d.firmware || null,
-                address: d.address || null,
-                notes: d.notes || null,
-                tags: Array.isArray(d.tags) ? d.tags : Array.isArray(st?.tags) ? st.tags : [],
-                uplinks: uplinksBySerial.get(serial) || [],
-                grouping,
-            });
+            // Persist Last-Known-Good (LKG) snapshot to disk on every successful poll
+            saveLkgSnapshotToDisk(freshResponse);
+
+            return freshResponse;
+        } catch (err: any) {
+            // Automatic fallback to Last-Known-Good (LKG) snapshot in memory or on disk if Meraki API / WAN is down
+            const fallbackBase = overviewSnapshots.get("ALL")?.response ?? loadLkgSnapshotFromDisk();
+            if (fallbackBase) {
+                const lkgFetchedMs = new Date(fallbackBase.fetchedAt).getTime() || Date.now();
+                const ageSeconds = Math.max(0, Math.round((Date.now() - lkgFetchedMs) / 1000));
+                const fallbackResp: MerakiFleetOverviewResponse = {
+                    ...fallbackBase,
+                    cacheMeta: {
+                        status: "FALLBACK_LKG",
+                        fetchedAt: fallbackBase.fetchedAt,
+                        ageSeconds,
+                        ttlSeconds: Math.round(OVERVIEW_CACHE_TTL_MS / 1000),
+                        pollIntervalSeconds: Math.round(BACKGROUND_POLL_INTERVAL_MS / 1000),
+                        expiresAt: new Date(Date.now() + 60_000).toISOString(),
+                        nextAutoPollAt: new Date(Date.now() + BACKGROUND_POLL_INTERVAL_MS).toISOString(),
+                        fallbackReason: `Meraki Cloud API unreachable (${err?.message || "network error"}) — displaying Last Known Good snapshot.`,
+                    },
+                };
+                return fallbackResp;
+            }
+            throw err;
         }
-
-        orgSummaries.push({
-            id: org.id,
-            name: org.name,
-            networkCount: (rawNets || []).length,
-            deviceCount: (rawDevs || []).length,
-            switches,
-            appliances,
-            wireless,
-            online,
-            alerting,
-            offline,
-            dormant,
-        });
-    }
-
-    const summary: MerakiFleetOverviewResponse["summary"] = {
-        totalOrganizations: orgSummaries.length,
-        totalNetworks: networksAll.length,
-        totalDevices: devicesAll.length,
-        byProductType: {
-            switch: devicesAll.filter((d) => d.productType === "switch").length,
-            appliance: devicesAll.filter((d) => d.productType === "appliance").length,
-            wireless: devicesAll.filter((d) => d.productType === "wireless").length,
-            other: devicesAll.filter((d) => !["switch", "appliance", "wireless"].includes(d.productType)).length,
-        },
-        byStatus: {
-            online: devicesAll.filter((d) => d.status === "online").length,
-            alerting: devicesAll.filter((d) => d.status === "alerting").length,
-            offline: devicesAll.filter((d) => d.status === "offline").length,
-            dormant: devicesAll.filter((d) => d.status === "dormant").length,
-        },
-        uplinksSummary: {
-            active: 0,
-            ready: 0,
-            failed: 0,
-            notConnected: 0,
-        },
-    };
-
-    for (const d of devicesAll) {
-        for (const u of d.uplinks) {
-            const s = u.status.toLowerCase();
-            if (s === "active") summary.uplinksSummary.active++;
-            else if (s === "ready") summary.uplinksSummary.ready++;
-            else if (s === "failed") summary.uplinksSummary.failed++;
-            else if (s === "not connected") summary.uplinksSummary.notConnected++;
-        }
-    }
-
-    const topologyGroups = buildTopologyGroups(devicesAll);
-    const fetchedAtMs = Date.now();
-    const fetchedAtIso = new Date(fetchedAtMs).toISOString();
-    const expiresAtMs = fetchedAtMs + OVERVIEW_CACHE_TTL_MS;
-    const expiresAtIso = new Date(expiresAtMs).toISOString();
-
-    const freshResponse: MerakiFleetOverviewResponse = {
-        organizations: orgSummaries,
-        networks: networksAll,
-        devices: devicesAll,
-        topologyGroups,
-        summary,
-        fetchedAt: fetchedAtIso,
-        cacheMeta: {
-            status: "LIVE",
-            fetchedAt: fetchedAtIso,
-            ageSeconds: 0,
-            ttlSeconds: Math.round(OVERVIEW_CACHE_TTL_MS / 1000),
-            pollIntervalSeconds: Math.round(BACKGROUND_POLL_INTERVAL_MS / 1000),
-            expiresAt: expiresAtIso,
-            nextAutoPollAt: new Date(fetchedAtMs + BACKGROUND_POLL_INTERVAL_MS).toISOString(),
-        },
-    };
-
-    // Store the full ("ALL") snapshot and pre-populate per-organization slices so org tab switching is instant
-    overviewSnapshots.set("ALL", {
-        response: freshResponse,
-        fetchedAtMs,
-        expiresAt: expiresAtMs,
-    });
-    for (const orgSummary of orgSummaries) {
-        overviewSnapshots.set(orgSummary.id, {
-            response: sliceOverviewByOrg(freshResponse, orgSummary.id),
-            fetchedAtMs,
-            expiresAt: expiresAtMs,
-        });
-    }
-
-    return freshResponse;
     })();
 
     overviewInFlight.set("ALL", buildPromise);

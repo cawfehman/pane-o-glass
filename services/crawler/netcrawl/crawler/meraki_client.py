@@ -309,6 +309,52 @@ class MerakiCrawlerEnricher:
                 if raw_name:
                     self.by_name[raw_name.lower()] = record
 
+        # If Meraki Cloud API / WAN was unreachable, fall back to the Last-Known-Good (LKG) snapshot on disk
+        if not self.by_serial:
+            self._load_lkg_snapshot_from_disk()
+
+    def _load_lkg_snapshot_from_disk(self) -> None:
+        curr = Path(__file__).resolve()
+        for parent in [curr.parent, *curr.parents]:
+            lkg_file = parent / "data" / "meraki-lkg-snapshot.json"
+            if lkg_file.is_file():
+                try:
+                    payload = json.loads(lkg_file.read_text(encoding="utf-8", errors="ignore"))
+                    for d in payload.get("devices") or []:
+                        serial = str(d.get("serial") or "").strip()
+                        if not serial:
+                            continue
+                        name = str(d.get("name") or serial).strip()
+                        lan_ip = d.get("lanIp")
+                        mac_raw = d.get("mac")
+                        mac_compact = d.get("macCompact") or normalize_mac_compact(mac_raw)
+                        record = {
+                            "serial": serial,
+                            "name": name,
+                            "raw_name": name,
+                            "model": str(d.get("model") or ""),
+                            "productType": str(d.get("productType") or "switch"),
+                            "mac": mac_raw,
+                            "macCompact": mac_compact,
+                            "lanIp": lan_ip,
+                            "networkId": str(d.get("networkId") or ""),
+                            "networkName": str(d.get("networkName") or ""),
+                            "organizationId": str(d.get("organizationId") or ""),
+                            "organizationName": str(d.get("organizationName") or ""),
+                            "status": str(d.get("status") or "online").lower(),
+                            "firmware": d.get("firmware"),
+                        }
+                        self.by_serial[serial.upper()] = record
+                        if lan_ip:
+                            self.by_ip[str(lan_ip).strip()] = record
+                        if mac_compact:
+                            self.by_mac[mac_compact] = record
+                        if name:
+                            self.by_name[name.lower()] = record
+                    return
+                except Exception:
+                    pass
+
     def lookup(self, ip_or_id: Optional[str], hostname_or_mac: Optional[str] = None) -> Optional[Dict[str, Any]]:
         if not self.is_enabled:
             return None
