@@ -5,7 +5,7 @@ import {
     Shield, Search, AlertTriangle, CheckCircle2, ShieldAlert, 
     RefreshCw, Trash2, Plus, ExternalLink, Activity, Network, ArrowRight,
     Copy, Check, Clock, UserCheck, Flame, Server, Zap, ShieldCheck,
-    ChevronLeft, ChevronRight, Filter, Ban, Unlock, Lock, Sparkles, Eye
+    ChevronLeft, ChevronRight, Filter, Ban, Unlock, Lock, Sparkles, Eye, BookOpen
 } from "lucide-react";
 import { SmartSearchBar } from "@/components/common/SmartSearchBar";
 import { LiveFeedInspector } from "./LiveFeedInspector";
@@ -487,6 +487,17 @@ export function SecurityIntelligenceTab() {
                         {monitoredCount !== null ? `${monitoredCount} IPs` : "Active"}
                     </span>
                 </button>
+                <a
+                    href="/docs/reputation-ledger-guide.html"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="ml-auto px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 bg-sky-500/10 hover:bg-sky-500/20 text-sky-400 border border-sky-500/30 no-underline"
+                    title="Open the SOC Analyst Guide for the Reputation Ledger & 3-Strike System"
+                >
+                    <BookOpen className="w-3.5 h-3.5" />
+                    How the 3-Strike Ledger Works
+                    <ExternalLink className="w-3 h-3 opacity-80" />
+                </a>
             </div>
 
             {activeSubTab === "feedInspector" ? (

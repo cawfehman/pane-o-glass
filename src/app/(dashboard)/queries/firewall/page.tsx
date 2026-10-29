@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo } from "react";
 import { QueryHeader } from "@/components/queries/QueryHeader";
-import { Shield, ExternalLink, Activity } from "lucide-react";
+import { Shield, ExternalLink, Activity, BookOpen } from "lucide-react";
 import { PerimeterTelemetryDashboard } from "@/components/telemetry/PerimeterTelemetryDashboard";
 import { ShunDatabaseTab } from "@/components/firewall/ShunDatabaseTab";
 import { SecurityIntelligenceTab } from "@/components/firewall/SecurityIntelligenceTab";
@@ -474,6 +474,17 @@ export default function CiscoFirewallPage() {
                         <Activity className="w-4 h-4 text-indigo-400 animate-pulse" />
                         Perimeter Telemetry
                     </button>
+                    <a
+                        href="/docs/reputation-ledger-guide.html"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="ml-auto px-3.5 py-1.5 my-auto rounded-lg bg-accent-primary/10 hover:bg-accent-primary/20 text-accent-primary border border-accent-primary/30 text-xs font-bold flex items-center gap-1.5 no-underline transition-all"
+                        title="Open SOC Analyst Guide: How the Reputation Ledger & 3-Strike Defense System Works"
+                    >
+                        <BookOpen className="w-3.5 h-3.5" />
+                        3-Strike &amp; Ledger Guide
+                        <ExternalLink className="w-3 h-3 opacity-80" />
+                    </a>
                 </div>
 
             </div>

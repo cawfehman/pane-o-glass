@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { HelpCircle, X, Shield, Sparkles, AlertCircle, Wrench, Terminal, Key, Cpu, Info, CheckCircle2 } from "lucide-react";
+import { HelpCircle, X, Shield, Sparkles, AlertCircle, Wrench, Terminal, Key, Cpu, Info, CheckCircle2, BookOpen, ExternalLink } from "lucide-react";
 
 export interface ColorLegendItem {
     name: string;
@@ -20,6 +20,10 @@ export interface TooltipDetails {
     version?: string;
     category?: string;
     description?: string;
+    docsLink?: {
+        label: string;
+        href: string;
+    };
     capabilities: CapabilityItem[];
     colors: ColorLegendItem[];
     shortcuts?: string[];
@@ -32,6 +36,10 @@ export const helpData: Record<string, TooltipDetails> = {
         version: "2.1.0",
         category: "Perimeter Threat Detection & Autoshun",
         description: "Real-time correlation of Citrix NetScaler AAA authentication failures, Imprivata RADIUS push timeouts/password errors, and origin network intelligence to protect corporate accounts and block credential attacks.",
+        docsLink: {
+            label: "SOC Guide: Reputation Ledger & 3-Strike System",
+            href: "/docs/reputation-ledger-guide.html"
+        },
         capabilities: [
             {
                 title: "Residential Threat Lens & Multi-Employee Household Exemption",
@@ -170,6 +178,10 @@ export const helpData: Record<string, TooltipDetails> = {
         version: "2.2.0",
         category: "Perimeter Defense & ASA Shun Management",
         description: "Real-time perimeter ASA firewall shun management, on-demand live firewall shun table synchronization, automated threat detection, and Active Directory LDAP auto-unshun intelligence.",
+        docsLink: {
+            label: "SOC Guide: Reputation Ledger & 3-Strike System",
+            href: "/docs/reputation-ledger-guide.html"
+        },
         capabilities: [
             {
                 title: "Universal Fleet Shun Synchronizer (Failover Hardening)",
@@ -1153,9 +1165,21 @@ export function ToolHelp({ toolId, iconSize = 20, triggerStyle }: ToolHelpProps)
 
                         {/* Description Quote Banner */}
                         {details.description && (
-                            <p className="text-sm text-[var(--text-primary)] bg-[var(--bg-default)] p-4 rounded-xl border border-[var(--border-color)] mb-5 leading-relaxed font-normal shadow-inner">
-                                {details.description}
-                            </p>
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-sm text-[var(--text-primary)] bg-[var(--bg-default)] p-4 rounded-xl border border-[var(--border-color)] mb-5 leading-relaxed font-normal shadow-inner">
+                                <p className="m-0 flex-1">{details.description}</p>
+                                {details.docsLink && (
+                                    <a
+                                        href={details.docsLink.href}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="shrink-0 inline-flex items-center gap-2 px-3.5 py-2 rounded-lg bg-[var(--accent-primary)]/15 hover:bg-[var(--accent-primary)]/25 text-[var(--accent-primary)] border border-[var(--accent-primary)]/30 font-bold text-xs no-underline transition-all"
+                                    >
+                                        <BookOpen size={15} />
+                                        {details.docsLink.label}
+                                        <ExternalLink size={13} />
+                                    </a>
+                                )}
+                            </div>
                         )}
 
                         {/* Modal Navigation Tabs */}

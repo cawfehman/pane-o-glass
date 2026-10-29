@@ -1,0 +1,497 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>SOC Analyst Guide: The Reputation Ledger &amp; 3-Strike Defense System</title>
+<style>
+  @page {
+    size: letter;
+    margin: 0.42in 0.5in;
+  }
+  * {
+    box-sizing: border-box;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+  body {
+    font-family: "Segoe UI", -apple-system, BlinkMacSystemFont, Roboto, Helvetica, Arial, sans-serif;
+    color: #0f172a;
+    background: #f1f5f9;
+    line-height: 1.48;
+    font-size: 10pt;
+    margin: 0;
+    padding: 24px 16px;
+  }
+  .page-container {
+    max-width: 960px;
+    margin: 0 auto;
+    background: #ffffff;
+    padding: 32px 38px;
+    border-radius: 12px;
+    box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
+    border: 1px solid #e2e8f0;
+  }
+  @media print {
+    body {
+      background: #ffffff;
+      padding: 0;
+      font-size: 9.3pt;
+      line-height: 1.4;
+    }
+    .page-container {
+      max-width: 100%;
+      padding: 0;
+      border: none;
+      box-shadow: none;
+    }
+    .no-print {
+      display: none !important;
+    }
+  }
+  .header-banner {
+    background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+    color: #ffffff;
+    padding: 20px 24px;
+    border-radius: 10px;
+    margin-bottom: 18px;
+    border-left: 5px solid #38bdf8;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+  .header-banner .doc-tag {
+    font-size: 8pt;
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+    color: #38bdf8;
+    font-weight: 700;
+    margin-bottom: 4px;
+  }
+  .header-banner h1 {
+    margin: 0 0 6px 0;
+    font-size: 17pt;
+    font-weight: 700;
+    letter-spacing: -0.3px;
+  }
+  .header-banner p {
+    margin: 0;
+    font-size: 9.5pt;
+    color: #cbd5e1;
+  }
+  .toolbar-actions {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    shrink: 0;
+  }
+  .btn-action {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 14px;
+    border-radius: 7px;
+    font-size: 9pt;
+    font-weight: 600;
+    text-decoration: none;
+    cursor: pointer;
+    border: 1px solid rgba(255,255,255,0.2);
+    background: rgba(255,255,255,0.1);
+    color: #ffffff;
+    transition: all 0.15s ease;
+  }
+  .btn-action:hover {
+    background: rgba(56, 189, 248, 0.25);
+    border-color: #38bdf8;
+  }
+  .btn-action.primary {
+    background: #0284c7;
+    border-color: #38bdf8;
+  }
+  .btn-action.primary:hover {
+    background: #0369a1;
+  }
+  h2 {
+    font-size: 12.5pt;
+    font-weight: 700;
+    color: #0f172a;
+    border-bottom: 2px solid #e2e8f0;
+    padding-bottom: 5px;
+    margin: 20px 0 10px 0;
+    page-break-after: avoid;
+  }
+  h3 {
+    font-size: 10.5pt;
+    font-weight: 700;
+    color: #1e3a8a;
+    margin: 13px 0 5px 0;
+    page-break-after: avoid;
+  }
+  p {
+    margin: 4px 0 8px 0;
+  }
+  ul, ol {
+    margin: 4px 0 10px 0;
+    padding-left: 20px;
+  }
+  li {
+    margin-bottom: 5px;
+  }
+  code {
+    font-family: Consolas, "Courier New", monospace;
+    background: #f1f5f9;
+    color: #0f172a;
+    padding: 1px 5px;
+    border-radius: 4px;
+    font-size: 8.8pt;
+    border: 1px solid #e2e8f0;
+  }
+  .grid-2 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin: 10px 0;
+  }
+  @media (max-width: 700px) {
+    .grid-2 {
+      grid-template-columns: 1fr;
+    }
+  }
+  .card {
+    background: #f8fafc;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    padding: 12px 14px;
+    page-break-inside: avoid;
+  }
+  .card.danger {
+    background: #fef2f2;
+    border-color: #fecaca;
+    border-left: 4px solid #ef4444;
+  }
+  .card.info {
+    background: #f0f9ff;
+    border-color: #bae6fd;
+    border-left: 4px solid #0284c7;
+  }
+  .card.success {
+    background: #f0fdf4;
+    border-color: #bbf7d0;
+    border-left: 4px solid #16a34a;
+  }
+  .card-title {
+    font-weight: 700;
+    font-size: 10pt;
+    margin-bottom: 4px;
+    color: #0f172a;
+  }
+  .callout {
+    background: #eff6ff;
+    border: 1px solid #bfdbfe;
+    border-left: 4px solid #2563eb;
+    border-radius: 8px;
+    padding: 12px 16px;
+    margin: 12px 0;
+    page-break-inside: avoid;
+  }
+  .callout-title {
+    font-weight: 700;
+    color: #1d4ed8;
+    margin-bottom: 5px;
+    font-size: 10.2pt;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 10px 0 14px 0;
+    font-size: 9pt;
+    page-break-inside: avoid;
+  }
+  th {
+    background: #0f172a;
+    color: #ffffff;
+    text-align: left;
+    padding: 8px 10px;
+    font-weight: 600;
+    border: 1px solid #0f172a;
+  }
+  td {
+    padding: 7px 10px;
+    border: 1px solid #cbd5e1;
+    vertical-align: top;
+  }
+  tr:nth-child(even) td {
+    background: #f8fafc;
+  }
+  .badge {
+    display: inline-block;
+    padding: 2px 7px;
+    border-radius: 4px;
+    font-weight: 700;
+    font-size: 8pt;
+    font-family: Consolas, monospace;
+  }
+  .badge-watch { background: #fef3c7; color: #92400e; border: 1px solid #fde68a; }
+  .badge-enforced { background: #ffedd5; color: #c2410c; border: 1px solid #fed7aa; }
+  .badge-quarantined { background: #fee2e2; color: #b91c1c; border: 1px solid #fecaca; }
+  .badge-pardoned { background: #dcfce7; color: #15803d; border: 1px solid #bbf7d0; }
+  .badge-whitelisted { background: #e0f2fe; color: #0369a1; border: 1px solid #bae6fd; }
+  .flowchart-box {
+    background: #f8fafc;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    padding: 12px;
+    margin: 8px 0 14px 0;
+    text-align: center;
+    page-break-inside: avoid;
+  }
+  .footer {
+    margin-top: 20px;
+    padding-top: 10px;
+    border-top: 1px solid #cbd5e1;
+    font-size: 8.5pt;
+    color: #64748b;
+    display: flex;
+    justify-content: space-between;
+  }
+</style>
+</head>
+<body>
+
+<div class="page-container">
+  <div class="header-banner">
+    <div style="flex: 1; min-width: 280px;">
+      <div class="doc-tag">Cooper University Health Care • InfoSec SOC Reference</div>
+      <h1>The Reputation Ledger &amp; 3-Strike Defense System</h1>
+      <p>Operational Guide to Citrix NetScaler &amp; AnyConnect VPN Authentication Triage, Strike Escalation, Safety Shields, and SOC Pardons</p>
+    </div>
+    <div class="toolbar-actions no-print">
+      <a href="/docs/SOC-Analyst-Guide-Reputation-Ledger-and-Strike-System.pdf" download class="btn-action primary">
+        ⬇ Download PDF
+      </a>
+      <button onclick="window.print()" class="btn-action">
+        🖨 Print Guide
+      </button>
+    </div>
+  </div>
+
+  <h2>1. Core Philosophy: Why We Have a Strike Ledger</h2>
+  <p>
+    Pane-O-Glass evaluates every failed and successful login across <strong>Citrix NetScaler Gateway</strong> and <strong>Cisco AnyConnect VPN</strong>. Because attackers and legitimate employees connect from different networks and exhibit different behaviors, the engine separates traffic into two primary network tiers:
+  </p>
+  <div class="grid-2">
+    <div class="card danger">
+      <div class="card-title">Tier A: Cloud VPS, Hosting &amp; Blacklisted ASNs</div>
+      <p style="margin:0;">
+        Cloud datacenters (DigitalOcean, Linode, Vultr, OVH, Choopa, Mullvad, Tor, etc.), blacklisted ASNs, and non-US origins have <strong>zero legitimate reason</strong> to authenticate to Citrix or VPN. <strong>1 failed attempt = immediate permanent block.</strong>
+      </p>
+    </div>
+    <div class="card info">
+      <div class="card-title">Tier B: US Residential &amp; Mobile ISPs</div>
+      <p style="margin:0;">
+        Consumer ISPs (Comcast, Verizon Fios, AT&amp;T, Charter, Cox, T-Mobile) are shared by <strong>both</strong> remote Cooper staff and residential proxy botnets. These IPs are governed by the <strong>3-Strike Reputation Ledger</strong>.
+      </p>
+    </div>
+  </div>
+
+  <h2>2. End-to-End Decision Flowchart</h2>
+  <div class="flowchart-box">
+    <svg viewBox="0 0 820 355" width="100%" height="auto" xmlns="http://www.w3.org/2000/svg" style="font-family: 'Segoe UI', sans-serif;">
+      <defs>
+        <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M 0 1 L 10 5 L 0 9 z" fill="#475569" />
+        </marker>
+      </defs>
+
+      <!-- Node 1: Event -->
+      <rect x="250" y="8" width="320" height="36" rx="6" fill="#0f172a" />
+      <text x="410" y="30" fill="#ffffff" font-size="11" font-weight="700" text-anchor="middle">Failed Login Event (Citrix NetScaler or AnyConnect VPN)</text>
+      <line x1="410" y1="44" x2="410" y2="66" stroke="#475569" stroke-width="1.5" marker-end="url(#arrow)" />
+
+      <!-- Node 2: Network Tier -->
+      <rect x="275" y="68" width="270" height="34" rx="17" fill="#e0f2fe" stroke="#0284c7" stroke-width="1.5" />
+      <text x="410" y="89" fill="#0c4a6e" font-size="10.5" font-weight="700" text-anchor="middle">1. What Network Tier is the Source IP?</text>
+
+      <!-- Branch Left: Cloud VPS -->
+      <path d="M 275 85 L 125 85 L 125 125" fill="none" stroke="#475569" stroke-width="1.5" marker-end="url(#arrow)" />
+      <text x="195" y="79" fill="#b91c1c" font-size="9" font-weight="600" text-anchor="middle">Cloud VPS / Foreign / Bad ASN</text>
+      <rect x="15" y="127" width="220" height="52" rx="6" fill="#fee2e2" stroke="#ef4444" stroke-width="1.5" />
+      <text x="125" y="147" fill="#991b1b" font-size="10" font-weight="700" text-anchor="middle">Immediate Permanent Block</text>
+      <text x="125" y="162" fill="#7f1d1d" font-size="8.8" text-anchor="middle">GuardianBlacklist + ASA Shun (0 Tolerance)</text>
+
+      <!-- Branch Down: US Residential -->
+      <line x1="410" y1="102" x2="410" y2="125" stroke="#475569" stroke-width="1.5" marker-end="url(#arrow)" />
+      <text x="480" y="117" fill="#0369a1" font-size="9" font-weight="600">US Residential / Mobile ISP</text>
+
+      <!-- Node 3: Username & Spray Check -->
+      <rect x="270" y="127" width="280" height="34" rx="17" fill="#e0f2fe" stroke="#0284c7" stroke-width="1.5" />
+      <text x="410" y="148" fill="#0c4a6e" font-size="10.5" font-weight="700" text-anchor="middle">2. Username Format, AD &amp; Spray Check</text>
+
+      <!-- Branch Right: Spray / Bad Username -->
+      <path d="M 550 144 L 695 144 L 695 182" fill="none" stroke="#475569" stroke-width="1.5" marker-end="url(#arrow)" />
+      <text x="630" y="138" fill="#b91c1c" font-size="8.8" font-weight="600" text-anchor="middle">&ge;2 Users Spray OR Invalid/Not-in-AD</text>
+      <rect x="575" y="184" width="235" height="56" rx="6" fill="#ffedd5" stroke="#f97316" stroke-width="1.5" />
+      <text x="692" y="203" fill="#9a3412" font-size="10" font-weight="700" text-anchor="middle">Fast-Track Strike 2 or Strike 3</text>
+      <text x="692" y="218" fill="#7c2d12" font-size="8.5" text-anchor="middle">2 Users / Bad Format &rarr; Strike 2 (7d Block)</text>
+      <text x="692" y="231" fill="#7c2d12" font-size="8.5" text-anchor="middle">&ge;3 Users / Not in AD &rarr; Strike 3 (90d Quarantine)</text>
+
+      <!-- Branch Down: Single Valid Corporate AD User -->
+      <line x1="410" y1="161" x2="410" y2="190" stroke="#475569" stroke-width="1.5" marker-end="url(#arrow)" />
+      <text x="330" y="180" fill="#15803d" font-size="9" font-weight="600">1 Valid AD User (firstname-lastname)</text>
+
+      <!-- Node 4: Prior Success History -->
+      <rect x="260" y="192" width="300" height="34" rx="17" fill="#e0f2fe" stroke="#0284c7" stroke-width="1.5" />
+      <text x="410" y="213" fill="#0c4a6e" font-size="10.5" font-weight="700" text-anchor="middle">3. Prior Citrix/VPN Success or Pardon?</text>
+
+      <!-- Branch Left: Has Prior Success -->
+      <path d="M 260 209 L 145 209 L 145 268" fill="none" stroke="#475569" stroke-width="1.5" marker-end="url(#arrow)" />
+      <text x="195" y="203" fill="#15803d" font-size="8.8" font-weight="600" text-anchor="middle">Yes (Prior Login / Pardoned)</text>
+      <rect x="15" y="270" width="260" height="72" rx="6" fill="#dcfce7" stroke="#22c55e" stroke-width="1.5" />
+      <text x="145" y="290" fill="#166534" font-size="10" font-weight="700" text-anchor="middle">Single-Failure Immunity (PARDONED)</text>
+      <text x="145" y="305" fill="#14532d" font-size="8.6" text-anchor="middle">&bull; Isolated failure (&lt;3 attempts/10m): 0 Strikes, 0 Shun</text>
+      <text x="145" y="319" fill="#14532d" font-size="8.6" text-anchor="middle">&bull; Anonymous STA/Cookie reconnect: Ignored</text>
+      <text x="145" y="333" fill="#991b1b" font-size="8.4" font-weight="600" text-anchor="middle">&bull; Only blocked if &ge;3 attempts/10m or multi-user spray</text>
+
+      <!-- Branch Right/Down: No Prior Success -->
+      <path d="M 410 226 L 410 250 L 555 250 L 555 268" fill="none" stroke="#475569" stroke-width="1.5" marker-end="url(#arrow)" />
+      <text x="495" y="244" fill="#475569" font-size="8.8" font-weight="600" text-anchor="middle">No Prior Success (Unverified IP)</text>
+      <rect x="310" y="270" width="495" height="72" rx="6" fill="#fef3c7" stroke="#f59e0b" stroke-width="1.5" />
+      <text x="557" y="290" fill="#92400e" font-size="10" font-weight="700" text-anchor="middle">Standard 3-Strike Progression (Unverified Residential IP)</text>
+      <text x="557" y="306" fill="#78350f" font-size="8.7" text-anchor="middle">1st Failure: Strike 1 (WATCHING - 14d Watchlist) &mdash; Silent observation, 0 Shuns</text>
+      <text x="557" y="320" fill="#78350f" font-size="8.7" text-anchor="middle">2nd Failure (&gt;90s later): Strike 2 (ENFORCED - 7d SI Block + Ephemeral ASA Shun)</text>
+      <text x="557" y="334" fill="#78350f" font-size="8.7" text-anchor="middle">3rd Failure: Strike 3 (QUARANTINED - 90d Botnet Quarantine + SI Feed + ASA Shun)</text>
+    </svg>
+  </div>
+
+  <h2>3. Detailed Evaluation Rules</h2>
+
+  <h3>Rule 1: Username Format &amp; Active Directory Verification</h3>
+  <ul>
+    <li><strong>Corporate Format Requirement:</strong> Cooper usernames strictly follow the hyphenated format <code>firstname-lastname</code> (or <code>name-name-name</code>). Attempts using non-corporate formats (e.g., <code>jsmith</code>, <code>john.smith</code>, email addresses) or honeypot names (<code>admin</code>, <code>root</code>, <code>backup</code>, <code>helpdesk</code>, <code>vpn</code>) are treated as reconnaissance probes and <strong>skip Strike 1 directly to Strike 2 (<code>ENFORCED</code>)</strong>.</li>
+    <li><strong>Active Directory Lookup:</strong> Every username attempted on Citrix is verified against Active Directory. If a corporate-formatted username does not exist in AD (<code>NOT_FOUND</code>), it is flagged as a dictionary probe and blocked immediately.</li>
+  </ul>
+
+  <h3>Rule 2: 5-Second Companion Syslog Coalescing</h3>
+  <ul>
+    <li>When a user mistypes a password once on NetScaler or misses one Imprivata MFA push, NetScaler often logs both <code>AAA_POLICY_FAILED</code> and <code>AAA_LOGIN_FAILED</code> within 0–3 seconds.</li>
+    <li>The triage engine coalesces companion failure events from the same IP within <strong>5 seconds (<code>5000ms</code>)</strong> into <strong>1 single authentication attempt</strong> so a single typo is never double-counted.</li>
+  </ul>
+
+  <h3>Rule 3: 7-Day Citrix &amp; VPN Login History Immunity (The Guardian Safety Shield)</h3>
+  <p>
+    To prevent remote employees from being re-blocked after a single mistyped password or expired session ticket, Pane-O-Glass correlates every candidate failure IP against three historical trust sources:
+  </p>
+  <ol>
+    <li><strong>7-Day NetScaler Login History (<code>hasCitrixSuccess</code>):</strong> Queries Graylog over a <strong>7-day window</strong> for successful NetScaler <code>LOGIN</code>, <code>ICASTART</code>, or <code>SSLVPN response-200</code> sessions from that IP and persists <code>hasCitrixSuccess: true</code> in the Reputation Ledger.</li>
+    <li><strong>AnyConnect VPN History (<code>hasVpnSuccess</code>):</strong> Checks <code>VpnEvent</code> for prior successful AnyConnect MFA logins from that IP.</li>
+    <li><strong>Prior Pardon / Whitelist Status:</strong> Checks if the IP has <code>status: "PARDONED"</code> or <code>"WHITELISTED"</code> in <code>ResidentialStrikeLedger</code> (and automatically ignores any failure logs that occurred <em>before</em> the pardon timestamp).</li>
+  </ol>
+
+  <div class="callout">
+    <div class="callout-title">How Prior-Success Immunity Protects Employees</div>
+    <ul style="margin-bottom:0;">
+      <li><strong>Single Failure / Isolated Retry:</strong> If an IP has prior Citrix/VPN login success or was previously pardoned, a single failed login (or isolated retry more than 15 minutes after a prior failure) for a valid corporate user <strong>does NOT add a strike and does NOT trigger a shun</strong>. The IP remains <code>PARDONED</code> (0 strikes).</li>
+      <li><strong>Imprivata MFA Push Timeouts:</strong> If Imprivata RADIUS confirms the user's AD password was correct and only the smartphone Confirm ID push timed out, the IP is classified as <code>LEGIT_USER_ISSUE</code> and protected.</li>
+      <li><strong>Multi-Employee Households:</strong> Up to <strong>2 valid active AD users</strong> sharing a US residential ISP connection (e.g., married employees working from home) are recognized as a <strong>Protected Household</strong>.</li>
+      <li><strong>When Protection is Revoked:</strong> Immunity is immediately revoked if the IP attempts <strong>multiple distinct usernames</strong> (password spray), probes <strong>non-existent/non-corporate accounts</strong>, or executes a <strong>sustained brute-force burst</strong> (&ge;3 distinct failed login attempts within 10 minutes).</li>
+    </ul>
+  </div>
+
+  <h2>4. Reference Table: Strike Levels &amp; Ledger Statuses</h2>
+  <table>
+    <thead>
+      <tr>
+        <th style="width: 16%;">Ledger Status</th>
+        <th style="width: 8%;">Strikes</th>
+        <th style="width: 22%;">Firewall CLI Action</th>
+        <th style="width: 12%;">FMC SI Feed?</th>
+        <th style="width: 11%;">Retention</th>
+        <th style="width: 31%;">Trigger Criteria</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><span class="badge badge-watch">WATCHING</span></td>
+        <td style="text-align:center;"><strong>1</strong></td>
+        <td>None (0 Shuns)</td>
+        <td>No</td>
+        <td>14 Days</td>
+        <td>1st failure from an unverified US residential IP targeting <strong>1 valid corporate AD user</strong>. Silent observation.</td>
+      </tr>
+      <tr>
+        <td><span class="badge badge-enforced">ENFORCED</span></td>
+        <td style="text-align:center;"><strong>2</strong></td>
+        <td>Dynamic Ephemeral <code>SHUN</code> (~30m hold until FMC poll)</td>
+        <td><strong>Yes</strong> (Blocked)</td>
+        <td>7 Days (Rolling)</td>
+        <td>&bull; Repeat failure on an unverified Strike 1 IP (&gt;90s apart)<br>&bull; Multi-user spray (2 distinct usernames)<br>&bull; 1st attempt uses non-corporate format or honeypot</td>
+      </tr>
+      <tr>
+        <td><span class="badge badge-quarantined">QUARANTINED</span></td>
+        <td style="text-align:center;"><strong>3</strong></td>
+        <td>Dynamic <code>SHUN</code> + <code>GuardianBlacklist</code></td>
+        <td><strong>Yes</strong> (Blocked)</td>
+        <td>90 Days</td>
+        <td>&bull; 3rd failure on a Strike 2 IP<br>&bull; Residential spray (&ge;3 users) or non-existent AD user probe<br>&bull; Unverified 10-minute auth burst (&ge;3 distinct attempts)</td>
+      </tr>
+      <tr>
+        <td><span class="badge badge-pardoned">PARDONED</span></td>
+        <td style="text-align:center;"><strong>0</strong></td>
+        <td>Immediate <code>UNSHUN</code> across all firewalls</td>
+        <td>No (Removed)</td>
+        <td>30 Days (Immunity)</td>
+        <td>&bull; Automatic 4-Pillar MFA login success<br>&bull; Manual SOC Analyst Pardon</td>
+      </tr>
+      <tr>
+        <td><span class="badge badge-whitelisted">WHITELISTED</span></td>
+        <td style="text-align:center;"><strong>0</strong></td>
+        <td>Protected (Never shunned)</td>
+        <td>No</td>
+        <td>Permanent</td>
+        <td>Explicitly whitelisted corporate or partner IP asset.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>5. Dual-Enforcement Architecture (ASA CLI Shun + FMC SI Feed)</h2>
+  <p>
+    When an IP enters <strong>Strike 2 (<code>ENFORCED</code>)</strong> or <strong>Strike 3 (<code>QUARANTINED</code>)</strong>, two layers work together:
+  </p>
+  <ul>
+    <li><strong>Layer 1 — Instant Ephemeral ASA CLI Shun:</strong> Because Cisco FMC polls the Security Intelligence (SI) feed every ~15 minutes, Pane-O-Glass immediately pushes <code>shun &lt;ip&gt;</code> to the perimeter ASA firewalls with a dynamic expiration of <em>Next Expected FMC Poll + 20 minutes</em>. This closes the 15-minute FMC polling gap immediately.</li>
+    <li><strong>Layer 2 — Persistent FMC Security Intelligence Feed:</strong> The IP is published to <code>/api/feeds/security-intelligence</code>. Once FMC ingests the feed, the firewall blocks the IP natively via Access Control Policy for the full 7-day or 90-day term while the temporary CLI shun expires cleanly.</li>
+  </ul>
+
+  <h2>6. How Pardons Work (Automatic vs. Manual SOC Action)</h2>
+  <div class="grid-2">
+    <div class="card success">
+      <div class="card-title">A. Automatic 4-Pillar MFA Pardon</div>
+      <p style="margin:0 0 4px 0;">When a user logs into Citrix or VPN with MFA from a ledger IP, it is auto-pardoned if all 4 pillars pass:</p>
+      <ol style="margin:0; padding-left:18px; font-size:9pt;">
+        <li>IP only ever attempted <strong>1 username</strong>.</li>
+        <li>IP is <strong>not</strong> marked as a spray suspect (<code>isSpraySuspect: false</code>).</li>
+        <li>Authenticated username matches the failed username.</li>
+        <li>Verified MFA login session completed.</li>
+      </ol>
+    </div>
+    <div class="card info">
+      <div class="card-title">B. Manual SOC Analyst Pardon (360° Clearance)</div>
+      <p style="margin:0 0 4px 0;">Clicking <strong>Pardon</strong> in the Reputation Ledger or Feed Inspector performs a complete reset:</p>
+      <ol style="margin:0; padding-left:18px; font-size:9pt;">
+        <li>Sets <code>status = "PARDONED"</code>, <code>strikeCount = 0</code>, <code>hasCitrixSuccess = true</code>, and clears old <code>attemptedUsers</code>.</li>
+        <li>Removes the IP from <code>GuardianBlacklist</code> and marks any <code>NetscalerCveShun</code> as <code>REMOVED</code>.</li>
+        <li>Invalidates the FMC SI feed cache and immediately drains <code>unshun &lt;ip&gt;</code> across all firewalls.</li>
+      </ol>
+    </div>
+  </div>
+
+  <div class="footer">
+    <span>Pane-O-Glass Security Operations Platform • Cooper University Health Care</span>
+    <span>Updated: October 2026</span>
+  </div>
+</div>
+
+</body>
+</html>
