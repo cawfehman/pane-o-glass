@@ -8,6 +8,7 @@ import axios from "axios";
 import * as https from "https";
 import { getRotatingPassword } from "@/lib/rotatingPassword";
 import { getSqliteTelemetry } from "@/lib/sqliteTelemetry";
+import { getCpuUsagePercent, getDiskUsage, maybeAutoRecordSystemSnapshot } from "@/lib/systemMetricsHistory";
 
 const execAsync = promisify(exec);
 
@@ -100,15 +101,24 @@ export async function GET() {
             graylogHealth.sort((a: any, b: any) => a.url.localeCompare(b.url));
         }
 
+        // Measure cross-platform CPU and Disk natively
+        const [cpuPercent, diskUsageInfo] = await Promise.all([
+            getCpuUsagePercent(),
+            Promise.resolve(getDiskUsage())
+        ]);
+
         // Metrics Object
         const metrics: any = {
             osType: os.type(),
             osRelease: os.release(),
             uptime: os.uptime(),
-            cpuUsage: 0,
+            cpuUsage: cpuPercent,
             memTotal: os.totalmem(),
             memFree: os.freemem(),
-            diskUsage: "0%",
+            diskUsage: `${diskUsageInfo.percent}%`,
+            diskTotalGB: diskUsageInfo.totalGB,
+            diskUsedGB: diskUsageInfo.usedGB,
+            diskFreeGB: diskUsageInfo.freeGB,
             processesCpu: [],
             processesMem: [],
             totalProbes: 0,
@@ -117,13 +127,12 @@ export async function GET() {
             rotatingPassword: getRotatingPassword(0)
         };
 
-        // If we are on Linux, we can run advanced parsing commands
+        // In the background, auto-record snapshot for historical trendlines
+        maybeAutoRecordSystemSnapshot().catch(() => {});
+
+        // If we are on Linux, we can parse top process listings
         if (os.platform() === 'linux') {
             try {
-                // Disk Usage (Root)
-                const { stdout: dfOut } = await execAsync('df -h / | awk \'NR==2 {print $5}\'');
-                metrics.diskUsage = dfOut.trim();
-
                 // Top 10 CPU Processes
                 const { stdout: psCpuOut } = await execAsync('ps -eo pid,ppid,cmd,%mem,%cpu --sort=-%cpu | head -n 11');
                 metrics.processesCpu = parsePsOutput(psCpuOut);
@@ -131,9 +140,6 @@ export async function GET() {
                 // Top 10 Mem Processes
                 const { stdout: psMemOut } = await execAsync('ps -eo pid,ppid,cmd,%mem,%cpu --sort=-%mem | head -n 11');
                 metrics.processesMem = parsePsOutput(psMemOut);
-
-                // True CPU Usage (delta over 150ms)
-                metrics.cpuUsage = await getCpuUsagePercent();
             } catch (cmdErr) {
                 console.error("Failed to run Linux specific commands:", cmdErr);
             }

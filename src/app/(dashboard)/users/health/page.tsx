@@ -14,7 +14,9 @@ import {
     RefreshCw,
     TrendingUp,
     ShieldAlert,
-    Lock
+    Lock,
+    Cpu,
+    Server
 } from "lucide-react";
 import { 
     AreaChart, 
@@ -190,6 +192,40 @@ export default function SystemHealthPage() {
         return null;
     };
 
+    // Custom Tooltip for System Resource (CPU, RAM, Disk) Chart
+    const CustomSystemResourceTooltip = ({ active, payload }: any) => {
+        if (active && payload && payload.length) {
+            const data = payload[0].payload;
+            return (
+                <div className="p-3 bg-bg-surface/95 border border-border-color rounded-xl shadow-2xl backdrop-blur-md text-xs font-mono">
+                    <p className="font-sans font-bold text-text-primary text-[0.8rem] border-b border-border-color pb-1 mb-2">
+                        {new Date(data.timestamp).toLocaleString()}
+                    </p>
+                    <div className="flex flex-col gap-1.5">
+                        <div className="flex justify-between gap-4 text-sky-400">
+                            <span>CPU Utilization:</span>
+                            <span className="font-bold">{data.cpuPercent}%</span>
+                        </div>
+                        <div className="flex justify-between gap-4 text-amber-400">
+                            <span>RAM Memory:</span>
+                            <span className="font-bold">{data.memPercent}% ({data.memUsedGB} GB / {data.memTotalGB} GB)</span>
+                        </div>
+                        <div className="flex justify-between gap-4 text-emerald-400">
+                            <span>Disk Space:</span>
+                            <span className="font-bold">{data.diskPercent}% ({data.diskUsedGB} GB / {data.diskTotalGB} GB)</span>
+                        </div>
+                        {data.activeCron && (
+                            <div className="mt-1 pt-1 border-t border-purple-500/30 text-purple-300 font-sans text-[0.7rem]">
+                                ⚙️ Running: <span className="font-bold">{data.activeCron}</span>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            );
+        }
+        return null;
+    };
+
     return (
         <div className="internal-scroll-layout">
              <div className="shrink-0 flex justify-between items-center mb-6 flex-wrap gap-4">
@@ -236,6 +272,193 @@ export default function SystemHealthPage() {
                     <Gauge value={metrics.cpuUsage || 0} label="CPU Usage" />
                     <Gauge value={memPercent || 0} label={`RAM (${memUsedGB}GB / ${memTotalGB}GB)`} color="var(--accent-secondary)" />
                     <Gauge value={parseInt(metrics.diskUsage) || 0} label={`Disk Space (Root)`} color="var(--accent-tertiary)" />
+                </div>
+
+                {/* ========================================================================= */}
+                {/* Host Resource Utilization Trends (CPU / Memory / Disk) */}
+                {/* ========================================================================= */}
+                <div className="glass-card flex flex-col gap-6 p-6 border border-border-color rounded-2xl bg-gradient-to-b from-white/[0.03] to-transparent">
+                    <div className="flex items-center justify-between flex-wrap gap-4 border-b border-border-color pb-4">
+                        <div className="flex items-center gap-3">
+                            <div className="p-2.5 rounded-xl bg-sky-500/10 text-sky-400 border border-sky-500/20">
+                                <Cpu size={22} />
+                            </div>
+                            <div>
+                                <div className="flex items-center gap-2.5">
+                                    <h2 className="text-xl font-extrabold m-0 text-text-primary">
+                                        Host Resource Utilization Trends
+                                    </h2>
+                                    <span className="text-xs px-2.5 py-0.5 rounded-full font-mono font-bold uppercase tracking-wider bg-white/5 border border-white/10 text-sky-400">
+                                        CPU / RAM / Disk
+                                    </span>
+                                </div>
+                                <p className="text-xs text-text-muted m-0 mt-0.5">
+                                    Continuous telemetry of server processor load, physical memory consumption, and disk capacity over time.
+                                </p>
+                            </div>
+                        </div>
+
+                        {/* Timeframe Selector */}
+                        <div className="flex items-center gap-1.5 bg-black/30 p-1 rounded-xl border border-white/5 text-xs font-semibold">
+                            {["1h", "6h", "24h", "7d", "14d"].map((tf) => (
+                                <button
+                                    key={tf}
+                                    onClick={() => handleTimeframeChange(tf)}
+                                    className={`px-3 py-1 rounded-lg transition-all cursor-pointer ${
+                                        timeframe === tf 
+                                            ? "bg-accent-primary text-white font-bold shadow-md" 
+                                            : "text-text-secondary hover:text-text-primary hover:bg-white/5"
+                                    }`}
+                                >
+                                    {tf.toUpperCase()}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+
+                    {/* Summary KPI Cards */}
+                    {historyData?.system?.summary && (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
+                            <div className="p-3.5 rounded-xl bg-black/20 border border-white/5 flex flex-col justify-between">
+                                <div className="flex justify-between items-center text-text-secondary text-xs font-bold uppercase tracking-wider mb-1">
+                                    <span>CPU Utilization</span>
+                                    <Cpu size={15} className="text-sky-400" />
+                                </div>
+                                <div className="text-xl font-extrabold font-mono text-sky-400">
+                                    {historyData.system.summary.currentCpuPercent}%
+                                </div>
+                                <div className="text-[0.7rem] text-text-muted mt-1 font-mono">
+                                    Avg: <strong className="text-text-primary">{historyData.system.summary.avgCpuPercent}%</strong> • Peak: <strong className="text-rose-400">{historyData.system.summary.peakCpuPercent}%</strong>
+                                </div>
+                            </div>
+
+                            <div className="p-3.5 rounded-xl bg-black/20 border border-white/5 flex flex-col justify-between">
+                                <div className="flex justify-between items-center text-text-secondary text-xs font-bold uppercase tracking-wider mb-1">
+                                    <span>Physical RAM Memory</span>
+                                    <Layers size={15} className="text-amber-400" />
+                                </div>
+                                <div className="text-xl font-extrabold font-mono text-amber-400">
+                                    {historyData.system.summary.currentMemPercent}%
+                                </div>
+                                <div className="text-[0.7rem] text-text-muted mt-1 font-mono">
+                                    {historyData.system.summary.currentMemUsedGB} GB / {historyData.system.summary.memTotalGB} GB (Peak: {historyData.system.summary.peakMemPercent}%)
+                                </div>
+                            </div>
+
+                            <div className="p-3.5 rounded-xl bg-black/20 border border-white/5 flex flex-col justify-between">
+                                <div className="flex justify-between items-center text-text-secondary text-xs font-bold uppercase tracking-wider mb-1">
+                                    <span>Disk Space Utilization</span>
+                                    <HardDrive size={15} className="text-emerald-400" />
+                                </div>
+                                <div className="text-xl font-extrabold font-mono text-emerald-400">
+                                    {historyData.system.summary.currentDiskPercent}%
+                                </div>
+                                <div className="text-[0.7rem] text-text-muted mt-1 font-mono">
+                                    {historyData.system.summary.currentDiskUsedGB} GB used of {historyData.system.summary.diskTotalGB} GB
+                                </div>
+                            </div>
+
+                            <div className="p-3.5 rounded-xl bg-black/20 border border-white/5 flex flex-col justify-between">
+                                <div className="flex justify-between items-center text-text-secondary text-xs font-bold uppercase tracking-wider mb-1">
+                                    <span>Telemetry Snapshots</span>
+                                    <Activity size={15} className="text-purple-400" />
+                                </div>
+                                <div className="text-xl font-extrabold font-mono text-text-primary">
+                                    {historyData.system.summary.totalSnapshots}
+                                </div>
+                                <div className="text-[0.7rem] text-text-muted mt-1">
+                                    Window: {timeframe.toUpperCase()} trendline
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Multi-line Trend Area Chart */}
+                    <div className="p-4 rounded-xl bg-black/25 border border-white/5 flex flex-col gap-3">
+                        <div className="flex justify-between items-center flex-wrap gap-2">
+                            <div>
+                                <h4 className="text-xs font-bold text-text-secondary uppercase tracking-wider m-0">
+                                    CPU, RAM & Disk Saturation Timeline
+                                </h4>
+                                <p className="text-[0.7rem] text-text-muted m-0 mt-0.5">
+                                    Identify processor spikes, memory consumption plateaus, and disk capacity changes
+                                </p>
+                            </div>
+                            {historyData?.system?.summary && (
+                                <div className="flex items-center gap-4 text-xs font-mono">
+                                    <span className="text-sky-400">CPU Peak: <strong className="text-text-primary">{historyData.system.summary.peakCpuPercent}%</strong></span>
+                                    <span className="text-amber-400">RAM Peak: <strong className="text-text-primary">{historyData.system.summary.peakMemPercent}%</strong></span>
+                                    <span className="text-emerald-400">Disk Used: <strong className="text-text-primary">{historyData.system.summary.currentDiskPercent}%</strong></span>
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="h-[240px] w-full">
+                            {historyData?.system?.snapshots && historyData.system.snapshots.length > 0 ? (
+                                <ResponsiveContainer width="100%" height="100%">
+                                    <AreaChart data={historyData.system.snapshots} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                                        <defs>
+                                            <linearGradient id="cpuGrad" x1="0" y1="0" x2="0" y2="1">
+                                                <stop offset="5%" stopColor="#38bdf8" stopOpacity={0.35}/>
+                                                <stop offset="95%" stopColor="#38bdf8" stopOpacity={0}/>
+                                            </linearGradient>
+                                            <linearGradient id="memGrad" x1="0" y1="0" x2="0" y2="1">
+                                                <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.3}/>
+                                                <stop offset="95%" stopColor="#f59e0b" stopOpacity={0}/>
+                                            </linearGradient>
+                                        </defs>
+                                        <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
+                                        <XAxis 
+                                            dataKey="timestamp" 
+                                            tickFormatter={formatTimestamp} 
+                                            stroke="#64748b" 
+                                            fontSize={10} 
+                                            tickLine={false}
+                                        />
+                                        <YAxis 
+                                            stroke="#64748b" 
+                                            fontSize={10} 
+                                            tickLine={false}
+                                            unit="%"
+                                            domain={[0, 100]}
+                                        />
+                                        <Tooltip content={<CustomSystemResourceTooltip />} />
+                                        <Legend wrapperStyle={{ fontSize: '11px', paddingTop: '10px' }} />
+                                        <Area 
+                                            type="monotone" 
+                                            dataKey="cpuPercent" 
+                                            name="CPU Usage (%)" 
+                                            stroke="#38bdf8" 
+                                            strokeWidth={2}
+                                            fillOpacity={1} 
+                                            fill="url(#cpuGrad)" 
+                                        />
+                                        <Area 
+                                            type="monotone" 
+                                            dataKey="memPercent" 
+                                            name="RAM Utilization (%)" 
+                                            stroke="#f59e0b" 
+                                            strokeWidth={2}
+                                            fillOpacity={1} 
+                                            fill="url(#memGrad)" 
+                                        />
+                                        <Line 
+                                            type="monotone" 
+                                            dataKey="diskPercent" 
+                                            name="Disk Space (%)" 
+                                            stroke="#10b981" 
+                                            strokeWidth={2} 
+                                            dot={false}
+                                        />
+                                    </AreaChart>
+                                </ResponsiveContainer>
+                            ) : (
+                                <div className="h-full flex items-center justify-center text-xs text-text-muted">
+                                    Collecting telemetry snapshots...
+                                </div>
+                            )}
+                        </div>
+                    </div>
                 </div>
 
                 {/* ========================================================================= */}

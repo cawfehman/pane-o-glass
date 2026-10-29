@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { getHistoricalTelemetry } from "@/lib/sqliteTelemetry";
+import { getSystemResourceHistory } from "@/lib/systemMetricsHistory";
 
 export const dynamic = "force-dynamic";
 
@@ -24,8 +25,15 @@ export async function GET(request: Request) {
         else if (timeframeParam === "7d") hours = 168;
         else if (timeframeParam === "14d") hours = 336;
 
-        const data = await getHistoricalTelemetry(hours);
-        return NextResponse.json(data);
+        const [dbTelemetry, systemTelemetry] = await Promise.all([
+            getHistoricalTelemetry(hours),
+            getSystemResourceHistory(hours)
+        ]);
+
+        return NextResponse.json({
+            ...dbTelemetry,
+            system: systemTelemetry
+        });
     } catch (error) {
         console.error("Health History API Error:", error);
         return new NextResponse("Internal Server Error", { status: 500 });
