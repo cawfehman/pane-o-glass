@@ -214,6 +214,24 @@ export default function SystemHealthPage() {
                             <span>Disk Space:</span>
                             <span className="font-bold">{data.diskPercent}% ({data.diskUsedGB} GB / {data.diskTotalGB} GB)</span>
                         </div>
+                        {data.load1m !== undefined && (
+                            <div className="flex justify-between gap-4 text-purple-400">
+                                <span>Host Load (1m):</span>
+                                <span className="font-bold">{data.load1m}</span>
+                            </div>
+                        )}
+                        {data.nodeHeapMB !== undefined && (
+                            <div className="flex justify-between gap-4 text-indigo-400">
+                                <span>Node Heap:</span>
+                                <span className="font-bold">{data.nodeHeapMB} MB</span>
+                            </div>
+                        )}
+                        {data.swapPercent !== undefined && data.swapPercent > 0 && (
+                            <div className="flex justify-between gap-4 text-rose-400">
+                                <span>Swap In-Use:</span>
+                                <span className="font-bold">{data.swapPercent}%</span>
+                            </div>
+                        )}
                         {data.activeCron && (
                             <div className="mt-1 pt-1 border-t border-purple-500/30 text-purple-300 font-sans text-[0.7rem]">
                                 ⚙️ Running: <span className="font-bold">{data.activeCron}</span>
@@ -246,7 +264,14 @@ export default function SystemHealthPage() {
                                 {refreshing || historyLoading ? "Testing..." : "Refresh"}
                             </button>
                         </div>
-                        <p className="text-text-muted mt-1">{metrics.osType} {metrics.osRelease} | Uptime: {hours}h {minutes}m</p>
+                        <p className="text-text-muted mt-1 flex items-center flex-wrap gap-x-3 gap-y-1">
+                            <span>{metrics.osType} {metrics.osRelease} | Uptime: {hours}h {minutes}m</span>
+                            {metrics.systemLoad && (
+                                <span className="font-mono text-xs px-2 py-0.5 rounded bg-white/5 border border-white/10">
+                                    Load: <strong className={metrics.systemLoad.status === 'CRITICAL' ? 'text-rose-400' : metrics.systemLoad.status === 'ELEVATED' ? 'text-amber-400' : 'text-emerald-400'}>{metrics.systemLoad.load1m}</strong> / {metrics.systemLoad.load5m} / {metrics.systemLoad.load15m} <span className="text-text-muted font-normal">({metrics.systemLoad.cpuCores} cores)</span>
+                                </span>
+                            )}
+                        </p>
                     </div>
                     {metrics.rotatingPassword && (
                         <div className="glass-card flex items-center gap-3 px-4 py-2.5 bg-blue-500/10 border border-blue-500/25 rounded-xl">
@@ -273,6 +298,67 @@ export default function SystemHealthPage() {
                     <Gauge value={memPercent || 0} label={`RAM (${memUsedGB}GB / ${memTotalGB}GB)`} color="var(--accent-secondary)" />
                     <Gauge value={parseInt(metrics.diskUsage) || 0} label={`Disk Space (Root)`} color="var(--accent-tertiary)" />
                 </div>
+
+                {/* Host Diagnostics Strip (Linux Load / Swap / PM2 Node Process) */}
+                {(metrics.nodeProcess || metrics.swapUsage || metrics.systemLoad) && (
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        {metrics.systemLoad && (
+                            <div className="p-3 rounded-xl bg-bg-card border border-border-color flex items-center justify-between text-xs">
+                                <div>
+                                    <span className="text-text-muted font-bold block uppercase tracking-wider text-[0.7rem]">Linux Load Avg (1m / 5m / 15m)</span>
+                                    <span className="font-mono font-bold text-sm text-text-primary">
+                                        {metrics.systemLoad.load1m} / {metrics.systemLoad.load5m} / {metrics.systemLoad.load15m}
+                                    </span>
+                                </div>
+                                <span className={`px-2 py-0.5 rounded text-[0.65rem] font-bold uppercase tracking-wider ${
+                                    metrics.systemLoad.status === 'CRITICAL' ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30' :
+                                    metrics.systemLoad.status === 'ELEVATED' ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30' :
+                                    'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                                }`}>
+                                    {metrics.systemLoad.status}
+                                </span>
+                            </div>
+                        )}
+
+                        {metrics.nodeProcess && (
+                            <div className="p-3 rounded-xl bg-bg-card border border-border-color flex items-center justify-between text-xs">
+                                <div>
+                                    <span className="text-text-muted font-bold block uppercase tracking-wider text-[0.7rem]">Next.js / PM2 Process Memory</span>
+                                    <span className="font-mono font-bold text-sm text-text-primary">
+                                        Heap: {metrics.nodeProcess.heapUsedMB} MB <span className="text-text-muted font-normal text-xs">/ {metrics.nodeProcess.heapTotalMB} MB</span>
+                                    </span>
+                                </div>
+                                <span className="text-[0.65rem] font-mono px-2 py-0.5 rounded bg-white/5 border border-white/10 text-text-secondary">
+                                    RSS: {metrics.nodeProcess.rssMB} MB
+                                </span>
+                            </div>
+                        )}
+
+                        {metrics.swapUsage && (
+                            <div className="p-3 rounded-xl bg-bg-card border border-border-color flex items-center justify-between text-xs">
+                                <div>
+                                    <span className="text-text-muted font-bold block uppercase tracking-wider text-[0.7rem]">Host Swap Space</span>
+                                    <span className="font-mono font-bold text-sm text-text-primary">
+                                        {metrics.swapUsage.totalGB > 0 ? `${metrics.swapUsage.usedGB} GB / ${metrics.swapUsage.totalGB} GB` : 'None / Disabled'}
+                                    </span>
+                                </div>
+                                {metrics.swapUsage.totalGB > 0 ? (
+                                    <span className={`px-2 py-0.5 rounded text-[0.65rem] font-bold uppercase tracking-wider ${
+                                        metrics.swapUsage.percent > 15 ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30' :
+                                        metrics.swapUsage.percent > 0 ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30' :
+                                        'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                                    }`}>
+                                        {metrics.swapUsage.percent}% SWAP
+                                    </span>
+                                ) : (
+                                    <span className="text-[0.65rem] font-mono px-2 py-0.5 rounded bg-white/5 border border-white/10 text-emerald-400">
+                                        OPTIMAL
+                                    </span>
+                                )}
+                            </div>
+                        )}
+                    </div>
+                )}
 
                 {/* ========================================================================= */}
                 {/* Host Resource Utilization Trends (CPU / Memory / Disk) */}

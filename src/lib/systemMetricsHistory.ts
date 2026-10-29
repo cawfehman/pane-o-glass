@@ -12,6 +12,9 @@ export interface SystemResourcePoint {
     diskPercent: number;
     diskUsedGB: number;
     diskTotalGB: number;
+    load1m?: number;
+    swapPercent?: number;
+    nodeHeapMB?: number;
     activeCron?: string | null;
 }
 
@@ -28,6 +31,10 @@ export interface SystemResourceSummary {
     currentDiskPercent: number;
     currentDiskUsedGB: number;
     diskTotalGB: number;
+    currentLoad1m?: number;
+    peakLoad1m?: number;
+    currentSwapPercent?: number;
+    currentNodeHeapMB?: number;
 }
 
 export interface SystemResourceHistoryResponse {
@@ -109,22 +116,109 @@ export function getDiskUsage() {
 }
 
 /**
- * Measures system physical RAM utilization natively using Node os module.
+ * Measures physical RAM and swap utilization.
+ * On Linux (e.g. Alma Linux 9), parses /proc/meminfo to report true MemAvailable
+ * (accounting for page cache / buffers) and active Swap utilization.
  */
 export function getMemoryUsage() {
-    const totalBytes = os.totalmem();
-    const freeBytes = os.freemem();
-    const usedBytes = Math.max(0, totalBytes - freeBytes);
-    const percent = Math.round((usedBytes / totalBytes) * 100);
+    let totalBytes = os.totalmem();
+    let freeBytes = os.freemem();
+    let availableBytes = freeBytes;
+    let swapTotalBytes = 0;
+    let swapUsedBytes = 0;
+    let isLinuxMeminfo = false;
+
+    // Parse Linux /proc/meminfo if available (production Alma Linux 9)
+    if (process.platform === "linux") {
+        try {
+            if (fs.existsSync("/proc/meminfo")) {
+                const meminfo = fs.readFileSync("/proc/meminfo", "utf-8");
+                const getKb = (key: string): number => {
+                    const match = meminfo.match(new RegExp(`^${key}:\\s+(\\d+)\\s+kB`, "m"));
+                    return match ? parseInt(match[1], 10) * 1024 : 0;
+                };
+
+                const memTotal = getKb("MemTotal");
+                const memAvailable = getKb("MemAvailable");
+                const swapTotal = getKb("SwapTotal");
+                const swapFree = getKb("SwapFree");
+
+                if (memTotal > 0) {
+                    totalBytes = memTotal;
+                }
+                if (memAvailable > 0) {
+                    availableBytes = memAvailable;
+                    freeBytes = memAvailable;
+                    isLinuxMeminfo = true;
+                }
+                if (swapTotal > 0) {
+                    swapTotalBytes = swapTotal;
+                    swapUsedBytes = Math.max(0, swapTotal - swapFree);
+                }
+            }
+        } catch {
+            // fallback gracefully to os.freemem()
+        }
+    }
+
+    const usedBytes = Math.max(0, totalBytes - availableBytes);
+    const percent = totalBytes > 0 ? Math.round((usedBytes / totalBytes) * 100) : 0;
+    const swapPercent = swapTotalBytes > 0 ? Math.round((swapUsedBytes / swapTotalBytes) * 100) : 0;
 
     return {
         totalBytes,
-        freeBytes,
+        freeBytes: availableBytes,
         usedBytes,
         percent,
         totalGB: Number((totalBytes / (1024 ** 3)).toFixed(2)),
         usedGB: Number((usedBytes / (1024 ** 3)).toFixed(2)),
-        freeGB: Number((freeBytes / (1024 ** 3)).toFixed(2))
+        freeGB: Number((availableBytes / (1024 ** 3)).toFixed(2)),
+        swapTotalGB: Number((swapTotalBytes / (1024 ** 3)).toFixed(2)),
+        swapUsedGB: Number((swapUsedBytes / (1024 ** 3)).toFixed(2)),
+        swapPercent,
+        isLinuxMeminfo
+    };
+}
+
+/**
+ * Measures host system load averages (1m, 5m, 15m) and core saturation.
+ * Critical on Linux (Alma Linux 9) where high load avg with low CPU indicates Disk I/O wait.
+ */
+export function getSystemLoad() {
+    const load = os.loadavg(); // [1m, 5m, 15m]
+    const cpuCores = os.cpus().length || 1;
+    const load1m = Number(load[0].toFixed(2));
+    const load5m = Number(load[1].toFixed(2));
+    const load15m = Number(load[2].toFixed(2));
+    const ratio = Number((load1m / cpuCores).toFixed(2));
+
+    let status: "OPTIMAL" | "ELEVATED" | "CRITICAL" = "OPTIMAL";
+    if (ratio > 1.5) {
+        status = "CRITICAL";
+    } else if (ratio > 1.0) {
+        status = "ELEVATED";
+    }
+
+    return {
+        load1m,
+        load5m,
+        load15m,
+        cpuCores,
+        ratio,
+        status
+    };
+}
+
+/**
+ * Returns current Node.js production process memory & heap metrics (PM2 / Next.js).
+ */
+export function getNodeProcessStats() {
+    const mem = process.memoryUsage();
+    return {
+        heapUsedMB: Math.round(mem.heapUsed / (1024 * 1024)),
+        heapTotalMB: Math.round(mem.heapTotal / (1024 * 1024)),
+        rssMB: Math.round(mem.rss / (1024 * 1024)),
+        uptimeSeconds: Math.floor(process.uptime()),
     };
 }
 
@@ -165,15 +259,17 @@ function persistToDisk() {
 }
 
 /**
- * Records a real-time point snapshot of system CPU, RAM, and Disk.
+ * Records a real-time point snapshot of system CPU, RAM, Disk, Load Average, and Node Heap.
  */
 export async function recordSystemSnapshot(activeCron?: string): Promise<SystemResourcePoint> {
     ensureLoaded();
 
-    const [cpuPercent, disk, mem] = await Promise.all([
+    const [cpuPercent, disk, mem, load, nodeStats] = await Promise.all([
         getCpuUsagePercent(),
         Promise.resolve(getDiskUsage()),
-        Promise.resolve(getMemoryUsage())
+        Promise.resolve(getMemoryUsage()),
+        Promise.resolve(getSystemLoad()),
+        Promise.resolve(getNodeProcessStats())
     ]);
 
     const point: SystemResourcePoint = {
@@ -186,6 +282,9 @@ export async function recordSystemSnapshot(activeCron?: string): Promise<SystemR
         diskPercent: disk.percent,
         diskUsedGB: disk.usedGB,
         diskTotalGB: disk.totalGB,
+        load1m: load.load1m,
+        swapPercent: mem.swapPercent,
+        nodeHeapMB: nodeStats.heapUsedMB,
         activeCron: activeCron || null
     };
 
@@ -263,6 +362,8 @@ export async function getSystemResourceHistory(hours = 24): Promise<SystemResour
     const mem = getMemoryUsage();
     const disk = getDiskUsage();
     const currentCpu = await getCpuUsagePercent();
+    const load = getSystemLoad();
+    const nodeStats = getNodeProcessStats();
 
     // Auto-seed if brand new
     seedHistoryIfEmpty(mem, disk, currentCpu);
@@ -278,12 +379,14 @@ export async function getSystemResourceHistory(hours = 24): Promise<SystemResour
     let peakCpu = 0;
     let sumMem = 0;
     let peakMem = 0;
+    let peakLoad = 0;
 
     for (const p of filtered) {
         sumCpu += p.cpuPercent;
         if (p.cpuPercent > peakCpu) peakCpu = p.cpuPercent;
         sumMem += p.memPercent;
         if (p.memPercent > peakMem) peakMem = p.memPercent;
+        if ((p.load1m ?? 0) > peakLoad) peakLoad = p.load1m!;
     }
 
     const count = filtered.length || 1;
@@ -305,7 +408,11 @@ export async function getSystemResourceHistory(hours = 24): Promise<SystemResour
             memTotalGB: mem.totalGB,
             currentDiskPercent: disk.percent,
             currentDiskUsedGB: disk.usedGB,
-            diskTotalGB: disk.totalGB
+            diskTotalGB: disk.totalGB,
+            currentLoad1m: load.load1m,
+            peakLoad1m: peakLoad || load.load1m,
+            currentSwapPercent: mem.swapPercent,
+            currentNodeHeapMB: nodeStats.heapUsedMB
         }
     };
 }

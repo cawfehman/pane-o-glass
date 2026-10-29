@@ -8,7 +8,7 @@ import axios from "axios";
 import * as https from "https";
 import { getRotatingPassword } from "@/lib/rotatingPassword";
 import { getSqliteTelemetry } from "@/lib/sqliteTelemetry";
-import { getCpuUsagePercent, getDiskUsage, maybeAutoRecordSystemSnapshot } from "@/lib/systemMetricsHistory";
+import { getCpuUsagePercent, getDiskUsage, getMemoryUsage, getSystemLoad, getNodeProcessStats, maybeAutoRecordSystemSnapshot } from "@/lib/systemMetricsHistory";
 
 const execAsync = promisify(exec);
 
@@ -101,10 +101,13 @@ export async function GET() {
             graylogHealth.sort((a: any, b: any) => a.url.localeCompare(b.url));
         }
 
-        // Measure cross-platform CPU and Disk natively
-        const [cpuPercent, diskUsageInfo] = await Promise.all([
+        // Measure host metrics (CPU, Memory/Swap with /proc/meminfo on Linux, Disk, Load, Node heap)
+        const [cpuPercent, diskUsageInfo, memoryInfo, systemLoad, nodeStats] = await Promise.all([
             getCpuUsagePercent(),
-            Promise.resolve(getDiskUsage())
+            Promise.resolve(getDiskUsage()),
+            Promise.resolve(getMemoryUsage()),
+            Promise.resolve(getSystemLoad()),
+            Promise.resolve(getNodeProcessStats())
         ]);
 
         // Metrics Object
@@ -113,8 +116,18 @@ export async function GET() {
             osRelease: os.release(),
             uptime: os.uptime(),
             cpuUsage: cpuPercent,
-            memTotal: os.totalmem(),
-            memFree: os.freemem(),
+            memTotal: memoryInfo.totalBytes,
+            memFree: memoryInfo.freeBytes,
+            memUsedGB: memoryInfo.usedGB,
+            memTotalGB: memoryInfo.totalGB,
+            memPercent: memoryInfo.percent,
+            swapUsage: {
+                totalGB: memoryInfo.swapTotalGB,
+                usedGB: memoryInfo.swapUsedGB,
+                percent: memoryInfo.swapPercent
+            },
+            systemLoad,
+            nodeProcess: nodeStats,
             diskUsage: `${diskUsageInfo.percent}%`,
             diskTotalGB: diskUsageInfo.totalGB,
             diskUsedGB: diskUsageInfo.usedGB,

@@ -3,6 +3,7 @@ import * as dotenv from 'dotenv';
 import path from 'path';
 import fs from 'fs';
 import { performance } from 'perf_hooks';
+import { recordSystemSnapshot } from '@/lib/systemMetricsHistory';
 
 // Load environment variables for standalone script execution
 dotenv.config({ path: path.resolve(__dirname, '../../.env') });
@@ -100,7 +101,7 @@ async function run() {
 
         const classification = classifyHealth(pointReadMs, rangeScanMs, walWriteMs, walSizeBytes, contentionDetected);
 
-        // Record snapshot
+        // Record SQLite snapshot
         await prisma.sqliteTelemetrySnapshot.create({
             data: {
                 pointReadMs,
@@ -114,6 +115,11 @@ async function run() {
                 degradedReasons: classification.degradedReasons,
                 activeCron: null
             }
+        });
+
+        // Record host system metrics (CPU %, RAM %, Disk %, Linux load, Node heap)
+        await recordSystemSnapshot("Telemetry Collector").catch((err) => {
+            console.warn(`[${timestamp}] Warning recording host system snapshot:`, err?.message);
         });
 
         // Prune snapshots older than 14 days
