@@ -7,6 +7,13 @@ import { getComputerDetails } from './ldap';
 
 const reverseDnsAsync = promisify(dns.reverse);
 const dnsCache = new Map<string, { hostname: string | null; timestamp: number }>();
+function setDnsCache(ip: string, hostname: string | null) {
+    if (dnsCache.size > 500) {
+        const oldest = dnsCache.keys().next().value;
+        if (oldest) dnsCache.delete(oldest);
+    }
+    setDnsCache(ip, hostname);
+}
 const DNS_CACHE_TTL = 30 * 60 * 1000; // 30 mins
 
 export async function resolveIpHostname(ip: string): Promise<string | null> {
@@ -19,7 +26,7 @@ export async function resolveIpHostname(ip: string): Promise<string | null> {
         const timeoutPromise = new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), 1500));
         const hostnames = await Promise.race([reverseDnsAsync(ip), timeoutPromise]);
         const hostname = hostnames && hostnames.length > 0 ? hostnames[0] : null;
-        dnsCache.set(ip, { hostname, timestamp: Date.now() });
+        setDnsCache(ip, hostname);
         return hostname;
     } catch {
         dnsCache.set(ip, { hostname: null, timestamp: Date.now() });

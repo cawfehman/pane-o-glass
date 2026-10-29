@@ -32,9 +32,24 @@ export function getCachedSnapshot(key: string, maxAgeMs = DEFAULT_TTL_MS): any |
 
 export function setCachedSnapshot(key: string, data: any): void {
     const cleanKey = (key || "").trim().toLowerCase();
+    const now = Date.now();
+
+    // Proactively evict expired snapshots
+    for (const [k, entry] of snapshotCache.entries()) {
+        if (now - entry.cachedAt > DEFAULT_TTL_MS) {
+            snapshotCache.delete(k);
+        }
+    }
+
+    // Hard LRU cap: keep at most 5 topology snapshots in memory (~20-50MB max)
+    if (snapshotCache.size >= 5) {
+        const oldestKey = snapshotCache.keys().next().value;
+        if (oldestKey) snapshotCache.delete(oldestKey);
+    }
+
     snapshotCache.set(cleanKey, {
         data,
-        cachedAt: Date.now()
+        cachedAt: now
     });
 }
 
