@@ -4,6 +4,7 @@ import { auth } from "@/lib/auth";
 import { hasPermission } from "@/app/actions/permissions";
 import { getReputationMetrics } from "@/lib/reputation-ledger";
 import { drainFirewallQueue, enqueueFirewallCommand } from "@/lib/firewall-queue";
+import { invalidateFeedCache } from "../route";
 import { logAudit } from "@/lib/audit";
 
 export const dynamic = "force-dynamic";
@@ -95,26 +96,86 @@ export async function POST(req: NextRequest) {
             }
 
             const cleanIp = ip.trim();
-            // Update in ledger
-            await prisma.residentialStrikeLedger.update({
+            const now = new Date();
+            const pardonReasonText = reason || `Manual SOC override pardon by ${userId}`;
+
+            // 1. Upsert in ResidentialStrikeLedger with clean post-pardon state and verified Citrix success immunity
+            await prisma.residentialStrikeLedger.upsert({
                 where: { ip: cleanIp },
-                data: {
+                update: {
                     status: "PARDONED",
                     strikeCount: 0,
-                    pardonReason: reason || `Manual SOC override pardon by ${userId}`
+                    isSpraySuspect: false,
+                    attemptedUsers: [],
+                    distinctUserCount: 0,
+                    hasCitrixSuccess: true,
+                    lastSuccessAt: now,
+                    pardonReason: pardonReasonText
+                },
+                create: {
+                    ip: cleanIp,
+                    status: "PARDONED",
+                    strikeCount: 0,
+                    targetPlatform: "CITRIX",
+                    isSpraySuspect: false,
+                    attemptedUsers: [],
+                    distinctUserCount: 0,
+                    hasCitrixSuccess: true,
+                    lastSuccessAt: now,
+                    firstSeen: now,
+                    lastSeen: now,
+                    expiresAt: new Date(now.getTime() + 30 * 24 * 3600 * 1000),
+                    pardonReason: pardonReasonText
                 }
             }).catch(() => {});
 
-            // Enqueue unshun
+            // 2. Remove from GuardianBlacklist so Citrix Auto-Guardian does not re-block on the next 2-minute cycle
+            await prisma.guardianBlacklist.deleteMany({
+                where: { ip: cleanIp }
+            }).catch(() => {});
+
+            // 3. Mark any active CVE Shuns as REMOVED
+            await prisma.netscalerCveShun.updateMany({
+                where: { ip: cleanIp },
+                data: {
+                    status: "REMOVED",
+                    removedAt: now,
+                    removedBy: userId,
+                    notes: pardonReasonText
+                }
+            }).catch(() => {});
+
+            // 4. Deactivate in FirewallShunStats
+            await prisma.firewallShunStats.updateMany({
+                where: { ip: cleanIp },
+                data: { isActive: false }
+            }).catch(() => {});
+
+            // 5. Cancel any pending SHUN commands in FirewallCommandQueue
+            await prisma.firewallCommandQueue.updateMany({
+                where: { ip: cleanIp, status: "PENDING", action: "SHUN" },
+                data: {
+                    status: "COMPLETED",
+                    executedAt: now,
+                    lastError: `Cancelled: Manually pardoned by ${userId}`
+                }
+            }).catch(() => {});
+
+            // 6. Invalidate Security Intelligence feed cache
+            invalidateFeedCache();
+
+            // 7. Enqueue unshun & drain immediately
             await enqueueFirewallCommand({
                 ip: cleanIp,
                 action: "UNSHUN",
+                targetHost: "all",
                 reason: `Manual SOC Pardon: ${reason || "SOC Analyst override"}`
             });
+            await drainFirewallQueue(50).catch(() => {});
 
             await logAudit(
                 "SOC_MANUAL_PARDON",
-                `SOC analyst manually pardoned ${cleanIp}. Reason: ${reason || "Manual override"}`,
+                `SOC analyst manually pardoned ${cleanIp} (cleared Ledger strikes, GuardianBlacklist, CVE shuns, and firewall shuns). Reason: ${reason || "Manual override"}`,
                 userId,
                 cleanIp
             );

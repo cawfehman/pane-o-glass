@@ -452,15 +452,41 @@ export async function POST(req: NextRequest) {
                 return NextResponse.json({ error: "No target IPs provided for bulk removal and pardon." }, { status: 400 });
             }
 
-            // 1. Reset in ResidentialStrikeLedger
-            await prisma.residentialStrikeLedger.updateMany({
-                where: { ip: { in: cleanIps } },
-                data: {
-                    status: "PARDONED",
-                    strikeCount: 0,
-                    pardonReason: reason || `SOC Bulk Manual Pardon by ${userId}`
-                }
-            });
+            // 1. Upsert in ResidentialStrikeLedger so pardoned IPs have verified success immunity and clean user state
+            const now = new Date();
+            const bulkReason = reason || `SOC Bulk Manual Pardon by ${userId}`;
+            await Promise.all(
+                cleanIps.map((cIp) =>
+                    prisma.residentialStrikeLedger.upsert({
+                        where: { ip: cIp },
+                        update: {
+                            status: "PARDONED",
+                            strikeCount: 0,
+                            isSpraySuspect: false,
+                            attemptedUsers: [],
+                            distinctUserCount: 0,
+                            hasCitrixSuccess: true,
+                            lastSuccessAt: now,
+                            pardonReason: bulkReason
+                        },
+                        create: {
+                            ip: cIp,
+                            status: "PARDONED",
+                            strikeCount: 0,
+                            targetPlatform: "CITRIX",
+                            isSpraySuspect: false,
+                            attemptedUsers: [],
+                            distinctUserCount: 0,
+                            hasCitrixSuccess: true,
+                            lastSuccessAt: now,
+                            firstSeen: now,
+                            lastSeen: now,
+                            expiresAt: new Date(now.getTime() + 30 * 24 * 3600 * 1000),
+                            pardonReason: bulkReason
+                        }
+                    }).catch(() => {})
+                )
+            );
 
             // 2. Delete from GuardianBlacklist
             await prisma.guardianBlacklist.deleteMany({
@@ -560,16 +586,38 @@ export async function POST(req: NextRequest) {
         }
 
         const cleanIp = ip.trim();
+        const now = new Date();
+        const singleReason = reason || `SOC manual pardon & feed removal by ${userId}`;
 
-        // 1. Reset in ResidentialStrikeLedger
-        await prisma.residentialStrikeLedger.updateMany({
+        // 1. Upsert in ResidentialStrikeLedger so pardoned IP has verified success immunity and clean user state
+        await prisma.residentialStrikeLedger.upsert({
             where: { ip: cleanIp },
-            data: {
+            update: {
                 status: "PARDONED",
                 strikeCount: 0,
-                pardonReason: reason || `SOC manual pardon & feed removal by ${userId}`
+                isSpraySuspect: false,
+                attemptedUsers: [],
+                distinctUserCount: 0,
+                hasCitrixSuccess: true,
+                lastSuccessAt: now,
+                pardonReason: singleReason
+            },
+            create: {
+                ip: cleanIp,
+                status: "PARDONED",
+                strikeCount: 0,
+                targetPlatform: "CITRIX",
+                isSpraySuspect: false,
+                attemptedUsers: [],
+                distinctUserCount: 0,
+                hasCitrixSuccess: true,
+                lastSuccessAt: now,
+                firstSeen: now,
+                lastSeen: now,
+                expiresAt: new Date(now.getTime() + 30 * 24 * 3600 * 1000),
+                pardonReason: singleReason
             }
-        });
+        }).catch(() => {});
 
         // 2. Remove from GuardianBlacklist
         await prisma.guardianBlacklist.deleteMany({

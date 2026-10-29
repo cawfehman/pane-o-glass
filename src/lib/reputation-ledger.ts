@@ -281,7 +281,18 @@ export async function recordAuthFailure(event: AuthFailureEvent) {
     }
 
     // Existing entry found in ledger:
-    const usersSet = new Set(existing.attemptedUsers || []);
+    const wasPardonedOrWhitelisted =
+        existing.status === "PARDONED" || existing.status === "WHITELISTED" || existing.strikeCount === 0;
+    const hasPriorSuccess = Boolean(
+        existing.hasCitrixSuccess ||
+        existing.hasVpnSuccess ||
+        existing.lastSuccessAt ||
+        wasPardonedOrWhitelisted
+    );
+
+    // Do not carry over pre-pardon attempted usernames into a fresh post-pardon evaluation
+    const baseUsers = wasPardonedOrWhitelisted ? [] : (existing.attemptedUsers || []);
+    const usersSet = new Set(baseUsers);
     usersSet.add(cleanUser);
     const distinctCount = usersSet.size;
     const attemptedUsersArray = Array.from(usersSet);
@@ -289,8 +300,55 @@ export async function recordAuthFailure(event: AuthFailureEvent) {
     // Pillar 1 Violation: IP tried multiple distinct usernames -> Guaranteed spray botnet
     const isMultiUserSpray = distinctCount >= 2;
 
-    if (existing.strikeCount === 1) {
-        // Escalate from Strike 1 to Strike 2 (Active Enforced)
+    const msSinceLastFailure = existing.lastSeen ? now.getTime() - new Date(existing.lastSeen).getTime() : Infinity;
+    const succeededSinceLastFailure = Boolean(
+        existing.lastSuccessAt && existing.lastSeen && new Date(existing.lastSuccessAt) >= new Date(existing.lastSeen)
+    );
+    const isCompanionRetry = msSinceLastFailure >= 0 && msSinceLastFailure <= 90_000;
+    const isIsolatedSingleFailureWithPriorSuccess =
+        hasPriorSuccess && (wasPardonedOrWhitelisted || succeededSinceLastFailure || msSinceLastFailure > 15 * 60 * 1000);
+
+    // Protected Single Failure Rule:
+    // If an IP was pardoned/whitelisted or has prior successful authentication history,
+    // a single isolated failure (or companion syslog event within 90s) for a valid corporate user
+    // must NOT escalate strikes or trigger a re-block unless multiple distinct usernames are attempted
+    // or repeated failures occur within the active 15-minute window.
+    if (
+        !isMultiUserSpray &&
+        !isNonCorporateAttempt &&
+        existing.strikeCount <= 1 &&
+        (wasPardonedOrWhitelisted || isCompanionRetry || isIsolatedSingleFailureWithPriorSuccess)
+    ) {
+        const expiresAt = new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000);
+        const keepPardonedStatus = wasPardonedOrWhitelisted || hasPriorSuccess;
+
+        await prisma.residentialStrikeLedger.update({
+            where: { ip: cleanIp },
+            data: {
+                strikeCount: 1,
+                status: keepPardonedStatus ? "PARDONED" : "WATCHING",
+                lastSeen: now,
+                expiresAt,
+                targetPlatform: existing.targetPlatform === platform ? platform : "BOTH",
+                attemptedUsers: [cleanUser],
+                distinctUserCount: 1,
+                isSpraySuspect: false,
+                ispOrg: org || existing.ispOrg,
+                asn: asn || existing.asn,
+                country: country || existing.country
+            }
+        });
+
+        return {
+            tier: "RESIDENTIAL",
+            strike: 1,
+            action: hasPriorSuccess ? "PRIOR_SUCCESS_SINGLE_FAILURE_IGNORED" : "WATCHLIST_UPDATED",
+            ip: cleanIp
+        };
+    }
+
+    if (existing.strikeCount <= 1) {
+        // Escalate from Strike 0/1 to Strike 2 (Active Enforced)
         const expiresAt = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000); // 7-day rolling TTL
         const dynamicHold = await getDynamicHoldExpiresAt();
 
@@ -379,7 +437,8 @@ export async function recordAuthFailure(event: AuthFailureEvent) {
 
 /**
  * Record a verified successful authentication with MFA.
- * Applies the 4-Pillar Model to grant an instant pardon if eligible.
+ * Applies the 4-Pillar Model to grant an instant pardon if eligible, and persists
+ * Citrix/VPN authentication success history so future single failures do not trigger strikes.
  */
 export async function recordAuthSuccess(event: AuthSuccessEvent) {
     const { ip, username, platform } = event;
@@ -392,7 +451,12 @@ export async function recordAuthSuccess(event: AuthSuccessEvent) {
         where: { ip: cleanIp }
     });
 
-    if (!existing) return null;
+    const now = new Date();
+    const isCitrix = platform === "CITRIX";
+
+    if (!existing) {
+        return null;
+    }
 
     // 4-Pillar Validation for Auto-Pardon:
     // Pillar 1: IP only ever attempted 1 username
@@ -403,24 +467,36 @@ export async function recordAuthSuccess(event: AuthSuccessEvent) {
     const isUserMatch = attemptedUsers.length === 0 || attemptedUsers[0].toLowerCase() === cleanUser;
 
     if (isSingleUser && isUserMatch && !existing.isSpraySuspect) {
-        // Grant Instant Pardon!
-        const now = new Date();
+        const wasEnforcedOrQuarantined = existing.status === "ENFORCED" || existing.status === "QUARANTINED";
+
+        // Grant Instant Pardon & persist platform success flag!
         await prisma.residentialStrikeLedger.update({
             where: { ip: cleanIp },
             data: {
                 status: "PARDONED",
                 strikeCount: 0,
+                isSpraySuspect: false,
+                attemptedUsers: cleanUser && cleanUser !== "anonymous" ? [cleanUser] : [],
+                distinctUserCount: cleanUser && cleanUser !== "anonymous" ? 1 : 0,
+                hasCitrixSuccess: isCitrix ? true : existing.hasCitrixSuccess,
+                hasVpnSuccess: !isCitrix ? true : existing.hasVpnSuccess,
                 lastSuccessAt: now,
                 pardonReason: `Successful ${platform} authentication with MFA by user ${cleanUser}`
             }
         });
 
-        // Enqueue immediate UNSHUN if a shun was active
-        await enqueueFirewallCommand({
-            ip: cleanIp,
-            action: "UNSHUN",
-            reason: `Auto-Pardon: Successful ${platform} MFA authentication by ${cleanUser}`
-        });
+        // Ensure IP is also cleared from GuardianBlacklist and active Shun stats if it was blocked
+        await prisma.guardianBlacklist.deleteMany({ where: { ip: cleanIp } }).catch(() => {});
+        await prisma.firewallShunStats.updateMany({ where: { ip: cleanIp }, data: { isActive: false } }).catch(() => {});
+
+        if (wasEnforcedOrQuarantined || existing.shunPushedAt) {
+            // Enqueue immediate UNSHUN if a shun was active
+            await enqueueFirewallCommand({
+                ip: cleanIp,
+                action: "UNSHUN",
+                reason: `Auto-Pardon: Successful ${platform} MFA authentication by ${cleanUser}`
+            });
+        }
 
         await logAudit(
             "RESIDENTIAL_STRIKE_PARDONED",
@@ -435,6 +511,16 @@ export async function recordAuthSuccess(event: AuthSuccessEvent) {
             username: cleanUser
         };
     }
+
+    // Even if multi-user spray disqualified instant pardon, record the platform success timestamp
+    await prisma.residentialStrikeLedger.update({
+        where: { ip: cleanIp },
+        data: {
+            hasCitrixSuccess: isCitrix ? true : existing.hasCitrixSuccess,
+            hasVpnSuccess: !isCitrix ? true : existing.hasVpnSuccess,
+            lastSuccessAt: now
+        }
+    }).catch(() => {});
 
     return {
         action: "PARDON_DISQUALIFIED_MULTI_USER",

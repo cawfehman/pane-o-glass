@@ -16,10 +16,29 @@ import {
     formatImprivataFailureReason,
 } from "@/lib/imprivata-graylog";
 import { getAdaptiveSearchWindow } from "@/lib/graylog-backlog-guardian";
+import { recordAuthSuccess } from "@/lib/reputation-ledger";
 
 const httpsAgent = new https.Agent({
     rejectUnauthorized: false,
 });
+
+/**
+ * NetScaler often emits 2-3 companion syslog events for a single failed login attempt
+ * (e.g., AAA_POLICY_FAILED followed within 0-3s by AAA_LOGIN_FAILED).
+ * Coalesces epochs occurring within `coalesceWindowMs` (default 5000ms) into a single
+ * authentication attempt so a single mistyped password or MFA timeout is counted as 1 attempt.
+ */
+function coalesceAuthAttemptEpochs(epochs: number[], coalesceWindowMs = 5000): number[] {
+    if (epochs.length <= 1) return epochs.slice();
+    const sorted = epochs.slice().sort((a, b) => a - b);
+    const coalesced: number[] = [sorted[0]];
+    for (let i = 1; i < sorted.length; i++) {
+        if (sorted[i] - coalesced[coalesced.length - 1] > coalesceWindowMs) {
+            coalesced.push(sorted[i]);
+        }
+    }
+    return coalesced;
+}
 
 export type CitrixIssueCategory =
     | "AAA_LOGIN_FAILED"
@@ -754,11 +773,55 @@ export async function analyzeCitrixLoginTriage(
         });
     }
 
-    // Enrich all external IPs with IPLocate/Cache, Shun DB, Guardian Blacklist, Guardian Watchlist, and VPN History
+    // Enrich all external IPs with IPLocate/Cache, Shun DB, Guardian Blacklist, Guardian Watchlist, Reputation Ledger, and 7-Day Citrix/VPN Success History
     const externalIps = Array.from(uniqueExternalIpsSet);
     const ipMetaEntries: { ip: string; meta: IpMetaInfo }[] = await Promise.all(
         externalIps.map(async (ip) => ({ ip, meta: await enrichIpMetadata(ip, true) }))
     );
+
+    const sevenDayCitrixSuccessMap = new Map<string, number>();
+    const sevenDayLookbackPromise =
+        externalIps.length > 0 && adaptive.effectiveRangeSeconds < 7 * 86400
+            ? (async () => {
+                  try {
+                      // Query up to 40 candidate failure IPs at a time for 7-day Citrix login success history
+                      const ipTerms = externalIps
+                          .slice(0, 40)
+                          .map((ip) => `"${ip}"`)
+                          .join(" OR ");
+                      const ipClause = `(src_ip:(${ipTerms}) OR source_ip:(${ipTerms}) OR client_ip:(${ipTerms}) OR ns_remote_ip:(${ipTerms}) OR "${externalIps
+                          .slice(0, 40)
+                          .join('" OR "')}")`;
+                      const sevenDayQuery = `${baseStream} AND ${ipClause} AND (ns_action:(LOGIN OR ICASTART) OR (ns_module:SSLVPN AND "response-200"))`;
+                      const res7d = await axios.get(`${baseUrl}/api/search/universal/relative`, {
+                          params: {
+                              query: sevenDayQuery,
+                              range: 7 * 86400,
+                              limit: 1000,
+                              fields,
+                              sort: "timestamp:desc",
+                          },
+                          httpsAgent,
+                          headers: {
+                              Authorization: authHeader,
+                              Accept: "application/json",
+                              "X-Requested-By": "pane-o-glass",
+                          },
+                          timeout: 12000,
+                      });
+                      const msgs7d: any[] = res7d.data?.messages || [];
+                      for (const m of msgs7d) {
+                          const msgObj = m.message || {};
+                          const sIp = NetscalerGraylogClient.extractSourceIp(msgObj);
+                          if (sIp && !isPrivateIp(sIp)) {
+                              sevenDayCitrixSuccessMap.set(sIp, (sevenDayCitrixSuccessMap.get(sIp) || 0) + 1);
+                          }
+                      }
+                  } catch {
+                      // Non-fatal fallback if Graylog 7-day lookback times out
+                  }
+              })()
+            : Promise.resolve();
 
     const [
         shunEntries,
@@ -767,6 +830,7 @@ export async function analyzeCitrixLoginTriage(
         guardianWatchEntries,
         asnBlacklistEntries,
         vpnSuccessEntries,
+        ledgerEntries,
     ] = await Promise.all([
         externalIps.length > 0
             ? prisma.firewallShunStats.findMany({ where: { ip: { in: externalIps }, isActive: true } }).catch(() => [])
@@ -788,8 +852,39 @@ export async function analyzeCitrixLoginTriage(
                   distinct: ["sourceIp"],
               }).catch(() => [])
             : Promise.resolve([]),
+        externalIps.length > 0
+            ? prisma.residentialStrikeLedger.findMany({ where: { ip: { in: externalIps } } }).catch(() => [])
+            : Promise.resolve([]),
+        sevenDayLookbackPromise,
     ]);
 
+    // Persist observed Citrix login successes onto ResidentialStrikeLedger (and trigger 4-Pillar Auto-Pardon if eligible)
+    const successIpsToSync = new Set<string>([
+        ...Array.from(citrixSuccessByIp.keys()),
+        ...Array.from(sevenDayCitrixSuccessMap.keys()),
+    ]);
+    if (successIpsToSync.size > 0) {
+        prisma.residentialStrikeLedger
+            .findMany({
+                where: { ip: { in: Array.from(successIpsToSync) } },
+            })
+            .then(async (rows) => {
+                for (const row of rows) {
+                    const attempted = row.attemptedUsers || [];
+                    const singleUser = attempted.length === 1 ? attempted[0] : "citrix-authenticated-user";
+                    await recordAuthSuccess({
+                        ip: row.ip,
+                        username: singleUser,
+                        platform: "CITRIX",
+                    }).catch(() => {});
+                }
+            })
+            .catch(() => {});
+    }
+
+    const ledgerMap = new Map<string, (typeof ledgerEntries)[number]>(
+        ledgerEntries.map((l) => [l.ip, l])
+    );
     const ipMetaMap = new Map<string, IpMetaInfo>(ipMetaEntries.map((e) => [e.ip, e.meta]));
     const shunMap = new Map<string, Set<string>>();
     for (const s of shunEntries) {
@@ -835,7 +930,28 @@ export async function analyzeCitrixLoginTriage(
 
     const ipEvaluations: CitrixIpEvaluation[] = [];
 
-    for (const [ip, ipEvents] of ipGroups.entries()) {
+    for (const [ip, rawIpEvents] of ipGroups.entries()) {
+        const ledgerEntry = ledgerMap.get(ip);
+        const isPardonedOrWhitelisted =
+            ledgerEntry?.status === "PARDONED" || ledgerEntry?.status === "WHITELISTED";
+
+        // Filter out pre-pardon failure events if the IP was manually or automatically pardoned after those events occurred
+        const pardonCutoffMs =
+            isPardonedOrWhitelisted && ledgerEntry?.updatedAt
+                ? new Date(ledgerEntry.updatedAt).getTime()
+                : 0;
+        const ipEvents =
+            pardonCutoffMs > 0
+                ? rawIpEvents.filter((ev) => {
+                      const evMs = new Date(ev.timestamp).getTime();
+                      return isNaN(evMs) || evMs > pardonCutoffMs;
+                  })
+                : rawIpEvents;
+
+        if (ipEvents.length === 0) {
+            continue;
+        }
+
         const meta = ipMetaMap.get(ip) || {
             countryCode: ipEvents[0]?.countryCode || "Unknown",
             city: ipEvents[0]?.cityName || "N/A",
@@ -905,16 +1021,24 @@ export async function analyzeCitrixLoginTriage(
 
         const targetedUsers = Array.from(userMap.values());
         const nonAnonUsers = targetedUsers.filter((u) => u.username.toLowerCase() !== "anonymous");
-        const citrixSucc = citrixSuccessByIp.get(ip)?.count || 0;
-        const hasVpnSuccessHistory = vpnSuccessSet.has(ip);
+        const windowCitrixSucc = citrixSuccessByIp.get(ip)?.count || 0;
+        const sevenDayCitrixSucc = sevenDayCitrixSuccessMap.get(ip) || 0;
+        const citrixSucc = Math.max(windowCitrixSucc, sevenDayCitrixSucc, ledgerEntry?.hasCitrixSuccess ? 1 : 0);
+        const hasCitrixSuccessHistory =
+            citrixSucc > 0 ||
+            Boolean(ledgerEntry?.hasCitrixSuccess) ||
+            isPardonedOrWhitelisted;
+        const hasVpnSuccessHistory = vpnSuccessSet.has(ip) || Boolean(ledgerEntry?.hasVpnSuccess);
+        const hasAnySuccessHistory = hasCitrixSuccessHistory || hasVpnSuccessHistory;
         const totalFailures = ipEvents.length;
 
-        // Calculate maximum authentication/policy failures within any rolling 10-minute (600s) burst window
-        const authFailureEpochs = ipEvents
+        // Calculate maximum deduplicated authentication attempts within any rolling 10-minute (600s) burst window.
+        // Coalesces companion AAA_POLICY_FAILED + AAA_LOGIN_FAILED syslog messages within 5s of each other into 1 attempt.
+        const rawAuthFailureEpochs = ipEvents
             .filter((ev) => ev.category === "AAA_LOGIN_FAILED" || ev.category === "AAA_POLICY_FAILED")
             .map((ev) => new Date(ev.timestamp).getTime())
-            .filter((t) => !isNaN(t))
-            .sort((a, b) => a - b);
+            .filter((t) => !isNaN(t));
+        const authFailureEpochs = coalesceAuthAttemptEpochs(rawAuthFailureEpochs, 5000);
 
         let maxAuthFailuresIn10m = 0;
         let windowStartIdx = 0;
@@ -1003,10 +1127,10 @@ export async function analyzeCitrixLoginTriage(
                 label: `${maxAuthFailuresIn10m} Auth Failures in ≤10m`,
                 severity: "CRITICAL",
                 points: 55,
-                detail: `IP triggered ${maxAuthFailuresIn10m} failed authentication attempts within a 10-minute window (threshold: ${config.minFailuresForBlock}).`,
+                detail: `IP triggered ${maxAuthFailuresIn10m} distinct failed authentication attempts within a 10-minute window (threshold: ${config.minFailuresForBlock}).`,
             });
             riskScore += 55;
-        } else if (totalFailures >= config.minFailuresForBlock && citrixSucc === 0 && !hasVpnSuccessHistory) {
+        } else if (totalFailures >= config.minFailuresForBlock && !hasAnySuccessHistory) {
             triggeredRules.push({
                 code: "HIGH_FAILURE_VOLUME",
                 label: `Repeated Failures (${totalFailures}x, 0 Success)`,
@@ -1042,7 +1166,7 @@ export async function analyzeCitrixLoginTriage(
         }
 
         // 6. Anonymous STA ticket validation probing without valid session
-        if (staFailedCount >= config.minFailuresForBlock && nonAnonUsers.length === 0 && citrixSucc === 0 && !hasVpnSuccessHistory) {
+        if (staFailedCount >= config.minFailuresForBlock && nonAnonUsers.length === 0 && !hasAnySuccessHistory) {
             triggeredRules.push({
                 code: "REPEATED_STA_TICKET_ABUSE",
                 label: `Repeated STA Ticket Failures (${staFailedCount}x)`,
@@ -1076,8 +1200,7 @@ export async function analyzeCitrixLoginTriage(
                 allUsersValidAd &&
                 notFoundAdUsers.length === 0 &&
                 invalidFormatUsers.length === 0 &&
-                (citrixSucc > 0 ||
-                    hasVpnSuccessHistory ||
+                (hasAnySuccessHistory ||
                     (ipImpMfaTimeoutCount > 0 && ipImpBadPwdCount === 0) ||
                     maxAuthFailuresIn10m < config.minFailuresForBlock)
             ) {
@@ -1106,7 +1229,7 @@ export async function analyzeCitrixLoginTriage(
                         detail: `Residential IP attempted non-existent/non-corporate username(s): ${[...notFoundAdUsers, ...invalidFormatUsers].map((u) => u.username).slice(0, 4).join(", ")}.`,
                     });
                     riskScore += 65;
-                } else if (maxAuthFailuresIn10m >= config.minFailuresForBlock && citrixSucc === 0 && !hasVpnSuccessHistory) {
+                } else if (maxAuthFailuresIn10m >= config.minFailuresForBlock && !hasAnySuccessHistory) {
                     isResidentialAbusive = true;
                     residentialBlockReason = "Rapid Auth Burst (≥5 Failures / 10m)";
                     triggeredRules.push({
@@ -1117,7 +1240,7 @@ export async function analyzeCitrixLoginTriage(
                         detail: `Residential IP executed ${maxAuthFailuresIn10m} authentication failures in ≤10 minutes with 0 successful logins.`,
                     });
                     riskScore += 60;
-                } else if (totalFailures >= config.minFailuresForBlock && citrixSucc === 0 && !hasVpnSuccessHistory) {
+                } else if (totalFailures >= config.minFailuresForBlock && !hasAnySuccessHistory) {
                     isResidentialAbusive = true;
                     residentialBlockReason = "High Failure Volume (0 Success)";
                 }
@@ -1155,14 +1278,23 @@ export async function analyzeCitrixLoginTriage(
             riskScore = Math.max(riskScore, 85);
             verdictReason = `Abusive Residential IP (${meta.companyName}): ${residentialBlockReason}`;
         } else if (
+            hasAnySuccessHistory &&
+            countryCode === "US" &&
+            nonAnonUsers.length === 0 &&
+            maxAuthFailuresIn10m < config.minFailuresForBlock
+        ) {
+            verdict = "LEGIT_USER_ISSUE";
+            riskScore = Math.min(riskScore, 10);
+            verdictReason = `Benign Citrix Workspace STA ticket or session cookie reconnect (${staFailedCount}x STA, ${cookieFailedCount}x Cookie) from US IP with verified Citrix/VPN login history or prior pardon.`;
+            protectionNote = "Guardian Protected: IP has verified Citrix/VPN authentication history or prior SOC pardon.";
+        } else if (
             config.protectIspWithValidAdUser &&
             countryCode === "US" &&
             allUsersValidAd &&
             notFoundAdUsers.length === 0 &&
             invalidFormatUsers.length === 0 &&
             (isSingleUser || isProtectedHousehold) &&
-            (citrixSucc > 0 ||
-                hasVpnSuccessHistory ||
+            (hasAnySuccessHistory ||
                 (ipImpMfaTimeoutCount > 0 && ipImpBadPwdCount === 0) ||
                 (meta.isResidentialIsp && maxAuthFailuresIn10m < config.minFailuresForBlock))
         ) {
@@ -1177,15 +1309,15 @@ export async function analyzeCitrixLoginTriage(
                 if (ipImpMfaTimeoutCount > 0 && ipImpBadPwdCount === 0 && citrixSucc === 0) {
                     verdictReason = `Imprivata Confirmed AD Password OK for ${userLabel}, but user did not accept the smartphone Confirm ID MFA Push in time (${ipImpMfaTimeoutCount}x MFA timeout).`;
                     protectionNote = "Guardian Protected: Imprivata RADIUS verified user's AD password succeeded (only 2FA push timed out).";
-                } else if (citrixSucc > 0 || u.succeededLater) {
+                } else if (hasCitrixSuccessHistory || u.succeededLater) {
                     verdictReason = `Legitimate AD user ${userLabel} had ${totalFailures} failure(s)${
                         ipImpBadPwdCount > 0
                             ? ` (${ipImpBadPwdCount}x Imprivata AD password/policy retry)`
                             : ipImpMfaTimeoutCount > 0
                             ? ` (${ipImpMfaTimeoutCount}x Imprivata MFA push timeout)`
                             : " (e.g., Imprivata/LDAP retry)"
-                    } and logged into Citrix successfully (${citrixSucc} session events).`;
-                    protectionNote = "Guardian Protected: Verified AD user with successful Citrix login from this US IP.";
+                    } from an IP with verified Citrix login history or prior SOC pardon.`;
+                    protectionNote = "Guardian Protected: Verified AD user with successful Citrix login history or pardon on this US IP.";
                 } else if (hasVpnSuccessHistory) {
                     verdictReason = `Legitimate AD user ${userLabel} with prior successful AnyConnect VPN history from this IP.`;
                     protectionNote = "Guardian Protected: IP has verified Cooper VPN success history and valid AD user.";
@@ -1860,6 +1992,15 @@ export async function runCitrixLoginAutoShunCycle(options?: {
     }
     const actorUserId = options?.triggeredBy || guardianUser?.id || "Guardian";
 
+    const evalIps = triage.ipEvaluations.map((e) => e.ip);
+    const existingLedgerRows =
+        evalIps.length > 0
+            ? await prisma.residentialStrikeLedger
+                  .findMany({ where: { ip: { in: evalIps } } })
+                  .catch(() => [])
+            : [];
+    const existingLedgerMap = new Map(existingLedgerRows.map((r) => [r.ip, r]));
+
     const candidatesToShun: {
         ipEval: CitrixIpEvaluation;
         authFailures: number;
@@ -1869,9 +2010,32 @@ export async function runCitrixLoginAutoShunCycle(options?: {
 
     for (const ipEval of triage.ipEvaluations) {
         // Continuous Real-Time Integration into 3-Strike Reputation Ledger
-        const uList = ipEval.targetedUsers.map((u) => u.username);
-        const isMultiUser = uList.length >= 2;
-        const totalFails = ipEval.loginFailedCount + ipEval.policyFailedCount || ipEval.totalFailures || 1;
+        const existingLedger = existingLedgerMap.get(ipEval.ip);
+        const nonAnonUsers = ipEval.targetedUsers.filter((u) => u.username.toLowerCase() !== "anonymous");
+        const uList = nonAnonUsers.length > 0 ? nonAnonUsers.map((u) => u.username) : ipEval.targetedUsers.map((u) => u.username);
+        const isMultiUser = nonAnonUsers.length >= 2;
+        const hasInvalidOrNotFoundUser = nonAnonUsers.some(
+            (u) => !u.isCorporateFormat || u.adStatus === "NOT_FOUND"
+        );
+        const allUsersValidAd =
+            nonAnonUsers.length > 0 &&
+            nonAnonUsers.every((u) => u.adStatus === "ACTIVE" || u.adStatus === "ENABLED" || u.adStatus === "LOCKED");
+        const isSingleCorp =
+            nonAnonUsers.length === 1 &&
+            isCorporateUsernameFormat(nonAnonUsers[0].username) &&
+            !hasInvalidOrNotFoundUser;
+
+        const hasPriorAuthSuccessOrPardon = Boolean(
+            ipEval.citrixSuccessCount > 0 ||
+            ipEval.hasVpnSuccessHistory ||
+            existingLedger?.hasCitrixSuccess ||
+            existingLedger?.hasVpnSuccess ||
+            existingLedger?.status === "PARDONED" ||
+            existingLedger?.status === "WHITELISTED" ||
+            existingLedger?.lastSuccessAt
+        );
+
+        const totalFails = ipEval.maxAuthFailuresIn10m || ipEval.loginFailedCount + ipEval.policyFailedCount || ipEval.totalFailures || 1;
         const authFailures = ipEval.loginFailedCount + ipEval.policyFailedCount;
         const matchesBlacklistedAsnRule =
             cfg.shunSingleFailureOnBlacklistedAsn &&
@@ -1879,23 +2043,38 @@ export async function runCitrixLoginAutoShunCycle(options?: {
             (authFailures >= 1 || ipEval.totalFailures >= 1);
         const now = new Date();
 
-        if (ipEval.isOnWatchlist || ipEval.verdict === "LEGIT_USER_ISSUE") {
-            // Protected Corporate Staff Issue -> Ingest as Pardoned in Reputation Ledger
+        // 1. Protected Watchlist or Legitimate User / Prior Success Single-Failure Immunity:
+        // A single failure (or isolated retry below the 10-minute burst threshold) from an IP with
+        // prior successful Citrix/VPN authentications or a prior pardon must NEVER add strikes or re-block
+        // unless multiple distinct usernames are attempted or non-existent accounts are probed.
+        const isProtectedPriorSuccessSingleFailure =
+            hasPriorAuthSuccessOrPardon &&
+            !isMultiUser &&
+            !hasInvalidOrNotFoundUser &&
+            !matchesBlacklistedAsnRule &&
+            !ipEval.isOnGuardianBlacklist &&
+            ipEval.maxAuthFailuresIn10m < cfg.minAuthFailuresIn10m;
+
+        if (ipEval.isOnWatchlist || ipEval.verdict === "LEGIT_USER_ISSUE" || isProtectedPriorSuccessSingleFailure) {
+            // Protected Corporate Staff Issue or Verified Prior-Success IP -> Keep Pardoned (0 strikes)
             prisma.residentialStrikeLedger.upsert({
                 where: { ip: ipEval.ip },
                 update: {
                     lastSeen: now,
-                    attemptedUsers: uList,
-                    distinctUserCount: uList.length,
+                    status: existingLedger?.status === "WHITELISTED" ? "WHITELISTED" : "PARDONED",
+                    strikeCount: 0,
+                    isSpraySuspect: false,
+                    attemptedUsers: nonAnonUsers.map((u) => u.username),
+                    distinctUserCount: nonAnonUsers.length,
                     hasCitrixSuccess: true
                 },
                 create: {
                     ip: ipEval.ip,
-                    strikeCount: 1,
+                    strikeCount: 0,
                     status: "PARDONED",
                     targetPlatform: "CITRIX",
-                    attemptedUsers: uList,
-                    distinctUserCount: uList.length,
+                    attemptedUsers: nonAnonUsers.map((u) => u.username),
+                    distinctUserCount: nonAnonUsers.length,
                     isSpraySuspect: false,
                     hasCitrixSuccess: true,
                     firstSeen: now,
@@ -1907,24 +2086,64 @@ export async function runCitrixLoginAutoShunCycle(options?: {
                     city: ipEval.cityName
                 }
             }).catch(() => {});
-        } else {
-            // Low-and-Slow Attack vs Employee Friction Ingestion
-            const isSingleCorp = uList.length === 1 && isCorporateUsernameFormat(uList[0]);
+
+            protectedCount++;
+            continue;
+        }
+
+        // 2. Single Corporate Valid AD User Immunity (First-Time / Unverified IP):
+        // Never assign Strike 3 Quarantine or auto-shun a single valid corporate user below the burst threshold
+        if (
+            isSingleCorp &&
+            allUsersValidAd &&
+            !matchesBlacklistedAsnRule &&
+            !ipEval.isOnGuardianBlacklist &&
+            ipEval.maxAuthFailuresIn10m < cfg.minAuthFailuresIn10m
+        ) {
+            prisma.residentialStrikeLedger.upsert({
+                where: { ip: ipEval.ip },
+                update: {
+                    lastSeen: now,
+                    strikeCount: 1,
+                    status: "WATCHING",
+                    targetPlatform: "CITRIX",
+                    attemptedUsers: nonAnonUsers.map((u) => u.username),
+                    distinctUserCount: 1,
+                    isSpraySuspect: false
+                },
+                create: {
+                    ip: ipEval.ip,
+                    strikeCount: 1,
+                    status: "WATCHING",
+                    targetPlatform: "CITRIX",
+                    attemptedUsers: nonAnonUsers.map((u) => u.username),
+                    distinctUserCount: 1,
+                    isSpraySuspect: false,
+                    firstSeen: now,
+                    lastSeen: now,
+                    expiresAt: new Date(now.getTime() + 14 * 24 * 3600 * 1000),
+                    ispOrg: ipEval.companyName,
+                    asn: ipEval.asn ? String(ipEval.asn).replace(/^AS/, '') : null,
+                    country: ipEval.countryCode,
+                    city: ipEval.cityName
+                }
+            }).catch(() => {});
+
+            protectedCount++;
+            continue;
+        }
+
+        // 3. Low-and-Slow Attack / Spray / Burst Ingestion
+        {
             let strikeCount = 1;
             let status = "WATCHING";
             let holdDays = 14;
 
-            if (isSingleCorp && !matchesBlacklistedAsnRule && !ipEval.isOnGuardianBlacklist) {
-                // Valid corporate employee connection experiencing mistyped password or policy failure
-                // Strict corporate staff immunity: NEVER assign Strike 3 Quarantine to a single employee account
-                strikeCount = 1;
-                status = "WATCHING";
-                holdDays = 14;
-            } else if (ipEval.isFullyShunned || ipEval.verdict === "ABUSIVE_BLOCK" || matchesBlacklistedAsnRule) {
+            if (ipEval.isFullyShunned || ipEval.verdict === "ABUSIVE_BLOCK" || matchesBlacklistedAsnRule) {
                 strikeCount = 3;
                 status = "QUARANTINED";
                 holdDays = 90;
-            } else if (isMultiUser || (uList.length >= 2)) {
+            } else if (isMultiUser) {
                 // Multi-user spray
                 strikeCount = 2;
                 status = "ENFORCED";
@@ -1940,6 +2159,7 @@ export async function runCitrixLoginAutoShunCycle(options?: {
                 update: {
                     lastSeen: now,
                     strikeCount: Math.max(strikeCount, 1),
+                    status,
                     targetPlatform: "CITRIX",
                     attemptedUsers: uList,
                     distinctUserCount: uList.length,
@@ -1968,10 +2188,6 @@ export async function runCitrixLoginAutoShunCycle(options?: {
         // If it is only partially shunned (e.g. 1/4), it MUST be reconciled to prevent failover vulnerability!
         if (ipEval.isFullyShunned) {
             alreadyShunnedCount++;
-            continue;
-        }
-        if (ipEval.isOnWatchlist || ipEval.verdict === "LEGIT_USER_ISSUE") {
-            protectedCount++;
             continue;
         }
 
@@ -2210,7 +2426,7 @@ export async function reevaluateSingleCitrixIp(
 
     const adaptive = await getAdaptiveSearchWindow("OG_GRAYLOG", rangeSeconds);
 
-    const [failRes, successRes, ipMeta, vpnHist, shunDbRecord, shunStats, blEntry, watchEntry, asnBlEntries] =
+    const [failRes, successRes, ipMeta, vpnHist, shunDbRecord, shunStats, blEntry, watchEntry, asnBlEntries, ledgerEntry] =
         await Promise.all([
             axios
                 .get(`${baseUrl}/api/search/universal/relative`, {
@@ -2234,7 +2450,7 @@ export async function reevaluateSingleCitrixIp(
                 .get(`${baseUrl}/api/search/universal/relative`, {
                     params: {
                         query: successQuery,
-                        range: adaptive.effectiveRangeSeconds,
+                        range: Math.max(adaptive.effectiveRangeSeconds, 7 * 86400),
                         limit: 150,
                         fields,
                         sort: "timestamp:desc",
@@ -2269,6 +2485,9 @@ export async function reevaluateSingleCitrixIp(
             prisma.guardianAsnBlacklist.findMany({
                 select: { asn: true },
             }).catch(() => []),
+            prisma.residentialStrikeLedger.findUnique({
+                where: { ip: cleanIp },
+            }).catch(() => null),
         ]);
 
     const rawFailures: any[] = failRes.data?.messages || [];
@@ -2460,11 +2679,11 @@ export async function reevaluateSingleCitrixIp(
         });
     }
 
-    authFailureEpochs.sort((a, b) => a - b);
+    const coalescedAuthEpochs = coalesceAuthAttemptEpochs(authFailureEpochs, 5000);
     let maxAuthFailuresIn10m = 0;
     let windowStartIdx = 0;
-    for (let i = 0; i < authFailureEpochs.length; i++) {
-        while (authFailureEpochs[i] - authFailureEpochs[windowStartIdx] > 600_000) {
+    for (let i = 0; i < coalescedAuthEpochs.length; i++) {
+        while (coalescedAuthEpochs[i] - coalescedAuthEpochs[windowStartIdx] > 600_000) {
             windowStartIdx++;
         }
         const count = i - windowStartIdx + 1;
@@ -2474,6 +2693,13 @@ export async function reevaluateSingleCitrixIp(
     const targetedUsers = Array.from(userMap.values());
     const nonAnonUsers = targetedUsers.filter((u) => u.username.toLowerCase() !== "anonymous");
     const totalFailures = events.length;
+    const isPardonedOrWhitelisted = ledgerEntry?.status === "PARDONED" || ledgerEntry?.status === "WHITELISTED";
+    if (ledgerEntry?.hasCitrixSuccess && citrixSucc === 0) {
+        citrixSucc = 1;
+    }
+    const hasCitrixSuccessHistory = citrixSucc > 0 || Boolean(ledgerEntry?.hasCitrixSuccess) || isPardonedOrWhitelisted;
+    const hasVpnSuccessHistory = Boolean(vpnHist) || Boolean(ledgerEntry?.hasVpnSuccess);
+    const hasAnySuccessHistory = hasCitrixSuccessHistory || hasVpnSuccessHistory;
 
     // Smart Guardian Rules
     const triggeredRules: CitrixGuardianRuleFlag[] = [];
@@ -2544,17 +2770,16 @@ export async function reevaluateSingleCitrixIp(
     }
 
     // 4. 10m Burst or Volume
-    const hasVpnSuccessHistory = Boolean(vpnHist);
     if (maxAuthFailuresIn10m >= config.minFailuresForBlock) {
         triggeredRules.push({
             code: "AUTH_BURST_10M",
             label: `${maxAuthFailuresIn10m} Auth Failures in ≤10m`,
             severity: "CRITICAL",
             points: 55,
-            detail: `${maxAuthFailuresIn10m} authentication failures within 10 minutes (threshold: ${config.minFailuresForBlock}).`,
+            detail: `${maxAuthFailuresIn10m} distinct authentication failures within 10 minutes (threshold: ${config.minFailuresForBlock}).`,
         });
         riskScore += 55;
-    } else if (totalFailures >= config.minFailuresForBlock && citrixSucc === 0 && !hasVpnSuccessHistory) {
+    } else if (totalFailures >= config.minFailuresForBlock && !hasAnySuccessHistory) {
         triggeredRules.push({
             code: "HIGH_FAILURE_VOLUME",
             label: `Repeated Failures (${totalFailures}x, 0 Success)`,
@@ -2592,7 +2817,7 @@ export async function reevaluateSingleCitrixIp(
     }
 
     // 6. STA ticket probing
-    if (staFailedCount >= config.minFailuresForBlock && nonAnonUsers.length === 0 && citrixSucc === 0 && !hasVpnSuccessHistory) {
+    if (staFailedCount >= config.minFailuresForBlock && nonAnonUsers.length === 0 && !hasAnySuccessHistory) {
         triggeredRules.push({
             code: "REPEATED_STA_TICKET_ABUSE",
             label: `Repeated STA Ticket Failures (${staFailedCount}x)`,
@@ -2637,7 +2862,7 @@ export async function reevaluateSingleCitrixIp(
         verdictReason = `Blacklisted ASN ${ipMeta.asn} (${ipMeta.companyName}) with ${totalFailures} attempt(s).`;
     } else if (
         ipMeta.isResidentialIsp &&
-        (nonAnonUsers.length >= 3 || notFoundAdUsers.length > 0 || invalidFormatUsers.length > 0 || (maxAuthFailuresIn10m >= config.minFailuresForBlock && citrixSucc === 0))
+        (nonAnonUsers.length >= 3 || notFoundAdUsers.length > 0 || invalidFormatUsers.length > 0 || (maxAuthFailuresIn10m >= config.minFailuresForBlock && !hasAnySuccessHistory))
     ) {
         verdict = "ABUSIVE_BLOCK";
         riskScore = Math.max(riskScore, 85);
@@ -2648,14 +2873,25 @@ export async function reevaluateSingleCitrixIp(
             : "Rapid Auth Burst (≥5 Failures / 10m)";
         verdictReason = `Abusive Residential IP (${ipMeta.companyName}): ${reason}`;
     } else if (
+        hasAnySuccessHistory &&
+        ipMeta.countryCode === "US" &&
+        nonAnonUsers.length === 0 &&
+        maxAuthFailuresIn10m < config.minFailuresForBlock
+    ) {
+        verdict = "LEGIT_USER_ISSUE";
+        riskScore = Math.min(riskScore, 10);
+        safetyShieldApplied = true;
+        verdictReason = `Benign Citrix Workspace STA ticket or session cookie reconnect (${staFailedCount}x STA, ${cookieFailedCount}x Cookie) from US IP with verified Citrix/VPN login history or prior pardon.`;
+        protectionNote = "Guardian Protected: IP has verified Citrix/VPN authentication history or prior SOC pardon.";
+        safetyShieldReason = "Verified Citrix/VPN login history or prior SOC pardon.";
+    } else if (
         config.protectIspWithValidAdUser &&
         ipMeta.countryCode === "US" &&
         allUsersValidAd &&
         notFoundAdUsers.length === 0 &&
         invalidFormatUsers.length === 0 &&
         (isSingleUser || (ipMeta.isResidentialIsp && nonAnonUsers.length === 2)) &&
-        (citrixSucc > 0 ||
-            hasVpnSuccessHistory ||
+        (hasAnySuccessHistory ||
             (ipImpMfaTimeoutCount > 0 && ipImpBadPwdCount === 0) ||
             (ipMeta.isResidentialIsp && maxAuthFailuresIn10m < config.minFailuresForBlock))
     ) {
@@ -2676,10 +2912,10 @@ export async function reevaluateSingleCitrixIp(
                 verdictReason = `Imprivata Confirmed AD Password OK for ${userLabel}, but user did not accept the MFA Push in time (${ipImpMfaTimeoutCount}x MFA timeout).`;
                 protectionNote = "Guardian Protected: Imprivata RADIUS verified AD password succeeded (only MFA push timed out).";
                 safetyShieldReason = "Imprivata RADIUS: AD password was correct; only 2FA smartphone push timed out.";
-            } else if (citrixSucc > 0 || u.succeededLater) {
-                verdictReason = `Legitimate AD user ${userLabel} had ${totalFailures} failure(s) and logged in successfully (${citrixSucc} sessions).`;
-                protectionNote = "Guardian Protected: Verified AD user with successful Citrix sessions from this IP.";
-                safetyShieldReason = "Verified corporate employee with successful authenticated Citrix sessions.";
+            } else if (hasCitrixSuccessHistory || u.succeededLater) {
+                verdictReason = `Legitimate AD user ${userLabel} had ${totalFailures} failure(s) from an IP with verified Citrix sessions or prior pardon.`;
+                protectionNote = "Guardian Protected: Verified AD user with successful Citrix sessions or pardon on this IP.";
+                safetyShieldReason = "Verified corporate employee with successful authenticated Citrix sessions or prior pardon.";
             } else if (hasVpnSuccessHistory) {
                 verdictReason = `Legitimate AD user ${userLabel} with prior AnyConnect VPN history from this IP.`;
                 protectionNote = "Guardian Protected: Verified corporate VPN history on this IP.";
