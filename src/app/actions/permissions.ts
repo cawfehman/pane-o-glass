@@ -563,9 +563,17 @@ export async function saveAllUserToolOverrides(
 export async function getPermissionsDiagnostic() {
     await ensureAdmin();
     try {
-        const dbPath = process.env.DATABASE_URL?.replace('file:', '') || '';
-        const absDbPath = path.isAbsolute(dbPath) ? dbPath : path.resolve(process.cwd(), dbPath);
-        const exists = fs.existsSync(absDbPath);
+        const rawDbUrl = process.env.DATABASE_URL || '';
+        let absDbPath = '';
+        let exists = false;
+
+        if (rawDbUrl.startsWith('file:') || rawDbUrl.endsWith('.db')) {
+            const cleanPath = rawDbUrl.replace(/^file:/, '');
+            absDbPath = path.isAbsolute(cleanPath) ? cleanPath : path.resolve(process.cwd(), cleanPath);
+            try {
+                exists = fs.existsSync(absDbPath);
+            } catch {}
+        }
 
         return {
             databaseUrl: process.env.DATABASE_URL,

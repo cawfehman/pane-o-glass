@@ -453,6 +453,24 @@ export async function merakiGet<T = any>(
             const data = (await response.json()) as T;
             if (ttlMs > 0) {
                 const nowMs = Date.now();
+                // Proactively purge expired cache entries to keep V8 heap lean
+                if (apiCache.size > 120) {
+                    for (const [key, entry] of apiCache.entries()) {
+                        if (entry.expiresAt <= nowMs) {
+                            apiCache.delete(key);
+                        }
+                    }
+                    // Hard cap at 150 entries: evict oldest keys (FIFO/LRU)
+                    if (apiCache.size > 150) {
+                        const toDrop = apiCache.size - 130;
+                        let dropped = 0;
+                        for (const key of apiCache.keys()) {
+                            apiCache.delete(key);
+                            if (++dropped >= toDrop) break;
+                        }
+                    }
+                }
+
                 apiCache.set(cacheKey, {
                     data,
                     fetchedAtMs: nowMs,
@@ -1288,12 +1306,12 @@ function warmSwitchesInBackground(devices: MerakiDeviceUnified[]): void {
                 if (existing && nowMs - new Date(existing.fetchedAt).getTime() < BACKGROUND_POLL_INTERVAL_MS - 30_000) {
                     continue;
                 }
-                const ttlMs = OVERVIEW_CACHE_TTL_MS;
+                // Fetch raw switch telemetry directly into rawMap without duplicating into apiCache (ttlMs: 0)
                 const [rawPorts, rawStatuses, rawLldpCdp, rawSvis] = await Promise.all([
-                    merakiGet<any[]>(`/devices/${serial}/switch/ports`, undefined, { ttlMs }).catch(() => []),
-                    merakiGet<any[]>(`/devices/${serial}/switch/ports/statuses`, undefined, { ttlMs }).catch(() => []),
-                    merakiGet<any>(`/devices/${serial}/lldpCdp`, undefined, { ttlMs }).catch(() => null),
-                    merakiGet<any[]>(`/devices/${serial}/switch/routing/interfaces`, undefined, { ttlMs }).catch(() => []),
+                    merakiGet<any[]>(`/devices/${serial}/switch/ports`, undefined, { ttlMs: 0 }).catch(() => []),
+                    merakiGet<any[]>(`/devices/${serial}/switch/ports/statuses`, undefined, { ttlMs: 0 }).catch(() => []),
+                    merakiGet<any>(`/devices/${serial}/lldpCdp`, undefined, { ttlMs: 0 }).catch(() => null),
+                    merakiGet<any[]>(`/devices/${serial}/switch/routing/interfaces`, undefined, { ttlMs: 0 }).catch(() => []),
                 ]);
                 if (Array.isArray(rawPorts) && rawPorts.length > 0) {
                     rawMap[serial] = {
@@ -1569,6 +1587,14 @@ export async function getMerakiDhcpPools(options?: {
                         scannedAt: new Date().toISOString(),
                     };
                 });
+
+                // Prune expired DHCP device cache entries
+                if (dhcpDeviceCache.size > 50) {
+                    const now = Date.now();
+                    for (const [k, e] of dhcpDeviceCache.entries()) {
+                        if (e.expiresAt <= now) dhcpDeviceCache.delete(k);
+                    }
+                }
 
                 dhcpDeviceCache.set(mx.serial, {
                     pools: devicePools,
