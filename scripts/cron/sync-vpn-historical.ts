@@ -4,6 +4,7 @@ import https from 'https';
 import axios from 'axios';
 import dotenv from 'dotenv';
 import { getBulkUserAdStatus } from '../../src/lib/ldap';
+import { getCacheTtlDays } from '../../src/lib/iplocate';
 dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 
 const prisma = new PrismaClient();
@@ -104,13 +105,14 @@ async function getIpInfoWithCache(rawIp: any): Promise<any> {
         return ipCache.get(ip);
     }
 
-    // 2. PostgreSQL persistent cache
+    // 2. PostgreSQL persistent cache (Split TTL: 30 days direct / 7 days neighbor & unresolved)
     try {
         const cached = await prisma.ipLookupCache.findUnique({ where: { ip } });
         if (cached) {
             const ageInMs = Date.now() - new Date(cached.updatedAt).getTime();
             const ageInDays = ageInMs / (1000 * 60 * 60 * 24);
-            if (ageInDays < 7) {
+            const ttl = getCacheTtlDays(cached);
+            if (ageInDays < ttl) {
                 try {
                     const raw = JSON.parse(cached.rawJson);
                     if (cached.countryCode === "UNRESOLVED" || raw.unresolved) {

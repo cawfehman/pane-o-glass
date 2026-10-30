@@ -8,7 +8,7 @@ import { getBulkUserAdStatus } from '../../src/lib/ldap';
 import { getAdaptiveSearchWindow } from '../../src/lib/graylog-backlog-guardian';
 import { fetchImprivataBatchIndex, matchEventToImprivataSession, formatImprivataFailureReason } from '../../src/lib/imprivata-graylog';
 import { recordAuthFailure, recordAuthSuccess } from '../../src/lib/reputation-ledger';
-import { fillMissingFieldsFromNeighbor } from '../../src/lib/iplocate';
+import { fillMissingFieldsFromNeighbor, getCacheTtlDays } from '../../src/lib/iplocate';
 dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 
 const prisma = new PrismaClient();
@@ -68,12 +68,13 @@ async function getIpInfo(ip: any, eventDate?: Date): Promise<any> {
     }
 
     try {
-        // 1. Check IpLookupCache in PostgreSQL first (7-day TTL)
+        // 1. Check IpLookupCache in PostgreSQL first (Split TTL: 30 days direct / 7 days neighbor & unresolved)
         const cached = await prisma.ipLookupCache.findUnique({ where: { ip: cleanIp } });
         if (cached) {
             const ageInMs = Date.now() - new Date(cached.updatedAt).getTime();
             const ageInDays = ageInMs / (1000 * 60 * 60 * 24);
-            if (ageInDays < 7) {
+            const ttl = getCacheTtlDays(cached);
+            if (ageInDays < ttl) {
                 try {
                     const raw = JSON.parse(cached.rawJson);
                     if (cached.countryCode === "UNRESOLVED" || raw.unresolved) {

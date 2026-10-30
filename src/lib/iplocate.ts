@@ -67,7 +67,28 @@ interface IpLocateResponse {
     [key: string]: any;
 }
 
-const CACHE_TTL_DAYS = 7;
+export const STANDARD_CACHE_TTL_DAYS = 30;
+export const NEIGHBOR_CACHE_TTL_DAYS = 7;
+
+/**
+ * Returns cache TTL in days based on whether the entry is an estimated neighbor or unresolved fallback.
+ * Standard directly-resolved IPs get 30 days. Neighbor-estimated (inheritedFrom) and unresolved get 7 days.
+ */
+export function getCacheTtlDays(cached?: { countryCode?: string | null; rawJson?: string | null } | null): number {
+    if (!cached) return STANDARD_CACHE_TTL_DAYS;
+    if (cached.countryCode === "UNRESOLVED" || cached.countryCode === "UNKNOWN") {
+        return NEIGHBOR_CACHE_TTL_DAYS;
+    }
+    if (cached.rawJson) {
+        try {
+            const raw = typeof cached.rawJson === "string" ? JSON.parse(cached.rawJson) : cached.rawJson;
+            if (raw?.inheritedFrom || raw?.unresolved || raw?.country_code === "UNRESOLVED") {
+                return NEIGHBOR_CACHE_TTL_DAYS;
+            }
+        } catch {}
+    }
+    return STANDARD_CACHE_TTL_DAYS;
+}
 
 // Standard major consumer ISPs in the US to skip background auto-enrichment on
 const STANDARD_US_ISPS = [
@@ -296,7 +317,8 @@ export async function enrichIpsBatch(ips: string[], isAdHoc: boolean = false): P
             if (cached) {
                 const ageInMs = now - new Date(cached.updatedAt).getTime();
                 const ageInDays = ageInMs / (1000 * 60 * 60 * 24);
-                if (ageInDays < CACHE_TTL_DAYS) {
+                const ttl = getCacheTtlDays(cached);
+                if (ageInDays < ttl) {
                     try {
                         const parsed = JSON.parse(cached.rawJson);
                         results[ip] = parsed;
@@ -573,13 +595,14 @@ export async function getIpEnrichment(ip: string): Promise<IpEnrichmentResult | 
         return null;
     }
 
-    // 1. Check local IpLookupCache first (0 external API credits, 7-day TTL)
+    // 1. Check local IpLookupCache first (0 external API credits, split TTL: 30 days direct / 7 days neighbor & unresolved)
     try {
         const cached = await prisma.ipLookupCache.findUnique({ where: { ip: cleanIp } });
         if (cached?.rawJson) {
             const ageInMs = Date.now() - new Date(cached.updatedAt).getTime();
             const ageInDays = ageInMs / (1000 * 60 * 60 * 24);
-            if (ageInDays < CACHE_TTL_DAYS) {
+            const ttl = getCacheTtlDays(cached);
+            if (ageInDays < ttl) {
                 try {
                     const raw = JSON.parse(cached.rawJson);
                     if (cached.countryCode === "UNRESOLVED" || raw.unresolved) {

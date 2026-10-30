@@ -4,7 +4,7 @@ import https from "https";
 import axios from "axios";
 import { prisma } from "@/lib/prisma";
 import { getBulkUserAdStatus } from "@/lib/ldap";
-import { isPrivateIp, fillMissingFieldsFromNeighbor } from "@/lib/iplocate";
+import { isPrivateIp, fillMissingFieldsFromNeighbor, getCacheTtlDays } from "@/lib/iplocate";
 import { NetscalerGraylogClient } from "@/lib/netscaler-graylog";
 import { executeFirewallBulkCommands } from "@/lib/netscaler-auto-shun";
 import { getFleetFirewalls } from "@/lib/universal-shun-sync";
@@ -325,12 +325,13 @@ async function enrichIpMetadata(ip: string, allowExternalLookup: boolean = true)
     if (!cleanIp || isPrivateIp(cleanIp)) return fallback;
 
     try {
-        // 1. Check local PostgreSQL IpLookupCache first (Zero credits, 7-day TTL)
+        // 1. Check local PostgreSQL IpLookupCache first (Split TTL: 30 days direct / 7 days neighbor & unresolved)
         const cached = await prisma.ipLookupCache.findUnique({ where: { ip: cleanIp } });
         if (cached?.rawJson) {
             const ageInMs = Date.now() - new Date(cached.updatedAt).getTime();
             const ageInDays = ageInMs / (1000 * 60 * 60 * 24);
-            if (ageInDays < 7) {
+            const ttl = getCacheTtlDays(cached);
+            if (ageInDays < ttl) {
                 try {
                     const rawData = JSON.parse(cached.rawJson);
                     if (cached.countryCode === "UNRESOLVED" || rawData.unresolved) {
