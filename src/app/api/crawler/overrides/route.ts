@@ -42,8 +42,14 @@ async function ensureOverrideSchema() {
         await prisma.$executeRawUnsafe(`ALTER TABLE "CrawlerDeviceOverride" ADD COLUMN IF NOT EXISTS "excludeFromTopology" BOOLEAN DEFAULT false`);
         await prisma.$executeRawUnsafe(`ALTER TABLE "CrawlerDeviceOverride" ADD COLUMN IF NOT EXISTS "excludeFromFailures" BOOLEAN DEFAULT false`);
         await prisma.$executeRawUnsafe(`ALTER TABLE "CrawlerDeviceOverride" ADD COLUMN IF NOT EXISTS "createdBy" TEXT`);
+        await prisma.$executeRawUnsafe(`ALTER TABLE "CrawlerDeviceOverride" ADD COLUMN IF NOT EXISTS "credentialProfile" TEXT`);
+        await prisma.$executeRawUnsafe(`ALTER TABLE "CrawlerDeviceOverride" ADD COLUMN IF NOT EXISTS "protocolOverride" TEXT`);
+        await prisma.$executeRawUnsafe(`ALTER TABLE "CrawlerDeviceOverride" ADD COLUMN IF NOT EXISTS "portOverride" INTEGER`);
+        await prisma.$executeRawUnsafe(`ALTER TABLE "CrawlDevice" ADD COLUMN IF NOT EXISTS "protocol" TEXT DEFAULT 'ssh'`);
+        await prisma.$executeRawUnsafe(`ALTER TABLE "CrawlDevice" ADD COLUMN IF NOT EXISTS "telnetDetected" BOOLEAN DEFAULT false`);
         await prisma.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS "CrawlerDeviceOverride_tag_idx" ON "CrawlerDeviceOverride"("tag")`);
         await prisma.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS "CrawlerDeviceOverride_siteOverride_idx" ON "CrawlerDeviceOverride"("siteOverride")`);
+        await prisma.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS "CrawlerDeviceOverride_credentialProfile_idx" ON "CrawlerDeviceOverride"("credentialProfile")`);
         schemaEnsured = true;
     } catch (err) {
         console.warn("[CrawlerOverrides] Schema auto-ensure warning:", err);
@@ -104,8 +110,17 @@ export async function POST(request: NextRequest) {
         const roleOverride = body.roleOverride !== undefined
             ? (body.roleOverride ? String(body.roleOverride).trim() : null)
             : undefined;
+        const credentialProfile = body.credentialProfile !== undefined
+            ? (body.credentialProfile ? String(body.credentialProfile).trim().toUpperCase() : null)
+            : undefined;
+        const protocolOverride = body.protocolOverride !== undefined
+            ? (body.protocolOverride ? String(body.protocolOverride).trim().toUpperCase() : null)
+            : undefined;
+        const portOverride = body.portOverride !== undefined
+            ? (body.portOverride ? Number(body.portOverride) : null)
+            : undefined;
 
-        const isSiteIdfEdit = Boolean(siteOverride || idfOverride || roleOverride);
+        const isSiteIdfEdit = Boolean(siteOverride || idfOverride || roleOverride || credentialProfile || protocolOverride || portOverride);
 
         const defaultTag = isSiteIdfEdit ? "CUSTOM" : "VENDOR_MANAGED";
         const tag = (body.tag || defaultTag).toUpperCase();
@@ -131,6 +146,9 @@ export async function POST(request: NextRequest) {
                     siteOverride: siteOverride ?? null,
                     idfOverride: idfOverride ?? null,
                     roleOverride: roleOverride ?? null,
+                    credentialProfile: credentialProfile ?? null,
+                    protocolOverride: protocolOverride ?? null,
+                    portOverride: portOverride ?? null,
                     reason,
                     excludeFromTopology,
                     excludeFromFailures,
@@ -143,6 +161,9 @@ export async function POST(request: NextRequest) {
                     siteOverride: siteOverride,
                     idfOverride: idfOverride,
                     roleOverride: roleOverride,
+                    credentialProfile: credentialProfile,
+                    protocolOverride: protocolOverride,
+                    portOverride: portOverride,
                     reason,
                     excludeFromTopology: body.excludeFromTopology !== undefined ? Boolean(body.excludeFromTopology) : undefined,
                     excludeFromFailures: body.excludeFromFailures !== undefined ? Boolean(body.excludeFromFailures) : undefined,
@@ -155,6 +176,10 @@ export async function POST(request: NextRequest) {
             if (siteOverride !== undefined) crawlUpdateData.site = siteOverride;
             if (idfOverride !== undefined) crawlUpdateData.idf = idfOverride;
             if (roleOverride !== undefined) crawlUpdateData.role = roleOverride;
+            if (protocolOverride !== undefined) {
+                crawlUpdateData.protocol = protocolOverride ? protocolOverride.toLowerCase() : "ssh";
+                if (protocolOverride === "TELNET") crawlUpdateData.telnetDetected = true;
+            }
 
             if (Object.keys(crawlUpdateData).length > 0) {
                 try {
@@ -197,7 +222,7 @@ export async function POST(request: NextRequest) {
 
         await logAudit(
             "CRAWLER_OVERRIDE_SET",
-            `Configured node override for ${savedOverrides.length} device(s) [${hostnames.join(", ")}]: Site=${siteOverride || "N/A"}, IDF=${idfOverride || "N/A"}, Role=${roleOverride || "N/A"}, Tag=${tag}${reason ? `, Reason: "${reason}"` : ""}`,
+            `Configured node override for ${savedOverrides.length} device(s) [${hostnames.join(", ")}]: Site=${siteOverride || "N/A"}, IDF=${idfOverride || "N/A"}, Role=${roleOverride || "N/A"}, Credential=${credentialProfile || "N/A"}, Protocol=${protocolOverride || "N/A"}, Tag=${tag}${reason ? `, Reason: "${reason}"` : ""}`,
             (session?.user as any)?.id,
             clientIp
         );

@@ -456,6 +456,8 @@ async function persistLatestSnapshot(
                 vlans: dev.vlans || [],
                 cdpNeighbors: dev.cdp_neighbors || [],
                 arpTable: dev.arp_table || [],
+                protocol: dev.protocol || (ov?.protocolOverride ? ov.protocolOverride.toLowerCase() : "ssh"),
+                telnetDetected: Boolean(dev.telnet_detected || dev.protocol === "telnet" || ov?.protocolOverride === "TELNET"),
                 isLegacySsh: Boolean(dev.is_legacy_ssh),
                 sshKex: dev.ssh_kex || null,
                 sshKey: dev.ssh_key || null
@@ -548,6 +550,33 @@ export async function POST(request: NextRequest) {
         if (allowTelnet) {
             args.push("--allow-telnet");
         }
+
+        // Export device overrides to pass to crawler engine
+        const rawOverrides = await prisma.crawlerDeviceOverride.findMany().catch(() => []);
+        const deviceOverridesMap: Record<string, any> = {};
+        for (const ov of rawOverrides) {
+            const entry = {
+                credentialProfile: ov.credentialProfile || null,
+                protocolOverride: ov.protocolOverride || null,
+                portOverride: ov.portOverride || null,
+                siteOverride: ov.siteOverride || null,
+                idfOverride: ov.idfOverride || null,
+                roleOverride: ov.roleOverride || null,
+            };
+            if (ov.hostname) deviceOverridesMap[ov.hostname.toLowerCase()] = entry;
+            if (ov.ipAddress) deviceOverridesMap[ov.ipAddress] = entry;
+            if (ov.rawHostname) deviceOverridesMap[ov.rawHostname.toLowerCase()] = entry;
+        }
+
+        const overridesFile = path.join(crawlerDir, "data", "device_overrides.json");
+        try {
+            const dataDir = path.dirname(overridesFile);
+            if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
+            fs.writeFileSync(overridesFile, JSON.stringify(deviceOverridesMap, null, 2), "utf-8");
+            if (fs.existsSync(overridesFile)) {
+                args.push("--device-overrides-json", overridesFile);
+            }
+        } catch (e) {}
 
         const customEnv: Record<string, string> = {
             PYTHONPATH: crawlerDir,

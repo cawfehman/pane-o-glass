@@ -161,6 +161,25 @@ The crawler supports flexible, secure SSH authentication:
   * **Fallback Profiles**: Sequential fallback accounts (e.g., emergency local admin credentials) that are only tested if the primary account fails authentication.
   * **Security**: All custom credentials entered via the modal are kept strictly in memory for the duration of the crawl and are **never saved to disk or database**.
 
+### 9.1 Multi-Realm & Deterministic Device Credential Routing
+
+For networks spanning multiple administrative domains (such as Cooper Health and Cape Regional Medical Center / CRMC connected at `Kel-2mc-core-1 <-> CRMC-CORE-9400-C`), the crawler implements deterministic device-level credential and protocol routing:
+
+* **Named Credential Profiles**:
+  * `COOPER_TACACS` (Cooper Primary TACACS+)
+  * `COOPER_LOCAL` (Cooper Local Admin)
+  * `CRMC_TACACS` (CRMC Primary TACACS+)
+  * `CRMC_LOCAL` (CRMC Local Admin)
+  * `CRMC_TERTIARY` (CRMC Emergency Break-Glass)
+* **Direct Protocol & Port Selection**:
+  * Legacy switches labeled `TELNET` connect directly on port 23, eliminating 10–15 second SSH handshake timeouts.
+  * Modern switches labeled `SSH` connect directly on port 22, guaranteeing zero cleartext Telnet probes.
+* **Zero-Alarm Boundary Traversal**:
+  * As the spider traverses the inter-core link `Kel-2mc-core-1 <---> CRMC-CORE-9400-C`, target switches are checked against the device registry (`CrawlerDeviceOverride`).
+  * Switches in the CRMC domain are dialed exclusively with CRMC profiles; Cooper switches are dialed exclusively with Cooper profiles.
+  * Completely eliminates TACACS+ lockout risks, brute-force alarms, and Graylog `%SEC_LOGIN-4-LOGIN_FAILED` syslog noise.
+* **Auto-Learning**: Newly discovered reachable switches automatically persist their working credential profile and protocol into `CrawlerDeviceOverride`, locking them in for all future automated runs.
+
 ---
 
 ## 10. Standalone CLI Usage (Offline Mode)

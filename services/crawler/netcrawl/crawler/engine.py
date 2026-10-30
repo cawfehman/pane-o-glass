@@ -60,6 +60,8 @@ class NetworkCrawler:
         excluded_platform_patterns: Optional[List[str]] = None,
         excluded_role_patterns: Optional[List[str]] = None,
         progress_callback: Optional[Callable[[str, str], None]] = None,
+        device_overrides: Optional[Dict[str, Any]] = None,
+        credential_profiles: Optional[Dict[str, Dict[str, Any]]] = None,
     ):
         self.seed_devices = [s.strip() for s in seed_devices if s.strip()]
         self.username = username
@@ -68,6 +70,8 @@ class NetworkCrawler:
         self.key_file = key_file
         self.port = port
         self.fallback_credentials = fallback_credentials or []
+        self.device_overrides = device_overrides or {}
+        self.credential_profiles = credential_profiles or {}
         self.max_workers = max_workers
         self.ssh_timeout = ssh_timeout
         self.use_mock = use_mock
@@ -114,7 +118,14 @@ class NetworkCrawler:
             s = fb.get("secret")
             if s:
                 secrets.append(s)
-        return secrets
+        for prof in self.credential_profiles.values():
+            p = prof.get("password")
+            if p:
+                secrets.append(p)
+            s = prof.get("secret")
+            if s:
+                secrets.append(s)
+        return list(set(secrets))
 
     def _notify(self, level: str, message: str) -> None:
         from netcrawl.audit.sanitizer import mask_sensitive_data
@@ -197,165 +208,165 @@ class NetworkCrawler:
         if pre_known_platform and any(k in pre_known_platform.lower() for k in ["nexus", "n9k", "n7k", "n5k", "n3k", "nx-os", "nxos"]):
             device_type = "cisco_nxos"
 
-        # Select client (Mock or real SSH)
+        # Select client (Mock or real SSH/Telnet)
+        canon_host = (pre_known_name or "").split(".")[0].split("(")[0].strip().lower()
+        dev_override = (
+            self.device_overrides.get(canon_host)
+            or self.device_overrides.get(target_ip)
+            or (self.device_overrides.get(pre_known_name.lower()) if pre_known_name else None)
+        )
+
+        is_crmc = bool(
+            (dev_override and (dev_override.get("credentialProfile") or "").startswith("CRMC_"))
+            or canon_host.startswith("crm")
+            or canon_host.startswith("crmc")
+        )
+
+        # Protocol resolution: Device Override > Default SSH
+        target_protocol = "ssh"
+        target_port = self.port
+        if dev_override:
+            proto_val = (dev_override.get("protocolOverride") or "").lower()
+            if proto_val in ("telnet", "tel"):
+                target_protocol = "telnet"
+                target_port = int(dev_override.get("portOverride") or 23)
+            elif proto_val == "ssh":
+                target_protocol = "ssh"
+                target_port = int(dev_override.get("portOverride") or 22)
+
+        # Build candidate credential list: [(label, cred_dict), ...]
+        creds_to_try = []
+        if dev_override and dev_override.get("credentialProfile"):
+            prof_key = dev_override["credentialProfile"].upper()
+            if prof_key in self.credential_profiles:
+                creds_to_try.append((prof_key, self.credential_profiles[prof_key]))
+
+        if not creds_to_try:
+            if is_crmc:
+                for pk in ["CRMC_TACACS", "CRMC_LOCAL", "CRMC_TERTIARY"]:
+                    if pk in self.credential_profiles:
+                        creds_to_try.append((pk, self.credential_profiles[pk]))
+            else:
+                for pk in ["COOPER_TACACS", "COOPER_LOCAL", "COOPER_LOCAL2"]:
+                    if pk in self.credential_profiles:
+                        creds_to_try.append((pk, self.credential_profiles[pk]))
+
+        # Final fallback to standard CLI/config credentials if profiles not configured
+        if not creds_to_try:
+            creds_to_try.append(("TACACS", {
+                "username": self.username,
+                "password": self.password,
+                "secret": self.secret,
+                "key_file": self.key_file,
+                "port": target_port
+            }))
+            for idx, fb in enumerate(self.fallback_credentials, 1):
+                creds_to_try.append((f"Fallback-{idx}", fb))
+
+        client = None
+        success = False
+        err = None
+        auth_time_ms = None
+        credential_used = None
+        fail_status = DeviceStatus.UNREACHABLE
+
         if self.use_mock:
             client = MockSSHClient(host=target_ip)
+            t_auth_start = time.time()
+            success, err = client.connect()
+            auth_time_ms = int((time.time() - t_auth_start) * 1000)
+            credential_used = "Mock" if success else None
+        elif target_protocol == "telnet":
+            # Direct Telnet connection (no SSH probe wasted!)
+            for prof_label, cred in creds_to_try:
+                t_port = int(cred.get("port") or target_port or 23)
+                t_client = CiscoSSHClient(
+                    host=target_ip,
+                    username=cred.get("username", self.username),
+                    password=cred.get("password", ""),
+                    secret=cred.get("secret", ""),
+                    port=t_port,
+                    timeout=self.ssh_timeout,
+                    device_type="cisco_ios_telnet",
+                    protocol="telnet",
+                )
+                t_start = time.time()
+                t_succ, t_err = t_client.connect()
+                if t_succ:
+                    client = t_client
+                    success = True
+                    err = None
+                    credential_used = f"{prof_label} (Telnet)"
+                    auth_time_ms = int((time.time() - t_start) * 1000)
+                    break
+                else:
+                    err = t_err
+                    err_l = (t_err or "").lower()
+                    if "auth" not in err_l and "password" not in err_l:
+                        break
         else:
-            client = CiscoSSHClient(
-                host=target_ip,
-                username=self.username,
-                password=self.password,
-                secret=self.secret,
-                key_file=self.key_file,
-                port=self.port,
-                timeout=self.ssh_timeout,
-                device_type=device_type,
-            )
+            # SSH connection
+            for prof_label, cred in creds_to_try:
+                ssh_port = int(cred.get("port") or target_port or 22)
+                s_client = CiscoSSHClient(
+                    host=target_ip,
+                    username=cred.get("username", self.username),
+                    password=cred.get("password", ""),
+                    secret=cred.get("secret", ""),
+                    key_file=cred.get("key_file", self.key_file),
+                    port=ssh_port,
+                    timeout=self.ssh_timeout,
+                    device_type=device_type,
+                )
+                t_start = time.time()
+                s_succ, s_err = s_client.connect()
+                if s_succ:
+                    client = s_client
+                    success = True
+                    err = None
+                    credential_used = prof_label
+                    auth_time_ms = int((time.time() - t_start) * 1000)
+                    break
+                else:
+                    err = s_err
+                    err_l = (s_err or "").lower()
+                    if "auth" not in err_l and "password" not in err_l:
+                        break
 
-        t_auth_start = time.time()
-        success, err = client.connect()
-        auth_time_ms = int((time.time() - t_auth_start) * 1000)
-        credential_used = "TACACS" if success else None
-
-        if not success:
-            err_lower = (err or "").lower()
-            if "auth" in err_lower or "password" in err_lower:
-                fail_status = DeviceStatus.AUTH_FAILED
-                # Attempt fallback credentials if configured
-                if not self.use_mock and self.fallback_credentials:
-                    for fallback in self.fallback_credentials:
-                        fb_client = CiscoSSHClient(
-                            host=target_ip,
-                            username=fallback.get("username", self.username),
-                            password=fallback.get("password", ""),
-                            secret=fallback.get("secret", ""),
-                            key_file=fallback.get("key_file"),
-                            port=fallback.get("port", self.port),
-                            timeout=self.ssh_timeout,
-                            device_type=device_type,
-                        )
-                        fb_t_start = time.time()
-                        fb_success, fb_err = fb_client.connect()
-                        if fb_success:
-                            client = fb_client
-                            success = True
-                            err = None
-                            credential_used = "Local"
-                            auth_time_ms = int((time.time() - fb_t_start) * 1000)
-                            from netcrawl.audit.logger import get_audit_logger
-                            get_audit_logger().log(
-                                event_type="CREDENTIAL_FALLBACK_SUCCESS",
-                                severity="INFO",
-                                device_ip=target_ip,
-                                details={"user": fallback.get("username"), "latency_ms": auth_time_ms},
-                            )
-                            break
-            elif "timeout" in err_lower or "timed out" in err_lower:
-                fail_status = DeviceStatus.TIMEOUT
-            else:
-                fail_status = DeviceStatus.UNREACHABLE
-
-            if not success and not self.use_mock:
-                # If SSH failed, safely probe whether TCP port 23 (Telnet) is listening.
-                # STRICT SAFETY: ZERO credentials are sent during this TCP probe!
+            # Fallback Telnet probe only if SSH failed, NO override was configured, and allow_telnet is on
+            if not success and not dev_override and self.allow_telnet:
                 is_telnet_open, telnet_banner = probe_telnet_service(target_ip, timeout=2.0)
                 if is_telnet_open:
-                    try:
-                        from netcrawl.audit.logger import get_audit_logger
-                        get_audit_logger().log(
-                            event_type="TELNET_SERVICE_DETECTED",
-                            severity="WARNING",
-                            device_ip=target_ip,
-                            details={
-                                "port": 23,
-                                "ssh_failure": err,
-                                "allow_telnet_enabled": self.allow_telnet,
-                                "banner": telnet_banner,
-                            },
-                        )
-                    except Exception:
-                        pass
-
-                    if not self.allow_telnet:
-                        # Cleartext Telnet fallback is disabled: strictly avoid sending credentials
-                        host_label = pre_known_name or f"Telnet-{target_ip}"
-                        site_info = parse_site_info(host_label, self.hostname_regex)
-                        final_disc_via = discovered_via
-                        if pre_known_desc and final_disc_via and pre_known_desc not in final_disc_via:
-                            final_disc_via = f"{final_disc_via} [{pre_known_desc}]"
-                        elif pre_known_desc and not final_disc_via:
-                            final_disc_via = f"Peer port desc: [{pre_known_desc}]"
-
-                        telnet_reason = (
-                            "TELNET_DETECTED_SSH_DISABLED: Device has SSH (port 22) disabled, "
-                            "but is listening on cleartext Telnet (port 23). Cleartext Telnet is disabled in crawl settings. "
-                            "Remediation: generate RSA key ('crypto key generate rsa modulus 2048') and enable SSH ('transport input ssh') or upgrade IOS version."
-                        )
-                        self._notify("warning", f"Device {target_ip} ({host_label}) is Telnet-only; SSH disabled. Cleartext Telnet fallback is OFF.")
-
-                        return Device(
-                            hostname=host_label,
-                            ip_address=target_ip,
-                            platform=pre_known_platform,
-                            status=DeviceStatus.UNREACHABLE,
-                            failure_reason=telnet_reason,
-                            discovered_via=final_disc_via,
-                            credential_used=None,
-                            auth_time_ms=auth_time_ms,
-                            hop_distance=current_hop,
-                            site_info=site_info,
-                            protocol="telnet",
-                            telnet_detected=True,
-                            requires_ssh_migration=True,
-                            security_warning="CLEARTEXT_TELNET_ONLY: Device requires SSH configuration or IOS upgrade.",
-                        )
-                    else:
-                        # Cleartext Telnet fallback is approved by user in crawl settings
-                        self._notify("warning", f"Device {target_ip}: SSH failed, attempting authorized cleartext Telnet fallback...")
-                        telnet_client = CiscoSSHClient(
+                    self._notify("warning", f"Device {target_ip}: SSH failed, attempting authorized cleartext Telnet fallback...")
+                    for prof_label, cred in creds_to_try:
+                        t_client = CiscoSSHClient(
                             host=target_ip,
-                            username=self.username,
-                            password=self.password,
-                            secret=self.secret,
+                            username=cred.get("username", self.username),
+                            password=cred.get("password", ""),
+                            secret=cred.get("secret", ""),
                             port=23,
                             timeout=self.ssh_timeout,
                             device_type="cisco_ios_telnet",
                             protocol="telnet",
                         )
-                        t_telnet_start = time.time()
-                        t_success, t_err = telnet_client.connect()
-                        t_auth_ms = int((time.time() - t_telnet_start) * 1000)
-
-                        if not t_success and self.fallback_credentials:
-                            for fallback in self.fallback_credentials:
-                                fb_telnet = CiscoSSHClient(
-                                    host=target_ip,
-                                    username=fallback.get("username", self.username),
-                                    password=fallback.get("password", ""),
-                                    secret=fallback.get("secret", ""),
-                                    port=23,
-                                    timeout=self.ssh_timeout,
-                                    device_type="cisco_ios_telnet",
-                                    protocol="telnet",
-                                )
-                                fb_t_start = time.time()
-                                fb_t_success, fb_t_err = fb_telnet.connect()
-                                if fb_t_success:
-                                    telnet_client = fb_telnet
-                                    t_success = True
-                                    t_err = None
-                                    credential_used = "Local (Telnet)"
-                                    t_auth_ms = int((time.time() - fb_t_start) * 1000)
-                                    break
-
-                        if t_success:
-                            client = telnet_client
+                        t_start = time.time()
+                        t_succ, t_err = t_client.connect()
+                        if t_succ:
+                            client = t_client
                             success = True
                             err = None
-                            credential_used = credential_used or "TACACS (Telnet)"
-                            auth_time_ms = t_auth_ms
-                        else:
-                            err = f"SSH failed ({err}); Telnet fallback also failed: {t_err}"
+                            credential_used = f"{prof_label} (Telnet)"
+                            auth_time_ms = int((time.time() - t_start) * 1000)
+                            break
+
+        if not success:
+            err_lower = (err or "").lower()
+            if "auth" in err_lower or "password" in err_lower:
+                fail_status = DeviceStatus.AUTH_FAILED
+            elif "timeout" in err_lower or "timed out" in err_lower:
+                fail_status = DeviceStatus.TIMEOUT
+            else:
+                fail_status = DeviceStatus.UNREACHABLE
 
             if not success:
                 from netcrawl.audit.sanitizer import mask_sensitive_data
@@ -379,6 +390,7 @@ class NetworkCrawler:
                     auth_time_ms=auth_time_ms,
                     hop_distance=current_hop,
                     site_info=site_info,
+                    protocol=target_protocol,
                 )
 
         is_discovery = self.crawl_profile == "discovery"

@@ -28,7 +28,8 @@ import {
     Wifi,
     Phone,
     Filter,
-    ShieldAlert
+    ShieldAlert,
+    Terminal
 } from "lucide-react";
 import { CrawlIcon } from "./CrawlIcon";
 import { detectSwitchStack, parseFloorFromIdf } from "./TopologyGraph";
@@ -265,6 +266,9 @@ export default function DeviceInspectorDrawer({
     const [targetSite, setTargetSite] = useState("");
     const [targetIdf, setTargetIdf] = useState("");
     const [targetRole, setTargetRole] = useState("");
+    const [targetCredentialProfile, setTargetCredentialProfile] = useState("");
+    const [targetProtocol, setTargetProtocol] = useState("SSH");
+    const [targetPort, setTargetPort] = useState("");
     const [overrideReason, setOverrideReason] = useState("");
     const [excludeFromTopology, setExcludeFromTopology] = useState(false);
     const [cleanupEmptySite, setCleanupEmptySite] = useState(true);
@@ -387,6 +391,9 @@ export default function DeviceInspectorDrawer({
         setTargetSite(device.siteOverride || device.site || siteCode);
         setTargetIdf(device.idfOverride || device.idf || idfCode);
         setTargetRole(device.roleOverride || device.role || "L2 Switch");
+        setTargetCredentialProfile(device.credentialProfile || "");
+        setTargetProtocol(device.protocolOverride || (device.protocol ? String(device.protocol).toUpperCase() : "SSH"));
+        setTargetPort(device.portOverride ? String(device.portOverride) : "");
         setOverrideReason(device.overrideReason || "");
         setExcludeFromTopology(Boolean(device.excludeFromTopology));
         setCleanupEmptySite(true);
@@ -413,6 +420,9 @@ export default function DeviceInspectorDrawer({
                     siteOverride: targetSite.trim().toUpperCase(),
                     idfOverride: targetIdf.trim().toUpperCase(),
                     roleOverride: targetRole.trim(),
+                    credentialProfile: targetCredentialProfile ? targetCredentialProfile.trim().toUpperCase() : null,
+                    protocolOverride: targetProtocol ? targetProtocol.trim().toUpperCase() : null,
+                    portOverride: targetPort ? parseInt(targetPort, 10) : null,
                     reason: overrideReason.trim() || "Manual node governance override",
                     excludeFromTopology,
                     cleanupEmptySite,
@@ -532,6 +542,15 @@ export default function DeviceInspectorDrawer({
                                 >
                                     <AlertTriangle className="w-3 h-3 text-amber-400" />
                                     Telnet (SSH Disabled)
+                                </span>
+                            )}
+                            {Boolean(device.credentialProfile) && (
+                                <span 
+                                    className="px-2 py-0.5 text-[10px] font-bold rounded border bg-sky-950/80 text-sky-300 border-sky-700/80 flex items-center gap-1 cursor-help"
+                                    title={`Authoritative Credential Profile: ${device.credentialProfile}`}
+                                >
+                                    <KeyRound className="w-3 h-3 text-sky-400" />
+                                    {device.credentialProfile}
                                 </span>
                             )}
                         </div>
@@ -727,6 +746,57 @@ export default function DeviceInspectorDrawer({
                                 placeholder="e.g. Non-standard naming convention"
                                 className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-amber-400"
                             />
+                        </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3 pt-1">
+                        <div className="space-y-1">
+                            <label className="text-[11px] font-semibold text-slate-300 flex items-center gap-1">
+                                <KeyRound className="w-3 h-3 text-amber-400" />
+                                Credential Profile
+                            </label>
+                            <select
+                                value={targetCredentialProfile}
+                                onChange={(e) => setTargetCredentialProfile(e.target.value)}
+                                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-amber-400 cursor-pointer"
+                            >
+                                <option value="">Auto / Site Default</option>
+                                <option value="COOPER_TACACS">COOPER_TACACS (Cooper Primary TACACS+)</option>
+                                <option value="COOPER_LOCAL">COOPER_LOCAL (Cooper Primary Local Admin)</option>
+                                <option value="COOPER_LOCAL2">COOPER_LOCAL2 (Cooper Secondary Local Admin)</option>
+                                <option value="CRMC_TACACS">CRMC_TACACS (CRMC Primary TACACS+)</option>
+                                <option value="CRMC_LOCAL">CRMC_LOCAL (CRMC Local Admin)</option>
+                                <option value="CRMC_TERTIARY">CRMC_TERTIARY (CRMC Emergency Break-Glass)</option>
+                            </select>
+                        </div>
+                        <div className="space-y-1">
+                            <label className="text-[11px] font-semibold text-slate-300 flex items-center gap-1">
+                                <Terminal className="w-3 h-3 text-cyan-400" />
+                                Protocol & Port
+                            </label>
+                            <div className="flex gap-2">
+                                <select
+                                    value={targetProtocol}
+                                    onChange={(e) => {
+                                        const p = e.target.value;
+                                        setTargetProtocol(p);
+                                        if (p === "TELNET" && (!targetPort || targetPort === "22")) setTargetPort("23");
+                                        if (p === "SSH" && (!targetPort || targetPort === "23")) setTargetPort("22");
+                                    }}
+                                    className="flex-1 bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-amber-400 cursor-pointer"
+                                >
+                                    <option value="SSH">SSH</option>
+                                    <option value="TELNET">TELNET (Cleartext)</option>
+                                </select>
+                                <input
+                                    type="number"
+                                    value={targetPort}
+                                    onChange={(e) => setTargetPort(e.target.value)}
+                                    placeholder={targetProtocol === "TELNET" ? "23" : "22"}
+                                    className="w-16 bg-slate-900 border border-slate-700 rounded-lg px-2 py-1.5 text-xs text-white text-center focus:outline-none focus:border-amber-400"
+                                    title="Custom port override (default 22 for SSH, 23 for Telnet)"
+                                />
+                            </div>
                         </div>
                     </div>
 

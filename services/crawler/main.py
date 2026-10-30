@@ -37,6 +37,90 @@ def load_config(config_path: str = "config.yaml") -> dict:
     return {}
 
 
+def load_credential_profiles(default_user, default_pass, default_secret, default_key_file, fallback_creds) -> dict:
+    """Aggregate named credential profiles for Cooper and CRMC domains."""
+    profiles = {}
+
+    # 1. Parse all dynamic NETCRAWL_PROFILE_<NAME>_USER from environment
+    for k, v in os.environ.items():
+        if k.startswith("NETCRAWL_PROFILE_") and k.endswith("_USER"):
+            p_name = k[len("NETCRAWL_PROFILE_"):-len("_USER")].upper()
+            profiles[p_name] = {
+                "username": v.strip(),
+                "password": os.environ.get(f"NETCRAWL_PROFILE_{p_name}_PASS", ""),
+                "secret": os.environ.get(f"NETCRAWL_PROFILE_{p_name}_SECRET", ""),
+                "key_file": os.environ.get(f"NETCRAWL_PROFILE_{p_name}_KEY_FILE"),
+                "port": int(os.environ.get(f"NETCRAWL_PROFILE_{p_name}_PORT", 22)),
+            }
+
+    # 2. Defaults for COOPER_TACACS and COOPER_LOCAL
+    if "COOPER_TACACS" not in profiles:
+        profiles["COOPER_TACACS"] = {
+            "username": default_user,
+            "password": default_pass,
+            "secret": default_secret,
+            "key_file": default_key_file,
+            "port": 22
+        }
+    if "COOPER_LOCAL" not in profiles and fallback_creds:
+        fb0 = fallback_creds[0]
+        profiles["COOPER_LOCAL"] = {
+            "username": fb0.get("username", default_user),
+            "password": fb0.get("password", ""),
+            "secret": fb0.get("secret", ""),
+            "key_file": fb0.get("key_file"),
+            "port": int(fb0.get("port", 22))
+        }
+
+    # Cooper Local 2 (Secondary Local Admin)
+    if "COOPER_LOCAL2" not in profiles:
+        cooper_fb2_u = os.getenv("NETCRAWL_PROFILE_COOPER_LOCAL2_USER") or os.getenv("NETCRAWL_COOPER_LOCAL2_USER") or os.getenv("NETCRAWL_FALLBACK_USER_2")
+        if cooper_fb2_u:
+            profiles["COOPER_LOCAL2"] = {
+                "username": cooper_fb2_u.strip(),
+                "password": os.getenv("NETCRAWL_PROFILE_COOPER_LOCAL2_PASS") or os.getenv("NETCRAWL_COOPER_LOCAL2_PASS") or os.getenv("NETCRAWL_FALLBACK_PASS_2", ""),
+                "secret": os.getenv("NETCRAWL_PROFILE_COOPER_LOCAL2_SECRET") or os.getenv("NETCRAWL_COOPER_LOCAL2_SECRET") or os.getenv("NETCRAWL_FALLBACK_SECRET_2", ""),
+                "port": 22
+            }
+        elif len(fallback_creds) > 1:
+            fb1 = fallback_creds[1]
+            profiles["COOPER_LOCAL2"] = {
+                "username": fb1.get("username", default_user),
+                "password": fb1.get("password", ""),
+                "secret": fb1.get("secret", ""),
+                "key_file": fb1.get("key_file"),
+                "port": int(fb1.get("port", 22))
+            }
+
+    # 3. Defaults for CRMC profiles from NETCRAWL_CRMC_*
+    crmc_u = os.getenv("NETCRAWL_CRMC_USER")
+    if crmc_u and "CRMC_TACACS" not in profiles:
+        profiles["CRMC_TACACS"] = {
+            "username": crmc_u.strip(),
+            "password": os.getenv("NETCRAWL_CRMC_PASS", ""),
+            "secret": os.getenv("NETCRAWL_CRMC_SECRET", ""),
+            "key_file": os.getenv("NETCRAWL_CRMC_KEY_FILE"),
+            "port": int(os.getenv("NETCRAWL_CRMC_PORT", 22))
+        }
+    crmc_fb1_u = os.getenv("NETCRAWL_CRMC_FALLBACK_USER_1") or os.getenv("NETCRAWL_CRMC_LOCAL_USER")
+    if crmc_fb1_u and "CRMC_LOCAL" not in profiles:
+        profiles["CRMC_LOCAL"] = {
+            "username": crmc_fb1_u.strip(),
+            "password": os.getenv("NETCRAWL_CRMC_FALLBACK_PASS_1") or os.getenv("NETCRAWL_CRMC_LOCAL_PASS", ""),
+            "secret": os.getenv("NETCRAWL_CRMC_FALLBACK_SECRET_1") or os.getenv("NETCRAWL_CRMC_LOCAL_SECRET", ""),
+            "port": 22
+        }
+    crmc_fb2_u = os.getenv("NETCRAWL_CRMC_FALLBACK_USER_2") or os.getenv("NETCRAWL_CRMC_TERTIARY_USER")
+    if crmc_fb2_u and "CRMC_TERTIARY" not in profiles:
+        profiles["CRMC_TERTIARY"] = {
+            "username": crmc_fb2_u.strip(),
+            "password": os.getenv("NETCRAWL_CRMC_FALLBACK_PASS_2") or os.getenv("NETCRAWL_CRMC_TERTIARY_PASS", ""),
+            "secret": os.getenv("NETCRAWL_CRMC_FALLBACK_SECRET_2") or os.getenv("NETCRAWL_CRMC_TERTIARY_SECRET", ""),
+            "port": 22
+        }
+    return profiles
+
+
 def cmd_crawl(args, cfg: dict):
     import getpass
 
@@ -105,6 +189,22 @@ def cmd_crawl(args, cfg: dict):
     use_mock = args.mock
     allow_telnet = bool(getattr(args, "allow_telnet", False) or os.getenv("NETCRAWL_ALLOW_TELNET", "").lower() in ("1", "true", "yes"))
 
+    credential_profiles = load_credential_profiles(username, password, secret, key_file, fallback_creds)
+
+    device_overrides = {}
+    raw_ov = getattr(args, "device_overrides_json", None) or os.getenv("NETCRAWL_DEVICE_OVERRIDES_JSON")
+    if raw_ov:
+        try:
+            import json
+            ov_p = Path(raw_ov)
+            if ov_p.is_file():
+                with open(ov_p, "r", encoding="utf-8") as f:
+                    device_overrides = json.load(f)
+            elif raw_ov.strip().startswith("{"):
+                device_overrides = json.loads(raw_ov)
+        except Exception as e:
+            console.print(f"[yellow]Warning: Failed to load device overrides JSON: {e}[/yellow]")
+
     db_path = cfg.get("storage", {}).get("database_path", "data/crawler.db")
     snapshots_dir = cfg.get("storage", {}).get("snapshots_dir", "snapshots")
     maps_dir = cfg.get("storage", {}).get("maps_dir", "maps")
@@ -112,7 +212,8 @@ def cmd_crawl(args, cfg: dict):
     console.print(Panel.fit(
         f"[bold cyan]NetCrawl Network Discovery[/bold cyan]\n"
         f"Seeds: [yellow]{', '.join(seeds)}[/yellow]\n"
-        f"Auth User: [white]{username}[/white] | Key: [dim]{key_file or 'None'}[/dim] | Fallbacks: [cyan]{len(fallback_creds)} profile(s)[/cyan]\n"
+        f"Auth User: [white]{username}[/white] | Key: [dim]{key_file or 'None'}[/dim] | Profiles: [cyan]{len(credential_profiles)} profile(s)[/cyan]\n"
+        f"Device Overrides: [cyan]{len(device_overrides)} mapped node(s)[/cyan]\n"
         f"Mode: [green]{'VIRTUAL MOCK LAB' if use_mock else 'LIVE SSH (Strict Read-Only)'}[/green] | Telnet Fallback: [{'yellow]ENABLED (Cleartext)' if allow_telnet else 'dim]Disabled'}[/]\n"
         f"Concurrency: [cyan]{workers} workers[/cyan]",
         title="[CRAWLER START]",
@@ -137,6 +238,8 @@ def cmd_crawl(args, cfg: dict):
         secret=secret,
         key_file=key_file,
         fallback_credentials=fallback_creds,
+        device_overrides=device_overrides,
+        credential_profiles=credential_profiles,
         max_workers=workers,
         use_mock=use_mock,
         crawl_profile=getattr(args, "profile", "intensive") or "intensive",
@@ -402,6 +505,7 @@ def main():
     p_crawl.add_argument("--enable-eigrp", dest="enable_eigrp", action="store_true", default=True, help="Enable EIGRP L3 neighbor discovery (default: True)")
     p_crawl.add_argument("--no-eigrp", dest="enable_eigrp", action="store_false", help="Disable EIGRP L3 neighbor discovery")
     p_crawl.add_argument("--allow-telnet", dest="allow_telnet", action="store_true", default=False, help="Allow cleartext Telnet fallback (port 23) if SSH fails (WARNING: transmits credentials unencrypted)")
+    p_crawl.add_argument("--device-overrides-json", help="Path to JSON file or string of device overrides (credentials & protocol)")
 
     # map
     p_map = subparsers.add_parser("map", help="Generate network topology map")

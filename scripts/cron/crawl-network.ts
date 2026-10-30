@@ -176,6 +176,33 @@ async function run() {
 
     console.log(`[${timestamp}] [CONFIG] Seeds: [${seeds.join(", ")}] | Profile: ${profile.toUpperCase()} | Max Hops: ${maxHops} | Python: ${pythonBin}`);
 
+    // Export device overrides to pass to crawler engine
+    const rawOverrides = await prisma.crawlerDeviceOverride.findMany().catch(() => []);
+    const deviceOverridesMap: Record<string, any> = {};
+    for (const ov of rawOverrides) {
+        const entry = {
+            credentialProfile: ov.credentialProfile || null,
+            protocolOverride: ov.protocolOverride || null,
+            portOverride: ov.portOverride || null,
+            siteOverride: ov.siteOverride || null,
+            idfOverride: ov.idfOverride || null,
+            roleOverride: ov.roleOverride || null,
+        };
+        if (ov.hostname) deviceOverridesMap[ov.hostname.toLowerCase()] = entry;
+        if (ov.ipAddress) deviceOverridesMap[ov.ipAddress] = entry;
+        if (ov.rawHostname) deviceOverridesMap[ov.rawHostname.toLowerCase()] = entry;
+    }
+
+    const overridesFile = path.join(crawlerDir, "data", "device_overrides.json");
+    try {
+        const dataDir = path.dirname(overridesFile);
+        if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
+        fs.writeFileSync(overridesFile, JSON.stringify(deviceOverridesMap, null, 2), "utf-8");
+        console.log(`[${timestamp}] [CONFIG] Exported ${Object.keys(deviceOverridesMap).length} device overrides to ${overridesFile}`);
+    } catch (e: any) {
+        console.warn(`[CONFIG] Warning writing device overrides file: ${e.message}`);
+    }
+
     const args = ["main.py", "crawl"];
     if (useMock) {
         args.push("--mock");
@@ -183,6 +210,9 @@ async function run() {
         args.push("--seeds", seeds.join(","), "--workers", String(workers));
     }
     args.push("--profile", profile, "--max-hops", String(maxHops));
+    if (fs.existsSync(overridesFile)) {
+        args.push("--device-overrides-json", overridesFile);
+    }
 
     const startTime = Date.now();
 
@@ -305,9 +335,9 @@ async function run() {
                     status: dev.status,
                     failureReason: dev.failure_reason,
                     discoveredVia: dev.discovered_via,
-                    credentialUsed: dev.credential_used 
-                        ? (dev.credential_used.toLowerCase().includes("fallback") || dev.credential_used.toLowerCase().includes("local") ? "Local" : "TACACS")
-                        : null,
+                    credentialUsed: dev.credential_used || (ov?.credentialProfile ?? null),
+                    protocol: dev.protocol || (ov?.protocolOverride ? ov.protocolOverride.toLowerCase() : "ssh"),
+                    telnetDetected: Boolean(dev.telnet_detected || dev.protocol === "telnet" || ov?.protocolOverride === "TELNET"),
                     authTimeMs: dev.auth_time_ms ?? null,
                     hopDistance: dev.hop_distance ?? 0,
                     isReseedFrontier: Boolean(dev.is_reseed_frontier),
@@ -349,6 +379,59 @@ async function run() {
             await ensureSitesExistFromDevices(rawDevices);
         } catch (e) {
             console.error("Failed auto-registering sites:", e);
+        }
+
+        // Auto-lock in newly discovered switches into CrawlerDeviceOverride
+        for (const dev of rawDevices) {
+            if (dev.status === "REACHABLE") {
+                const canon = (dev.hostname || "").split(".")[0].split("(")[0].trim().toLowerCase();
+                if (canon && !overrideMap.has(canon)) {
+                    try {
+                        const isCrmc = dev.hostname.toLowerCase().startsWith("crm") || (dev.site_info?.site || "").toUpperCase() === "CRM";
+                        const credProfile = dev.credential_used || (isCrmc ? "CRMC_TACACS" : "COOPER_TACACS");
+                        const proto = dev.protocol === "telnet" ? "TELNET" : "SSH";
+                        await prisma.crawlerDeviceOverride.create({
+                            data: {
+                                hostname: canon,
+                                rawHostname: dev.hostname,
+                                ipAddress: dev.ip_address || null,
+                                tag: "CUSTOM",
+                                siteOverride: dev.site_info?.site || null,
+                                idfOverride: dev.site_info?.idf || null,
+                                roleOverride: dev.role || null,
+                                credentialProfile: credProfile,
+                                protocolOverride: proto,
+                                portOverride: proto === "TELNET" ? 23 : 22,
+                                reason: "Auto-learned from verified crawl discovery",
+                                createdBy: "crawler-cron"
+                            }
+                        }).catch(() => {});
+                    } catch {}
+                }
+            }
+        }
+
+        // Snapshot Retention: Prune snapshots older than 30 days
+        try {
+            const thirtyDaysAgo = new Date();
+            thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+            const pruneResult = await prisma.crawlSnapshot.deleteMany({
+                where: { timestamp: { lt: thirtyDaysAgo } }
+            });
+            if (pruneResult.count > 0) {
+                console.log(`[${new Date().toISOString()}] [RETENTION] Pruned ${pruneResult.count} crawl snapshot(s) older than 30 days.`);
+            }
+        } catch (pruneErr: any) {
+            console.warn("Warning pruning old crawl snapshots:", pruneErr.message);
+        }
+
+        // Invalidate in-memory server snapshot cache so morning UI requests fetch fresh snapshot
+        try {
+            const { invalidateCrawlerSnapshotCache } = await import("@/lib/crawlerSnapshotCache");
+            invalidateCrawlerSnapshotCache();
+            console.log(`[${new Date().toISOString()}] [CACHE] Invalidated crawler snapshot cache.`);
+        } catch (cacheErr: any) {
+            console.warn("Could not invalidate snapshot cache:", cacheErr.message);
         }
 
         // Update BackgroundJob status for System Health dashboard

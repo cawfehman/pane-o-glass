@@ -447,6 +447,8 @@ model CrawlDevice {
   failureReason     String?
   discoveredVia     String?
   credentialUsed    String?
+  protocol          String?       @default("ssh")
+  telnetDetected    Boolean?      @default(false)
   authTimeMs        Int?
   hopDistance       Int?          @default(0)
   isReseedFrontier  Boolean?      @default(false)
@@ -499,6 +501,9 @@ model CrawlerDeviceOverride {
   siteOverride        String?  // authoritative site code (e.g. KEL)
   idfOverride         String?  // authoritative IDF code (e.g. 2MC)
   roleOverride        String?  // authoritative role (e.g. WLC, Router, L3 Switch, L2 Switch)
+  credentialProfile   String?  // e.g. COOPER_TACACS, CRMC_TACACS, COOPER_LOCAL, CRMC_LOCAL, CRMC_TERTIARY
+  protocolOverride    String?  // SSH or TELNET
+  portOverride        Int?     // optional custom port
   reason              String?
   excludeFromTopology Boolean  @default(false)
   excludeFromFailures Boolean  @default(false)
@@ -508,6 +513,7 @@ model CrawlerDeviceOverride {
 
   @@index([tag])
   @@index([siteOverride])
+  @@index([credentialProfile])
 }
 
 model CrawlerSavedView {
