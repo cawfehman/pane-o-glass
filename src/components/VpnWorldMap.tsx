@@ -90,6 +90,9 @@ export function VpnWorldMap({ successfulIps = [], failedIps = [], recentEvents =
     const [isEnriching, setIsEnriching] = useState<boolean>(false);
     const [selectedState, setSelectedState] = useState<string | null>(null);
 
+    // Track IPs already requested for enrichment in this session to prevent infinite render loops
+    const attemptedIpsRef = useRef<Set<string>>(new Set());
+
     const isUsView = showUsStates;
 
     const svgRef = useRef<SVGSVGElement | null>(null);
@@ -154,13 +157,16 @@ export function VpnWorldMap({ successfulIps = [], failedIps = [], recentEvents =
             });
 
             const allUsIps = Array.from(new Set([
-                ...activeTunnels.map(e => e.sourceIp),
-                ...failedValidTunnels.map(e => e.sourceIp)
-            ])).filter(Boolean);
+                ...activeTunnels.map(e => e.sourceIp?.trim()),
+                ...failedValidTunnels.map(e => e.sourceIp?.trim())
+            ])).filter(Boolean) as string[];
 
-            const uncached = allUsIps.filter(ip => !ipCache[ip]);
+            const uncached = allUsIps.filter(ip => !ipCache[ip] && !attemptedIpsRef.current.has(ip));
 
             if (uncached.length > 0) {
+                // Mark immediately so re-renders cannot re-query the same IP batch
+                uncached.forEach(ip => attemptedIpsRef.current.add(ip));
+
                 setIsEnriching(true);
                 console.log(`[Enrichment] Resolving ${uncached.length} uncached VPN IPs in bulk...`);
                 
@@ -181,9 +187,9 @@ export function VpnWorldMap({ successfulIps = [], failedIps = [], recentEvents =
                     }
                 } catch (e) {
                     console.error("[Enrichment] Network error during batch geocoding:", e);
+                } finally {
+                    setIsEnriching(false);
                 }
-                
-                setIsEnriching(false);
             }
         };
 

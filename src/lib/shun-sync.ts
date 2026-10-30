@@ -289,6 +289,22 @@ export async function enrichPendingShunIps(maxPublicToEnrich?: number): Promise<
                             }
                         }).catch(() => {});
                         enrichedCount++;
+                    } else if (!quotaExhausted) {
+                        // Negative cache unresolved IP so subsequent sync runs do not re-query
+                        await prisma.shunDatabaseIp.update({
+                            where: { ip },
+                            data: {
+                                ipCountryCode: "UNRESOLVED",
+                                enrichedAt: new Date()
+                            }
+                        }).catch(() => {});
+
+                        const unresolvedData = { ip, country: "Unknown", country_code: "UNRESOLVED", city: "N/A", unresolved: true, timestamp: Date.now() };
+                        await prisma.ipLookupCache.upsert({
+                            where: { ip },
+                            create: { ip, countryCode: "UNRESOLVED", city: "N/A", rawJson: JSON.stringify(unresolvedData) },
+                            update: { countryCode: "UNRESOLVED", city: "N/A", rawJson: JSON.stringify(unresolvedData) }
+                        }).catch(() => {});
                     }
                 }
             }

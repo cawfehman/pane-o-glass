@@ -311,6 +311,7 @@ interface IpMetaInfo {
 }
 
 async function enrichIpMetadata(ip: string, allowExternalLookup: boolean = true): Promise<IpMetaInfo> {
+    const cleanIp = (ip || "").trim();
     const fallback: IpMetaInfo = {
         countryCode: "US",
         city: "N/A",
@@ -321,14 +322,17 @@ async function enrichIpMetadata(ip: string, allowExternalLookup: boolean = true)
         isResidentialIsp: false,
     };
 
-    if (!ip || isPrivateIp(ip)) return fallback;
+    if (!cleanIp || isPrivateIp(cleanIp)) return fallback;
 
     try {
         // 1. Check local PostgreSQL IpLookupCache first (Zero credits)
-        const cached = await prisma.ipLookupCache.findUnique({ where: { ip } });
+        const cached = await prisma.ipLookupCache.findUnique({ where: { ip: cleanIp } });
         if (cached?.rawJson) {
             try {
                 const rawData = JSON.parse(cached.rawJson);
+                if (cached.countryCode === "UNRESOLVED" || rawData.unresolved) {
+                    return fallback;
+                }
                 const companyName = rawData.company?.name || rawData.asn?.name || rawData.as_name || rawData.org || "Unknown Network";
                 if (companyName !== "Unknown Network") {
                     const companyType = (rawData.company?.type || rawData.asn?.type || "unknown").toLowerCase();
@@ -347,7 +351,7 @@ async function enrichIpMetadata(ip: string, allowExternalLookup: boolean = true)
         // 2. Check local VpnEvent history (Have staff logged in via AnyConnect VPN before?)
         try {
             const vpnSample = await prisma.vpnEvent.findFirst({
-                where: { sourceIp: ip, ipAsName: { not: null } },
+                where: { sourceIp: cleanIp, ipAsName: { not: null } },
                 select: { ipAsn: true, ipAsName: true, ipCountry: true, ipCountryCode: true }
             });
             if (vpnSample?.ipAsName) {
@@ -361,15 +365,15 @@ async function enrichIpMetadata(ip: string, allowExternalLookup: boolean = true)
 
         // 3. Ultra-Fast Zero-Cost Reverse DNS (PTR) Resolution (Resolves Verizon Fios, Spectrum, Comcast, Frontier, Cox, AT&T)
         try {
-            const ptrs = await dns.promises.reverse(ip).catch(() => []);
+            const ptrs = await dns.promises.reverse(cleanIp).catch(() => []);
             const ptr = ptrs[0] || "";
             if (ptr) {
                 for (const p of REVERSE_DNS_ISP_PATTERNS) {
                     if (p.match.test(ptr)) {
                         await prisma.ipLookupCache.upsert({
-                            where: { ip },
+                            where: { ip: cleanIp },
                             update: { countryCode: "US", rawJson: JSON.stringify({ company: { name: p.name, type: "isp" }, asn: { asn: p.asn, name: p.name } }) },
-                            create: { ip, countryCode: "US", rawJson: JSON.stringify({ company: { name: p.name, type: "isp" }, asn: { asn: p.asn, name: p.name } }) }
+                            create: { ip: cleanIp, countryCode: "US", rawJson: JSON.stringify({ company: { name: p.name, type: "isp" }, asn: { asn: p.asn, name: p.name } }) }
                         }).catch(() => {});
                         return { countryCode: "US", city: "N/A", asn: p.asn, companyName: p.name, companyType: "isp", cidr: "N/A", isResidentialIsp: true };
                     }
@@ -381,11 +385,11 @@ async function enrichIpMetadata(ip: string, allowExternalLookup: boolean = true)
         if (allowExternalLookup && process.env.IPLOCATE_API_KEY) {
             try {
                 const apiKey = process.env.IPLOCATE_API_KEY;
-                const res = await axios.get(`https://www.iplocate.io/api/lookup/${ip}`, {
+                const res = await axios.get(`https://www.iplocate.io/api/lookup/${cleanIp}`, {
                     headers: { "X-API-KEY": apiKey },
                     timeout: 4000,
                 });
-                if (res.data) {
+                if (res.data && (res.data.country_code || res.data.country)) {
                     const rawData = res.data;
                     const companyName = rawData.company?.name || rawData.asn?.name || rawData.as_name || rawData.org || "Unknown Network";
                     const companyType = (rawData.company?.type || rawData.asn?.type || "unknown").toLowerCase();
@@ -397,14 +401,31 @@ async function enrichIpMetadata(ip: string, allowExternalLookup: boolean = true)
                     const isResidentialIsp = companyType === "isp" || isResidential(companyName);
 
                     await prisma.ipLookupCache.upsert({
-                        where: { ip },
+                        where: { ip: cleanIp },
                         update: { latitude: rawData.latitude || null, longitude: rawData.longitude || null, countryCode, city, subdivision: rawData.subdivision || null, rawJson: JSON.stringify(rawData) },
-                        create: { ip, latitude: rawData.latitude || null, longitude: rawData.longitude || null, countryCode, city, subdivision: rawData.subdivision || null, rawJson: JSON.stringify(rawData) },
+                        create: { ip: cleanIp, latitude: rawData.latitude || null, longitude: rawData.longitude || null, countryCode, city, subdivision: rawData.subdivision || null, rawJson: JSON.stringify(rawData) },
                     }).catch(() => {});
 
                     return { countryCode, city, asn, companyName, companyType, cidr, isResidentialIsp };
+                } else {
+                    // Empty or missing country - negative cache as UNRESOLVED
+                    const unresolvedData = { ip: cleanIp, country: "Unknown", country_code: "UNRESOLVED", city: "N/A", unresolved: true, timestamp: Date.now() };
+                    await prisma.ipLookupCache.upsert({
+                        where: { ip: cleanIp },
+                        update: { countryCode: "UNRESOLVED", city: "N/A", rawJson: JSON.stringify(unresolvedData) },
+                        create: { ip: cleanIp, countryCode: "UNRESOLVED", city: "N/A", rawJson: JSON.stringify(unresolvedData) },
+                    }).catch(() => {});
                 }
-            } catch {}
+            } catch (err: any) {
+                if (err.response?.status !== 429) {
+                    const unresolvedData = { ip: cleanIp, country: "Unknown", country_code: "UNRESOLVED", city: "N/A", status: err.response?.status || 500, unresolved: true, timestamp: Date.now() };
+                    await prisma.ipLookupCache.upsert({
+                        where: { ip: cleanIp },
+                        update: { countryCode: "UNRESOLVED", city: "N/A", rawJson: JSON.stringify(unresolvedData) },
+                        create: { ip: cleanIp, countryCode: "UNRESOLVED", city: "N/A", rawJson: JSON.stringify(unresolvedData) },
+                    }).catch(() => {});
+                }
+            }
         }
 
         return fallback;

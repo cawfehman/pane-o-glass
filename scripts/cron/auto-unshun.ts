@@ -613,43 +613,85 @@ async function runAutoUnshun() {
                 let cacheEntry = await prisma.ipLookupCache.findUnique({ where: { ip } });
                 let ipData;
                 if (cacheEntry) {
-                    ipData = JSON.parse(cacheEntry.rawJson);
-                } else {
-                    const apiKey = process.env.IPLOCATE_API_KEY!;
-                    const res = await axios.get(`https://www.iplocate.io/api/lookup/${ip}`, {
-                        headers: apiKey ? { "X-API-KEY": apiKey } : {},
-                        timeout: 5000
-                    });
-                    ipData = res.data;
-                    
-                    await prisma.ipLookupCache.create({
-                        data: {
-                            ip,
-                            latitude: ipData.latitude || null,
-                            longitude: ipData.longitude || null,
-                            countryCode: ipData.country_code || null,
-                            city: ipData.city || null,
-                            subdivision: ipData.subdivision || null,
-                            rawJson: JSON.stringify(ipData)
-                        }
-                    });
-
-                    // Log IPLocate lookup to AuditLog for dashboard usage tracking
                     try {
-                        const startOfUtcDay = new Date();
-                        startOfUtcDay.setUTCHours(0, 0, 0, 0);
-                        const dailyCount = await prisma.ipLookupCache.count({
-                            where: { updatedAt: { gte: startOfUtcDay } }
+                        ipData = JSON.parse(cacheEntry.rawJson);
+                        if (cacheEntry.countryCode === "UNRESOLVED" || ipData?.unresolved) {
+                            console.log(`[GUARDIAN] IP ${ip} has unresolved geo/ASN metadata in cache. Skipping auto-unshun.`);
+                            continue;
+                        }
+                    } catch {
+                        ipData = null;
+                    }
+                }
+                
+                if (!ipData) {
+                    const apiKey = process.env.IPLOCATE_API_KEY!;
+                    try {
+                        const res = await axios.get(`https://www.iplocate.io/api/lookup/${ip}`, {
+                            headers: apiKey ? { "X-API-KEY": apiKey } : {},
+                            timeout: 5000
                         });
-                        await prisma.auditLog.create({
-                            data: {
-                                action: "IPLOCATE_API_QUERY",
-                                details: `Executed lookup for IP: ${ip} via Guardian. Daily usage since 00:00 UTC: ${dailyCount} queries.`,
-                                ipAddress: ip
+                        ipData = res.data;
+
+                        if (ipData && (ipData.country_code || ipData.country)) {
+                            await prisma.ipLookupCache.upsert({
+                                where: { ip },
+                                create: {
+                                    ip,
+                                    latitude: ipData.latitude || null,
+                                    longitude: ipData.longitude || null,
+                                    countryCode: ipData.country_code || null,
+                                    city: ipData.city || null,
+                                    subdivision: ipData.subdivision || null,
+                                    rawJson: JSON.stringify(ipData)
+                                },
+                                update: {
+                                    latitude: ipData.latitude || null,
+                                    longitude: ipData.longitude || null,
+                                    countryCode: ipData.country_code || null,
+                                    city: ipData.city || null,
+                                    subdivision: ipData.subdivision || null,
+                                    rawJson: JSON.stringify(ipData)
+                                }
+                            });
+
+                            // Log IPLocate lookup to AuditLog for dashboard usage tracking
+                            try {
+                                const startOfUtcDay = new Date();
+                                startOfUtcDay.setUTCHours(0, 0, 0, 0);
+                                const dailyCount = await prisma.ipLookupCache.count({
+                                    where: { updatedAt: { gte: startOfUtcDay } }
+                                });
+                                await prisma.auditLog.create({
+                                    data: {
+                                        action: "IPLOCATE_API_QUERY",
+                                        details: `Executed lookup for IP: ${ip} via Guardian. Daily usage since 00:00 UTC: ${dailyCount} queries.`,
+                                        ipAddress: ip
+                                    }
+                                });
+                            } catch (auditErr: any) {
+                                console.error("[GUARDIAN] Audit logging error:", auditErr.message);
                             }
-                        });
-                    } catch (auditErr: any) {
-                        console.error("[GUARDIAN] Audit logging error:", auditErr.message);
+                        } else {
+                            // Missing country - cache as UNRESOLVED
+                            const unresolvedData = { ip, country: "Unknown", country_code: "UNRESOLVED", city: "N/A", unresolved: true, timestamp: Date.now() };
+                            await prisma.ipLookupCache.upsert({
+                                where: { ip },
+                                create: { ip, countryCode: "UNRESOLVED", city: "N/A", rawJson: JSON.stringify(unresolvedData) },
+                                update: { countryCode: "UNRESOLVED", city: "N/A", rawJson: JSON.stringify(unresolvedData) }
+                            }).catch(() => {});
+                            continue;
+                        }
+                    } catch (e: any) {
+                        if (e.response?.status !== 429) {
+                            const unresolvedData = { ip, country: "Unknown", country_code: "UNRESOLVED", city: "N/A", status: e.response?.status || "error", unresolved: true, timestamp: Date.now() };
+                            await prisma.ipLookupCache.upsert({
+                                where: { ip },
+                                create: { ip, countryCode: "UNRESOLVED", city: "N/A", rawJson: JSON.stringify(unresolvedData) },
+                                update: { countryCode: "UNRESOLVED", city: "N/A", rawJson: JSON.stringify(unresolvedData) }
+                            }).catch(() => {});
+                        }
+                        continue;
                     }
                 }
 

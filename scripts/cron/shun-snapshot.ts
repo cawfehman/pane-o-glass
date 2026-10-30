@@ -375,6 +375,22 @@ async function run() {
                                 }
                             }).catch(() => {});
                             enrichedCount++;
+                        } else if (!quotaExhausted) {
+                            // Unresolved or empty - mark enrichedAt and cache so it is never re-queried in an infinite loop
+                            await prisma.shunDatabaseIp.update({
+                                where: { ip },
+                                data: {
+                                    ipCountryCode: "UNRESOLVED",
+                                    enrichedAt: new Date()
+                                }
+                            }).catch(() => {});
+
+                            const unresolvedData = { ip, country: "Unknown", country_code: "UNRESOLVED", city: "N/A", unresolved: true, timestamp: Date.now() };
+                            await prisma.ipLookupCache.upsert({
+                                where: { ip },
+                                create: { ip, countryCode: "UNRESOLVED", city: "N/A", rawJson: JSON.stringify(unresolvedData) },
+                                update: { countryCode: "UNRESOLVED", city: "N/A", rawJson: JSON.stringify(unresolvedData) }
+                            }).catch(() => {});
                         }
                     }
                     console.log(`Processed batch ${i} to ${i + batch.length}...`);

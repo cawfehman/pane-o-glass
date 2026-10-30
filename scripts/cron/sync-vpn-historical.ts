@@ -28,9 +28,10 @@ function parseDuration(durationStr: any) {
 }
 
 // IP Utility functions
-function ip2long(ip: any) {
+function ipToLong(ip: any) {
     return ip.split('.').reduce((long: any, octet: any) => (long << 8) + parseInt(octet, 10), 0) >>> 0;
 }
+const ip2long = ipToLong;
 
 const NON_PUBLIC_RANGES = [
     { start: "10.0.0.0", end: "10.255.255.255" },
@@ -92,12 +93,109 @@ function getIpInfo(ip: any) {
     });
 }
 
-const ipCache = new Map();
-async function getIpInfoWithCache(ip: any) {
-    if (ipCache.has(ip)) return ipCache.get(ip);
-    const info = await getIpInfo(ip);
-    ipCache.set(ip, info);
-    return info;
+const ipCache = new Map<string, any>();
+
+async function getIpInfoWithCache(rawIp: any): Promise<any> {
+    const ip = typeof rawIp === "string" ? rawIp.trim() : "";
+    if (!ip || isPrivateIp(ip)) return null;
+
+    // 1. In-memory hot cache
+    if (ipCache.has(ip)) {
+        return ipCache.get(ip);
+    }
+
+    // 2. PostgreSQL persistent cache
+    try {
+        const cached = await prisma.ipLookupCache.findUnique({ where: { ip } });
+        if (cached) {
+            const ageInMs = Date.now() - new Date(cached.updatedAt).getTime();
+            const ageInDays = ageInMs / (1000 * 60 * 60 * 24);
+            if (ageInDays < 30) {
+                try {
+                    const raw = JSON.parse(cached.rawJson);
+                    if (cached.countryCode === "UNRESOLVED" || raw.unresolved) {
+                        ipCache.set(ip, null);
+                        return null;
+                    }
+                    const info = {
+                        asn: raw.asn?.asn || raw.asn || raw.as_number || null,
+                        as_name: raw.company?.name || raw.asn?.name || raw.as_name || raw.org || null,
+                        as_domain: raw.company?.domain || raw.asn?.domain || raw.as_domain || null,
+                        country: raw.country || null,
+                        country_code: raw.country_code || cached.countryCode || null
+                    };
+                    ipCache.set(ip, info);
+                    return info;
+                } catch {}
+            }
+        }
+    } catch (e: any) {
+        console.warn(`[historical-sync] DB cache lookup error for ${ip}:`, e.message);
+    }
+
+    // 3. Query live IPLocate if not in cache
+    const token = process.env.IPLOCATE_API_KEY;
+    if (!token) return null;
+
+    try {
+        const url = `https://www.iplocate.io/api/lookup/${ip}?apikey=${token}`;
+        const res = await axios.get(url, { timeout: 5000 });
+        if (res.data && (res.data.country || res.data.country_code)) {
+            const d = res.data;
+            const parsed = {
+                asn: d.asn?.asn || d.asn || null,
+                as_name: d.company?.name || d.asn?.name || d.as_name || d.org || null,
+                as_domain: d.company?.domain || d.asn?.domain || d.as_domain || null,
+                country: d.country || null,
+                country_code: d.country_code || null
+            };
+
+            await prisma.ipLookupCache.upsert({
+                where: { ip },
+                create: {
+                    ip,
+                    latitude: d.latitude || null,
+                    longitude: d.longitude || null,
+                    countryCode: d.country_code || null,
+                    city: d.city || null,
+                    subdivision: d.subdivision || null,
+                    rawJson: JSON.stringify(d)
+                },
+                update: {
+                    latitude: d.latitude || null,
+                    longitude: d.longitude || null,
+                    countryCode: d.country_code || null,
+                    city: d.city || null,
+                    subdivision: d.subdivision || null,
+                    rawJson: JSON.stringify(d)
+                }
+            }).catch(() => {});
+
+            ipCache.set(ip, parsed);
+            return parsed;
+        } else {
+            // Unresolved response - cache in DB so we never query again
+            const unresolvedData = { ip, country: "Unknown", country_code: "UNRESOLVED", city: "N/A", unresolved: true, timestamp: Date.now() };
+            await prisma.ipLookupCache.upsert({
+                where: { ip },
+                create: { ip, countryCode: "UNRESOLVED", city: "N/A", rawJson: JSON.stringify(unresolvedData) },
+                update: { countryCode: "UNRESOLVED", city: "N/A", rawJson: JSON.stringify(unresolvedData) }
+            }).catch(() => {});
+            ipCache.set(ip, null);
+            return null;
+        }
+    } catch (err: any) {
+        if (err.response?.status !== 429) {
+            const unresolvedData = { ip, country: "Unknown", country_code: "UNRESOLVED", city: "N/A", status: err.response?.status || "error", unresolved: true, timestamp: Date.now() };
+            await prisma.ipLookupCache.upsert({
+                where: { ip },
+                create: { ip, countryCode: "UNRESOLVED", city: "N/A", rawJson: JSON.stringify(unresolvedData) },
+                update: { countryCode: "UNRESOLVED", city: "N/A", rawJson: JSON.stringify(unresolvedData) }
+            }).catch(() => {});
+        }
+        ipCache.set(ip, null);
+        return null;
+    }
 }
 
 // Global regex variables copies for extractIpFromMessage

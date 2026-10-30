@@ -61,23 +61,29 @@ function isPrivateIp(ip: any) {
 
 // IP Enrichment Fetcher (IPLocate)
 async function getIpInfo(ip: any, eventDate?: Date): Promise<any> {
-        if (!ip || isPrivateIp(ip)) {
+    const cleanIp = typeof ip === 'string' ? ip.trim() : '';
+    if (!cleanIp || isPrivateIp(cleanIp)) {
         return null;
     }
 
     try {
         // 1. Check IpLookupCache in PostgreSQL first
-        const cached = await prisma.ipLookupCache.findUnique({ where: { ip } });
+        const cached = await prisma.ipLookupCache.findUnique({ where: { ip: cleanIp } });
         if (cached) {
-            const raw = JSON.parse(cached.rawJson);
-            return {
-                asn: raw.asn?.asn || raw.asn || raw.as_number || null,
-                as_name: raw.asn?.name || raw.company?.name || raw.org || raw.as_name || null,
-                as_domain: raw.asn?.domain || raw.company?.domain || raw.as_domain || null,
-                country: raw.country || null,
-                country_code: raw.country_code || cached.countryCode || null,
-                city: cached.city || raw.city || null
-            };
+            try {
+                const raw = JSON.parse(cached.rawJson);
+                if (cached.countryCode === "UNRESOLVED" || raw.unresolved) {
+                    return null;
+                }
+                return {
+                    asn: raw.asn?.asn || raw.asn || raw.as_number || null,
+                    as_name: raw.asn?.name || raw.company?.name || raw.org || raw.as_name || null,
+                    as_domain: raw.asn?.domain || raw.company?.domain || raw.as_domain || null,
+                    country: raw.country || null,
+                    country_code: raw.country_code || cached.countryCode || null,
+                    city: cached.city || raw.city || null
+                };
+            } catch {}
         }
 
         // 2. Strict 30-Day Freshness Cutoff: Do not make external API calls for events older than 30 days
@@ -88,7 +94,7 @@ async function getIpInfo(ip: any, eventDate?: Date): Promise<any> {
         // 3. Fetch live via iplocate.io API (only for active events < 30 days)
         const apiKey = process.env.IPLOCATE_API_KEY;
         try {
-            const res = await axios.get(`https://www.iplocate.io/api/lookup/${ip}`, {
+            const res = await axios.get(`https://www.iplocate.io/api/lookup/${cleanIp}`, {
                 headers: apiKey ? { "X-API-KEY": apiKey } : {},
                 timeout: 5000
             });
@@ -103,7 +109,7 @@ async function getIpInfo(ip: any, eventDate?: Date): Promise<any> {
                 const cityStr = d.city || null;
 
                 await prisma.ipLookupCache.upsert({
-                    where: { ip },
+                    where: { ip: cleanIp },
                     update: {
                         latitude: d.latitude || null,
                         longitude: d.longitude || null,
@@ -113,7 +119,7 @@ async function getIpInfo(ip: any, eventDate?: Date): Promise<any> {
                         rawJson: JSON.stringify(d)
                     },
                     create: {
-                        ip,
+                        ip: cleanIp,
                         latitude: d.latitude || null,
                         longitude: d.longitude || null,
                         countryCode: countryCodeStr,
@@ -131,12 +137,28 @@ async function getIpInfo(ip: any, eventDate?: Date): Promise<any> {
                     country_code: countryCodeStr,
                     city: cityStr
                 };
+            } else {
+                // Empty / missing country: negative cache as UNRESOLVED
+                const unresolvedData = { ip: cleanIp, country: "Unknown", country_code: "UNRESOLVED", city: "N/A", unresolved: true, timestamp: Date.now() };
+                await prisma.ipLookupCache.upsert({
+                    where: { ip: cleanIp },
+                    update: { countryCode: "UNRESOLVED", city: "N/A", rawJson: JSON.stringify(unresolvedData) },
+                    create: { ip: cleanIp, countryCode: "UNRESOLVED", city: "N/A", rawJson: JSON.stringify(unresolvedData) }
+                }).catch(() => {});
             }
         } catch (e: any) {
-            // IPLocate failed or timed out
+            // IPLocate failed or timed out: negative cache if not rate-limited
+            if (e.response?.status !== 429) {
+                const unresolvedData = { ip: cleanIp, country: "Unknown", country_code: "UNRESOLVED", city: "N/A", status: e.response?.status || "error", unresolved: true, timestamp: Date.now() };
+                await prisma.ipLookupCache.upsert({
+                    where: { ip: cleanIp },
+                    update: { countryCode: "UNRESOLVED", city: "N/A", rawJson: JSON.stringify(unresolvedData) },
+                    create: { ip: cleanIp, countryCode: "UNRESOLVED", city: "N/A", rawJson: JSON.stringify(unresolvedData) }
+                }).catch(() => {});
+            }
         }
     } catch (e: any) {
-        console.error(`[VPN-SYNC] IP enrichment error for ${ip}:`, e.message);
+        console.error(`[VPN-SYNC] IP enrichment error for ${cleanIp}:`, e.message);
     }
     return null;
 }

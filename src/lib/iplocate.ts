@@ -134,8 +134,13 @@ export async function enrichIpsBatch(ips: string[], isAdHoc: boolean = false): P
                 const ageInMs = now - new Date(cached.updatedAt).getTime();
                 const ageInDays = ageInMs / (1000 * 60 * 60 * 24);
                 if (ageInDays < CACHE_TTL_DAYS) {
-                    results[ip] = JSON.parse(cached.rawJson);
-                    continue;
+                    try {
+                        const parsed = JSON.parse(cached.rawJson);
+                        results[ip] = parsed;
+                        continue;
+                    } catch {
+                        // Fall through to re-enrich if rawJson was corrupt
+                    }
                 }
             }
             uncachedIps.push(ip);
@@ -225,8 +230,8 @@ export async function enrichIpsBatch(ips: string[], isAdHoc: boolean = false): P
                     if (response.ok) {
                         const data = await response.json();
                         
-                        // Save resolved results in parallel to cache
-                        await Promise.all(Object.keys(data).map(async (ip) => {
+                        // Save resolved results and negative cache unresolved IPs
+                        await Promise.all(chunk.map(async (ip) => {
                             const info = data[ip];
                             if (info && info.country_code) {
                                 await prisma.ipLookupCache.upsert({
@@ -250,6 +255,32 @@ export async function enrichIpsBatch(ips: string[], isAdHoc: boolean = false): P
                                     }
                                 });
                                 results[ip] = info;
+                            } else {
+                                // IP was queried, but API returned empty, non-routable or missing country code
+                                // Cache as UNRESOLVED so subsequent cycles do not query it in a loop
+                                const unresolvedInfo = {
+                                    ip,
+                                    country: "Unknown",
+                                    country_code: "UNRESOLVED",
+                                    city: "N/A",
+                                    unresolved: true,
+                                    timestamp: Date.now()
+                                };
+                                await prisma.ipLookupCache.upsert({
+                                    where: { ip },
+                                    create: {
+                                        ip,
+                                        countryCode: "UNRESOLVED",
+                                        city: "N/A",
+                                        rawJson: JSON.stringify(unresolvedInfo)
+                                    },
+                                    update: {
+                                        countryCode: "UNRESOLVED",
+                                        city: "N/A",
+                                        rawJson: JSON.stringify(unresolvedInfo)
+                                    }
+                                }).catch(() => {});
+                                results[ip] = unresolvedInfo;
                             }
                         }));
 
@@ -297,9 +328,26 @@ export async function enrichIpsBatch(ips: string[], isAdHoc: boolean = false): P
                                             }
                                         });
                                         results[ip] = info;
+                                    } else {
+                                        const unresolvedInfo = { ip, country: "Unknown", country_code: "UNRESOLVED", city: "N/A", unresolved: true, timestamp: Date.now() };
+                                        await prisma.ipLookupCache.upsert({
+                                            where: { ip },
+                                            create: { ip, countryCode: "UNRESOLVED", city: "N/A", rawJson: JSON.stringify(unresolvedInfo) },
+                                            update: { countryCode: "UNRESOLVED", city: "N/A", rawJson: JSON.stringify(unresolvedInfo) }
+                                        }).catch(() => {});
+                                        results[ip] = unresolvedInfo;
                                     }
                                 } else {
                                     console.error(`[iplocate] Sequential fallback failed for ${ip}:`, singleRes.status);
+                                    if (singleRes.status !== 429) {
+                                        const unresolvedInfo = { ip, country: "Unknown", country_code: "UNRESOLVED", city: "N/A", status: singleRes.status, unresolved: true, timestamp: Date.now() };
+                                        await prisma.ipLookupCache.upsert({
+                                            where: { ip },
+                                            create: { ip, countryCode: "UNRESOLVED", city: "N/A", rawJson: JSON.stringify(unresolvedInfo) },
+                                            update: { countryCode: "UNRESOLVED", city: "N/A", rawJson: JSON.stringify(unresolvedInfo) }
+                                        }).catch(() => {});
+                                        results[ip] = unresolvedInfo;
+                                    }
                                     const staleCached = cachedMap.get(ip);
                                     if (staleCached) {
                                         results[ip] = JSON.parse(staleCached.rawJson);
@@ -342,19 +390,23 @@ export async function enrichIp(ip: string, isAdHoc: boolean = false): Promise<an
  * Replaces all deprecated IPInfo lookups across the platform.
  */
 export async function getIpEnrichment(ip: string): Promise<IpEnrichmentResult | null> {
-    if (!ip || isPrivateIp(ip)) {
+    const cleanIp = (ip || "").trim();
+    if (!cleanIp || isPrivateIp(cleanIp)) {
         return null;
     }
 
     // 1. Check local IpLookupCache first (0 external API credits)
     try {
-        const cached = await prisma.ipLookupCache.findUnique({ where: { ip } });
+        const cached = await prisma.ipLookupCache.findUnique({ where: { ip: cleanIp } });
         if (cached?.rawJson) {
             try {
                 const raw = JSON.parse(cached.rawJson);
+                if (cached.countryCode === "UNRESOLVED" || raw.unresolved) {
+                    return null;
+                }
                 const asnRaw = typeof raw.asn === "object" ? raw.asn?.asn : (raw.asn || raw.as_number);
                 return {
-                    ip,
+                    ip: cleanIp,
                     asn: asnRaw ? String(asnRaw) : undefined,
                     as_name: raw.company?.name || raw.asn?.name || raw.as_name || raw.org || undefined,
                     as_domain: raw.company?.domain || raw.asn?.domain || raw.as_domain || undefined,
@@ -363,9 +415,9 @@ export async function getIpEnrichment(ip: string): Promise<IpEnrichmentResult | 
                     city: raw.city || cached.city || undefined
                 };
             } catch {
-                if (cached.countryCode) {
+                if (cached.countryCode && cached.countryCode !== "UNRESOLVED") {
                     return {
-                        ip,
+                        ip: cleanIp,
                         country_code: cached.countryCode,
                         city: cached.city || undefined
                     };
@@ -382,12 +434,12 @@ export async function getIpEnrichment(ip: string): Promise<IpEnrichmentResult | 
     }
 
     try {
-        const response = await axios.get(`https://www.iplocate.io/api/lookup/${ip}`, {
+        const response = await axios.get(`https://www.iplocate.io/api/lookup/${cleanIp}`, {
             headers: { "X-API-KEY": apiKey },
             timeout: 5000
         });
 
-        if (response.data) {
+        if (response.data && (response.data.country_code || response.data.country)) {
             const data = response.data;
             const countryCode = data.country_code || null;
             const city = data.city || null;
@@ -396,9 +448,9 @@ export async function getIpEnrichment(ip: string): Promise<IpEnrichmentResult | 
             const asDomain = data.company?.domain || data.asn?.domain || data.as_domain || null;
 
             await prisma.ipLookupCache.upsert({
-                where: { ip },
+                where: { ip: cleanIp },
                 create: {
-                    ip,
+                    ip: cleanIp,
                     latitude: data.latitude || null,
                     longitude: data.longitude || null,
                     countryCode,
@@ -418,11 +470,11 @@ export async function getIpEnrichment(ip: string): Promise<IpEnrichmentResult | 
 
             await logAudit(
                 "IPLOCATE_API_QUERY",
-                `Enriched IP ${ip} via IPLocate (${asName || "Unknown ASN"}).`
+                `Enriched IP ${cleanIp} via IPLocate (${asName || "Unknown ASN"}).`
             ).catch(() => {});
 
             return {
-                ip,
+                ip: cleanIp,
                 asn: asnRaw ? String(asnRaw) : undefined,
                 as_name: asName || undefined,
                 as_domain: asDomain || undefined,
@@ -430,9 +482,25 @@ export async function getIpEnrichment(ip: string): Promise<IpEnrichmentResult | 
                 country: data.country || undefined,
                 city: city || undefined
             };
+        } else {
+            // Live lookup returned empty / missing country - cache as UNRESOLVED
+            const unresolvedData = { ip: cleanIp, country: "Unknown", country_code: "UNRESOLVED", city: "N/A", unresolved: true, timestamp: Date.now() };
+            await prisma.ipLookupCache.upsert({
+                where: { ip: cleanIp },
+                create: { ip: cleanIp, countryCode: "UNRESOLVED", city: "N/A", rawJson: JSON.stringify(unresolvedData) },
+                update: { countryCode: "UNRESOLVED", city: "N/A", rawJson: JSON.stringify(unresolvedData) }
+            }).catch(() => {});
         }
     } catch (err: any) {
-        console.error(`[iplocate] Failed lookup for ${ip}:`, err.message);
+        console.error(`[iplocate] Failed lookup for ${cleanIp}:`, err.message);
+        if (err.response?.status !== 429) {
+            const unresolvedData = { ip: cleanIp, country: "Unknown", country_code: "UNRESOLVED", city: "N/A", status: err.response?.status || 500, unresolved: true, timestamp: Date.now() };
+            await prisma.ipLookupCache.upsert({
+                where: { ip: cleanIp },
+                create: { ip: cleanIp, countryCode: "UNRESOLVED", city: "N/A", rawJson: JSON.stringify(unresolvedData) },
+                update: { countryCode: "UNRESOLVED", city: "N/A", rawJson: JSON.stringify(unresolvedData) }
+            }).catch(() => {});
+        }
     }
 
     return null;
