@@ -11,6 +11,7 @@ import { runCitrixLoginAutoShunCycle } from '../../src/lib/netscaler-login-triag
 import { getAdaptiveSearchWindow } from '../../src/lib/graylog-backlog-guardian';
 import { replicateShunToFleet } from '../../src/lib/universal-shun-sync';
 import { isPrivateIp } from '../../src/lib/iplocate';
+import { isResidential } from '../../src/lib/isp-classification';
 
 async function checkCitrixSuccessHistory(ip: string, username?: string): Promise<{ hasCitrixSuccess: boolean; exactUserMatch: boolean }> {
     const rawUrl = process.env.GRAYLOG_URL || process.env.OG_GRAYLOG_URL;
@@ -697,6 +698,7 @@ async function runAutoUnshun() {
                 
                 const cleanComp = companyName.toLowerCase();
                 const isIsp = companyType.toLowerCase() === "isp" || 
+                              isResidential(companyName) ||
                               cleanComp.includes("telecom") || 
                               cleanComp.includes("communication") ||
                               cleanComp.includes("cable") ||

@@ -22,82 +22,23 @@ const HONEYPOT_USERNAMES = new Set([
     "demo"
 ]);
 
-export const RESIDENTIAL_ISP_KEYWORDS = [
-    "comcast",
-    "charter",
-    "spectrum",
-    "verizon",
-    "at&t",
-    "att",
-    "cox",
-    "optimum",
-    "cablevision",
-    "centurylink",
-    "frontier",
-    "t-mobile",
-    "sprint",
-    "broadband",
-    "cable",
-    "telecom",
-    "fiber",
-    "wireless",
-    "ezee",
-    "northland",
-    "blue stream",
-    "altafiber",
-    "spacex",
-    "starlink",
-    "tds",
-    "penteledata",
-    "liveoak"
-];
+import {
+    RESIDENTIAL_ISP_KEYWORDS,
+    CLOUD_VPS_KEYWORDS,
+    isResidential,
+    isResidentialOrg,
+    isCloudVpsOrg,
+    isBusinessIsp,
+} from "@/lib/isp-classification";
 
-export const CLOUD_VPS_KEYWORDS = [
-    "amazon",
-    "aws",
-    "digitalocean",
-    "microsoft azure",
-    "microsoft corporation",
-    "google cloud",
-    "google llc",
-    "ovh",
-    "hetzner",
-    "linode",
-    "akamai connected cloud",
-    "choopa",
-    "vultr",
-    "contabo",
-    "m247",
-    "hostinger",
-    "leaseweb",
-    "kamatera",
-    "tzulo",
-    "datacamp",
-    "sharktech",
-    "psychz",
-    "ionos",
-    "upcloud",
-    "scaleway",
-    "hostwinds",
-    "hosting",
-    "datacenter",
-    "vps"
-];
-
-export function isResidential(org?: string | null): boolean {
-    if (!org) return false;
-    const lower = org.toLowerCase();
-    return RESIDENTIAL_ISP_KEYWORDS.some(kw => lower.includes(kw));
-}
-
-export const isResidentialOrg = isResidential;
-
-export function isCloudVpsOrg(org?: string | null): boolean {
-    if (!org) return false;
-    if (isResidential(org)) return false;
-    const lower = org.toLowerCase();
-    return CLOUD_VPS_KEYWORDS.some(kw => lower.includes(kw));
-}
+export {
+    RESIDENTIAL_ISP_KEYWORDS,
+    CLOUD_VPS_KEYWORDS,
+    isResidential,
+    isResidentialOrg,
+    isCloudVpsOrg,
+    isBusinessIsp,
+};
 
 export interface AuthFailureEvent {
     ip: string;

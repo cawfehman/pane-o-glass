@@ -17,6 +17,14 @@ import {
 } from "@/lib/imprivata-graylog";
 import { getAdaptiveSearchWindow } from "@/lib/graylog-backlog-guardian";
 import { recordAuthSuccess } from "@/lib/reputation-ledger";
+import {
+    isResidential,
+    isResidentialOrg,
+    RESIDENTIAL_ISP_KEYWORDS,
+    isBusinessIsp,
+} from "@/lib/isp-classification";
+
+export { isResidential, isResidentialOrg, RESIDENTIAL_ISP_KEYWORDS, isBusinessIsp };
 
 const httpsAgent = new https.Agent({
     rejectUnauthorized: false,
@@ -279,49 +287,15 @@ export function isCorporateUsernameFormat(username: string): boolean {
     return CORPORATE_USERNAME_REGEX.test(clean);
 }
 
-export function isResidential(org?: string | null): boolean {
-    if (!org) return false;
-    const clean = org.toLowerCase();
-    return (
-        clean.includes("comcast") ||
-        clean.includes("charter") ||
-        clean.includes("spectrum") ||
-        clean.includes("verizon") ||
-        clean.includes("at&t") ||
-        clean.includes("att") ||
-        clean.includes("cox") ||
-        clean.includes("optimum") ||
-        clean.includes("cablevision") ||
-        clean.includes("centurylink") ||
-        clean.includes("frontier") ||
-        clean.includes("t-mobile") ||
-        clean.includes("sprint") ||
-        clean.includes("broadband") ||
-        clean.includes("cable") ||
-        clean.includes("telecom") ||
-        clean.includes("fiber") ||
-        clean.includes("wireless") ||
-        clean.includes("ezee") ||
-        clean.includes("northland") ||
-        clean.includes("blue stream") ||
-        clean.includes("altafiber") ||
-        clean.includes("spacex") ||
-        clean.includes("starlink") ||
-        clean.includes("tds") ||
-        clean.includes("penteledata") ||
-        clean.includes("liveoak")
-    );
-}
-
 const REVERSE_DNS_ISP_PATTERNS = [
-    { match: /comcast|hsd1/i, name: "Comcast Cable Communications", asn: "AS7922" },
-    { match: /verizon|fios|myvzw/i, name: "Verizon Business / Fios", asn: "AS701" },
+    { match: /comcast|hsd1|comcastbusiness/i, name: "Comcast Cable / Business", asn: "AS7922" },
+    { match: /verizon|fios|myvzw|alter\.net/i, name: "Verizon Business / Fios", asn: "AS701" },
     { match: /spectrum|rr\.com|charter/i, name: "Charter Communications / Spectrum", asn: "AS20115" },
     { match: /att\.net|sbcglobal|attlocal/i, name: "AT&T Services", asn: "AS7018" },
     { match: /frontier/i, name: "Frontier Communications", asn: "AS5650" },
-    { match: /cox\.net/i, name: "Cox Communications", asn: "AS22773" },
+    { match: /cox\.net|coxbusiness/i, name: "Cox Communications / Business", asn: "AS22773" },
     { match: /optimum|cv\.net/i, name: "Optimum / Altice", asn: "AS6128" },
-    { match: /centurylink|qwest/i, name: "CenturyLink / Lumen", asn: "AS209" },
+    { match: /centurylink|qwest|lumen/i, name: "CenturyLink / Lumen", asn: "AS209" },
     { match: /t-mobile/i, name: "T-Mobile USA", asn: "AS21928" },
     { match: /rowan\.edu/i, name: "Rowan University", asn: "AS33523" }
 ];
@@ -364,7 +338,7 @@ async function enrichIpMetadata(ip: string, allowExternalLookup: boolean = true)
                     const countryCode = rawData.country_code || cached.countryCode || "US";
                     const city = rawData.city || cached.city || "N/A";
                     const cleanComp = companyName.toLowerCase();
-                    const isResidentialIsp = companyType === "isp" || cleanComp.includes("comcast") || cleanComp.includes("verizon") || cleanComp.includes("at&t") || cleanComp.includes("charter") || cleanComp.includes("spectrum") || cleanComp.includes("cox") || cleanComp.includes("optimum") || cleanComp.includes("frontier") || cleanComp.includes("centurylink") || cleanComp.includes("broadband") || cleanComp.includes("cable");
+                    const isResidentialIsp = companyType === "isp" || isResidential(companyName);
                     return { countryCode, city, asn: `AS${asn}`, companyName, companyType, cidr, isResidentialIsp };
                 }
             } catch {}
@@ -420,7 +394,7 @@ async function enrichIpMetadata(ip: string, allowExternalLookup: boolean = true)
                     const asn = String(asnRaw);
                     const countryCode = rawData.country_code || "US";
                     const city = rawData.city || "N/A";
-                    const isResidentialIsp = isResidential(companyName);
+                    const isResidentialIsp = companyType === "isp" || isResidential(companyName);
 
                     await prisma.ipLookupCache.upsert({
                         where: { ip },
@@ -2923,7 +2897,7 @@ export async function reevaluateSingleCitrixIp(
             } else {
                 verdictReason = `Valid AD user ${userLabel} connecting from US ISP (${ipMeta.companyName}).`;
                 protectionNote = "Guardian Protected: US ISP with verified Active Directory corporate user.";
-                safetyShieldReason = `US Residential ISP (${ipMeta.companyName}) with valid Active Directory account.`;
+                safetyShieldReason = `US Residential / Business ISP (${ipMeta.companyName}) with valid Active Directory account.`;
             }
         }
     } else if (riskScore >= 50) {

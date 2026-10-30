@@ -43,12 +43,12 @@ export const helpData: Record<string, TooltipDetails> = {
         capabilities: [
             {
                 title: "Residential Threat Lens & Multi-Employee Household Exemption",
-                detail: "Applies enhanced scrutiny to residential ISPs (Comcast, Verizon, Charter, etc.) to detect compromised routers and proxyware. Protects legitimate multi-employee households (up to 2 active corporate AD accounts with prior authentication history) while strictly blocking IPs targeting ≥3 accounts or probing non-existent users.",
+                detail: "Applies enhanced scrutiny to residential & business ISPs (Comcast, Comcast Business, Verizon, Verizon Business, Charter, etc.) to detect compromised routers and proxyware. Protects legitimate corporate users and multi-employee households (up to 2 active corporate AD accounts with prior authentication history) while strictly blocking IPs targeting ≥3 accounts or probing non-existent users.",
                 tag: "Residential Lens"
             },
             {
                 title: "Individual IP vs. ASN Blacklisting",
-                detail: "Guarantees that residential ASNs (e.g. AS7922 Comcast, AS701 Verizon) are never blacklisted to prevent collateral damage to remote employees. Abusive residential attackers have their specific /32 IP shunned and locked on the Guardian Do-Not-Unshun Blacklist.",
+                detail: "Guarantees that residential & business broadband ASNs (e.g. AS7922 Comcast / Comcast Business, AS701 Verizon Business / Fios) are never blacklisted to prevent collateral damage to remote employees. Abusive attackers have their specific /32 IP shunned and locked on the Guardian Do-Not-Unshun Blacklist.",
                 tag: "Precision Enforcement"
             },
             {

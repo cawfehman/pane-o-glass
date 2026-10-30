@@ -1,6 +1,7 @@
 import { prisma } from "./prisma";
 import { logAudit } from "./audit";
 import axios from "axios";
+import { isResidential } from "./isp-classification";
 
 /**
  * Non-public IP ranges that should not be queried against external APIs.
@@ -105,8 +106,7 @@ const MOCK_US_CITIES = [
  */
 export function isStandardUsIsp(asnName: string | null | undefined): boolean {
     if (!asnName) return false;
-    const clean = asnName.toLowerCase();
-    return STANDARD_US_ISPS.some(isp => clean.includes(isp));
+    return isResidential(asnName) || STANDARD_US_ISPS.some(isp => asnName.toLowerCase().includes(isp));
 }
 
 /**

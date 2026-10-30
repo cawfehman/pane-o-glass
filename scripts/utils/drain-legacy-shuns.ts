@@ -1,5 +1,6 @@
 import { PrismaClient } from "@prisma/client";
 import { executeFirewallBulkCommands } from "../../src/lib/netscaler-auto-shun";
+import { isResidential } from "../../src/lib/isp-classification";
 import path from "path";
 import dotenv from "dotenv";
 
@@ -7,16 +8,7 @@ dotenv.config({ path: path.resolve(__dirname, "../../.env") });
 
 const prisma = new PrismaClient();
 
-const RESIDENTIAL_KEYWORDS = [
-    "comcast", "charter", "spectrum", "verizon", "at&t", "att",
-    "cox", "optimum", "centurylink", "frontier", "t-mobile", "sprint"
-];
 
-function isResidential(org?: string | null): boolean {
-    if (!org) return false;
-    const lower = org.toLowerCase();
-    return RESIDENTIAL_KEYWORDS.some(k => lower.includes(k));
-}
 
 async function main() {
     const args = process.argv.slice(2);

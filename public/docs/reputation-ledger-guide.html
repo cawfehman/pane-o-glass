@@ -286,9 +286,9 @@
       </p>
     </div>
     <div class="card info">
-      <div class="card-title">Tier B: US Residential &amp; Mobile ISPs</div>
+      <div class="card-title">Tier B: US Residential, Business &amp; Mobile ISPs</div>
       <p style="margin:0;">
-        Consumer ISPs (Comcast, Verizon Fios, AT&amp;T, Charter, Cox, T-Mobile) are shared by <strong>both</strong> remote Cooper staff and residential proxy botnets. These IPs are governed by the <strong>3-Strike Reputation Ledger</strong>.
+        Consumer and Business broadband ISPs (Comcast, Comcast Business, Verizon Fios, Verizon Business, AT&amp;T, Charter, Cox, T-Mobile) are shared by <strong>both</strong> remote Cooper staff and distributed proxy botnets. These IPs are governed by the <strong>3-Strike Reputation Ledger</strong>.
       </p>
     </div>
   </div>
@@ -320,7 +320,7 @@
 
       <!-- Branch Down: US Residential -->
       <line x1="410" y1="102" x2="410" y2="125" stroke="#475569" stroke-width="1.5" marker-end="url(#arrow)" />
-      <text x="480" y="117" fill="#0369a1" font-size="9" font-weight="600">US Residential / Mobile ISP</text>
+      <text x="480" y="117" fill="#0369a1" font-size="9" font-weight="600">US Residential / Business ISP</text>
 
       <!-- Node 3: Username & Spray Check -->
       <rect x="270" y="127" width="280" height="34" rx="17" fill="#e0f2fe" stroke="#0284c7" stroke-width="1.5" />
@@ -355,7 +355,7 @@
       <path d="M 410 226 L 410 250 L 555 250 L 555 268" fill="none" stroke="#475569" stroke-width="1.5" marker-end="url(#arrow)" />
       <text x="495" y="244" fill="#475569" font-size="8.8" font-weight="600" text-anchor="middle">No Prior Success (Unverified IP)</text>
       <rect x="310" y="270" width="495" height="72" rx="6" fill="#fef3c7" stroke="#f59e0b" stroke-width="1.5" />
-      <text x="557" y="290" fill="#92400e" font-size="10" font-weight="700" text-anchor="middle">Standard 3-Strike Progression (Unverified Residential IP)</text>
+      <text x="557" y="290" fill="#92400e" font-size="10" font-weight="700" text-anchor="middle">Standard 3-Strike Progression (Unverified Residential / Business ISP)</text>
       <text x="557" y="306" fill="#78350f" font-size="8.7" text-anchor="middle">1st Failure: Strike 1 (WATCHING - 14d Watchlist) &mdash; Silent observation, 0 Shuns</text>
       <text x="557" y="320" fill="#78350f" font-size="8.7" text-anchor="middle">2nd Failure (&gt;90s later): Strike 2 (ENFORCED - 7d SI Block + Ephemeral ASA Shun)</text>
       <text x="557" y="334" fill="#78350f" font-size="8.7" text-anchor="middle">3rd Failure: Strike 3 (QUARANTINED - 90d Botnet Quarantine + SI Feed + ASA Shun)</text>
@@ -391,7 +391,7 @@
     <ul style="margin-bottom:0;">
       <li><strong>Single Failure / Isolated Retry:</strong> If an IP has prior Citrix/VPN login success or was previously pardoned, a single failed login (or isolated retry more than 15 minutes after a prior failure) for a valid corporate user <strong>does NOT add a strike and does NOT trigger a shun</strong>. The IP remains <code>PARDONED</code> (0 strikes).</li>
       <li><strong>Imprivata MFA Push Timeouts:</strong> If Imprivata RADIUS confirms the user's AD password was correct and only the smartphone Confirm ID push timed out, the IP is classified as <code>LEGIT_USER_ISSUE</code> and protected.</li>
-      <li><strong>Multi-Employee Households:</strong> Up to <strong>2 valid active AD users</strong> sharing a US residential ISP connection (e.g., married employees working from home) are recognized as a <strong>Protected Household</strong>.</li>
+      <li><strong>Multi-Employee Households:</strong> Up to <strong>2 valid active AD users</strong> sharing a US residential or business ISP connection (e.g., married employees working from home or small satellite clinic) are recognized as a <strong>Protected Household</strong>.</li>
       <li><strong>When Protection is Revoked:</strong> Immunity is immediately revoked if the IP attempts <strong>multiple distinct usernames</strong> (password spray), probes <strong>non-existent/non-corporate accounts</strong>, or executes a <strong>sustained brute-force burst</strong> (&ge;3 distinct failed login attempts within 10 minutes).</li>
     </ul>
   </div>
@@ -415,7 +415,7 @@
         <td>None (0 Shuns)</td>
         <td>No</td>
         <td>14 Days</td>
-        <td>1st failure from an unverified US residential IP targeting <strong>1 valid corporate AD user</strong>. Silent observation.</td>
+        <td>1st failure from an unverified US residential or business ISP targeting <strong>1 valid corporate AD user</strong>. Silent observation.</td>
       </tr>
       <tr>
         <td><span class="badge badge-enforced">ENFORCED</span></td>
@@ -431,7 +431,7 @@
         <td>Dynamic <code>SHUN</code> + <code>GuardianBlacklist</code></td>
         <td><strong>Yes</strong> (Blocked)</td>
         <td>90 Days</td>
-        <td>&bull; 3rd failure on a Strike 2 IP<br>&bull; Residential spray (&ge;3 users) or non-existent AD user probe<br>&bull; Unverified 10-minute auth burst (&ge;3 distinct attempts)</td>
+        <td>&bull; 3rd failure on a Strike 2 IP<br>&bull; Residential/Business ISP spray (&ge;3 users) or non-existent AD user probe<br>&bull; Unverified 10-minute auth burst (&ge;3 distinct attempts)</td>
       </tr>
       <tr>
         <td><span class="badge badge-pardoned">PARDONED</span></td>

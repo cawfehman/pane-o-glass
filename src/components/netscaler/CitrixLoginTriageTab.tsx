@@ -6,7 +6,7 @@ import {
     ShieldAlert, ShieldCheck, AlertTriangle, Lock, Unlock, UserCheck, UserX,
     Globe, Server, RefreshCw, Search, CheckCircle2, Flame, Eye, ExternalLink,
     Sliders, Terminal, Laptop, FileSpreadsheet, Ban, Shield, ChevronRight, X,
-    Download, ClipboardCheck, FileText, Sparkles, Home
+    Download, ClipboardCheck, FileText, Sparkles, Home, Building2
 } from "lucide-react";
 import { ToolHelp } from "@/components/ToolHelp";
 import Link from "next/link";
@@ -856,7 +856,7 @@ export default function CitrixLoginTriageTab({
                     }`}
                 >
                     <div className="flex items-center justify-between text-xs text-rose-300 font-semibold">
-                        <span>Abusive Residential IPs</span>
+                        <span>Abusive Residential / Business ISPs</span>
                         <Home className="w-4 h-4 text-rose-400" />
                     </div>
                     <div className="text-2xl font-bold text-rose-400 mt-1">
@@ -935,7 +935,7 @@ export default function CitrixLoginTriageTab({
                         >
                             <option value="ALL">All Verdicts</option>
                             <option value="ABUSIVE_BLOCK">Abusive — Block Only</option>
-                            <option value="ABUSIVE_RESIDENTIAL">Abusive Residential IPs ({(data?.summary.residentialBlockedCount ?? 0)})</option>
+                            <option value="ABUSIVE_RESIDENTIAL">Abusive Residential / Business ISPs ({(data?.summary.residentialBlockedCount ?? 0)})</option>
                             <option value="SUSPICIOUS_WATCH">Suspicious — Watch Only</option>
                             <option value="LEGIT_USER_ISSUE">Guardian Protected Only</option>
                         </select>
@@ -1055,8 +1055,8 @@ export default function CitrixLoginTriageTab({
                                                     </span>
                                                     {item.isResidentialAbusive ? (
                                                         <span className="text-[10px] px-1.5 py-0.5 rounded bg-rose-500/20 text-rose-300 border border-rose-500/40 font-semibold flex items-center gap-1">
-                                                            <Home className="w-3 h-3 text-rose-400" />
-                                                            Abusive Residential
+                                                            {item.companyName.toLowerCase().includes("business") || item.companyType === "business" ? <Building2 className="w-3 h-3 text-rose-400" /> : <Home className="w-3 h-3 text-rose-400" />}
+                                                            {item.companyName.toLowerCase().includes("business") || item.companyType === "business" ? "Abusive Business ISP" : "Abusive Residential"}
                                                         </span>
                                                     ) : item.isProtectedHousehold ? (
                                                         <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 font-semibold flex items-center gap-1">
@@ -1064,8 +1064,18 @@ export default function CitrixLoginTriageTab({
                                                             Household (2 AD Users)
                                                         </span>
                                                     ) : item.isResidentialIsp ? (
-                                                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-sky-500/15 text-sky-300 border border-sky-500/30">
-                                                            ISP / Residential
+                                                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-sky-500/15 text-sky-300 border border-sky-500/30 flex items-center gap-1">
+                                                            {item.companyName.toLowerCase().includes("business") || item.companyType === "business" ? (
+                                                                <>
+                                                                    <Building2 className="w-3 h-3 text-sky-400" />
+                                                                    Business ISP
+                                                                </>
+                                                            ) : (
+                                                                <>
+                                                                    <Home className="w-3 h-3 text-sky-400" />
+                                                                    ISP / Residential
+                                                                </>
+                                                            )}
                                                         </span>
                                                     ) : item.companyType !== "unknown" ? (
                                                         <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 uppercase">
@@ -2224,7 +2234,7 @@ export default function CitrixLoginTriageTab({
                                             <div className="text-xs text-slate-200">
                                                 <span className="text-slate-500">Type:</span> {reevaluateData.reasoningDetails.ispClassification.companyType}{" "}
                                                 {reevaluateData.reasoningDetails.ispClassification.isResidentialIsp && (
-                                                    <span className="text-sky-400 font-semibold">(Residential ISP)</span>
+                                                    <span className="text-sky-400 font-semibold">(Residential / Business ISP)</span>
                                                 )}
                                             </div>
                                             <div className="text-xs text-slate-200">
