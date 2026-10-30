@@ -110,7 +110,7 @@ async function getIpInfoWithCache(rawIp: any): Promise<any> {
         if (cached) {
             const ageInMs = Date.now() - new Date(cached.updatedAt).getTime();
             const ageInDays = ageInMs / (1000 * 60 * 60 * 24);
-            if (ageInDays < 30) {
+            if (ageInDays < 7) {
                 try {
                     const raw = JSON.parse(cached.rawJson);
                     if (cached.countryCode === "UNRESOLVED" || raw.unresolved) {

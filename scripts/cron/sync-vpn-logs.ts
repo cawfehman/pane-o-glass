@@ -68,23 +68,27 @@ async function getIpInfo(ip: any, eventDate?: Date): Promise<any> {
     }
 
     try {
-        // 1. Check IpLookupCache in PostgreSQL first
+        // 1. Check IpLookupCache in PostgreSQL first (7-day TTL)
         const cached = await prisma.ipLookupCache.findUnique({ where: { ip: cleanIp } });
         if (cached) {
-            try {
-                const raw = JSON.parse(cached.rawJson);
-                if (cached.countryCode === "UNRESOLVED" || raw.unresolved) {
-                    return null;
-                }
-                return {
-                    asn: raw.asn?.asn || raw.asn || raw.as_number || null,
-                    as_name: raw.asn?.name || raw.company?.name || raw.org || raw.as_name || null,
-                    as_domain: raw.asn?.domain || raw.company?.domain || raw.as_domain || null,
-                    country: raw.country || null,
-                    country_code: raw.country_code || cached.countryCode || null,
-                    city: cached.city || raw.city || null
-                };
-            } catch {}
+            const ageInMs = Date.now() - new Date(cached.updatedAt).getTime();
+            const ageInDays = ageInMs / (1000 * 60 * 60 * 24);
+            if (ageInDays < 7) {
+                try {
+                    const raw = JSON.parse(cached.rawJson);
+                    if (cached.countryCode === "UNRESOLVED" || raw.unresolved) {
+                        return null;
+                    }
+                    return {
+                        asn: raw.asn?.asn || raw.asn || raw.as_number || null,
+                        as_name: raw.asn?.name || raw.company?.name || raw.org || raw.as_name || null,
+                        as_domain: raw.asn?.domain || raw.company?.domain || raw.as_domain || null,
+                        country: raw.country || null,
+                        country_code: raw.country_code || cached.countryCode || null,
+                        city: cached.city || raw.city || null
+                    };
+                } catch {}
+            }
         }
 
         // 2. Strict 30-Day Freshness Cutoff: Do not make external API calls for events older than 30 days

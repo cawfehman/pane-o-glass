@@ -67,7 +67,7 @@ interface IpLocateResponse {
     [key: string]: any;
 }
 
-const CACHE_TTL_DAYS = 30;
+const CACHE_TTL_DAYS = 7;
 
 // Standard major consumer ISPs in the US to skip background auto-enrichment on
 const STANDARD_US_ISPS = [
@@ -573,32 +573,36 @@ export async function getIpEnrichment(ip: string): Promise<IpEnrichmentResult | 
         return null;
     }
 
-    // 1. Check local IpLookupCache first (0 external API credits)
+    // 1. Check local IpLookupCache first (0 external API credits, 7-day TTL)
     try {
         const cached = await prisma.ipLookupCache.findUnique({ where: { ip: cleanIp } });
         if (cached?.rawJson) {
-            try {
-                const raw = JSON.parse(cached.rawJson);
-                if (cached.countryCode === "UNRESOLVED" || raw.unresolved) {
-                    return null;
-                }
-                const asnRaw = typeof raw.asn === "object" ? raw.asn?.asn : (raw.asn || raw.as_number);
-                return {
-                    ip: cleanIp,
-                    asn: asnRaw ? String(asnRaw) : undefined,
-                    as_name: raw.company?.name || raw.asn?.name || raw.as_name || raw.org || undefined,
-                    as_domain: raw.company?.domain || raw.asn?.domain || raw.as_domain || undefined,
-                    country_code: raw.country_code || cached.countryCode || undefined,
-                    country: raw.country || undefined,
-                    city: raw.city || cached.city || undefined
-                };
-            } catch {
-                if (cached.countryCode && cached.countryCode !== "UNRESOLVED") {
+            const ageInMs = Date.now() - new Date(cached.updatedAt).getTime();
+            const ageInDays = ageInMs / (1000 * 60 * 60 * 24);
+            if (ageInDays < CACHE_TTL_DAYS) {
+                try {
+                    const raw = JSON.parse(cached.rawJson);
+                    if (cached.countryCode === "UNRESOLVED" || raw.unresolved) {
+                        return null;
+                    }
+                    const asnRaw = typeof raw.asn === "object" ? raw.asn?.asn : (raw.asn || raw.as_number);
                     return {
                         ip: cleanIp,
-                        country_code: cached.countryCode,
-                        city: cached.city || undefined
+                        asn: asnRaw ? String(asnRaw) : undefined,
+                        as_name: raw.company?.name || raw.asn?.name || raw.as_name || raw.org || undefined,
+                        as_domain: raw.company?.domain || raw.asn?.domain || raw.as_domain || undefined,
+                        country_code: raw.country_code || cached.countryCode || undefined,
+                        country: raw.country || undefined,
+                        city: raw.city || cached.city || undefined
                     };
+                } catch {
+                    if (cached.countryCode && cached.countryCode !== "UNRESOLVED") {
+                        return {
+                            ip: cleanIp,
+                            country_code: cached.countryCode,
+                            city: cached.city || undefined
+                        };
+                    }
                 }
             }
         }

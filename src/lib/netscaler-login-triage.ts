@@ -325,27 +325,31 @@ async function enrichIpMetadata(ip: string, allowExternalLookup: boolean = true)
     if (!cleanIp || isPrivateIp(cleanIp)) return fallback;
 
     try {
-        // 1. Check local PostgreSQL IpLookupCache first (Zero credits)
+        // 1. Check local PostgreSQL IpLookupCache first (Zero credits, 7-day TTL)
         const cached = await prisma.ipLookupCache.findUnique({ where: { ip: cleanIp } });
         if (cached?.rawJson) {
-            try {
-                const rawData = JSON.parse(cached.rawJson);
-                if (cached.countryCode === "UNRESOLVED" || rawData.unresolved) {
-                    return fallback;
-                }
-                const companyName = rawData.company?.name || rawData.asn?.name || rawData.as_name || rawData.org || "Unknown Network";
-                if (companyName !== "Unknown Network") {
-                    const companyType = (rawData.company?.type || rawData.asn?.type || "unknown").toLowerCase();
-                    const cidr = rawData.asn?.route || rawData.network?.route || "N/A";
-                    const asnRaw = typeof rawData.asn === "object" ? (rawData.asn?.asn || "Unknown") : (rawData.asn || "Unknown");
-                    const asn = String(asnRaw).replace(/^AS/, '');
-                    const countryCode = rawData.country_code || cached.countryCode || "US";
-                    const city = rawData.city || cached.city || "N/A";
-                    const cleanComp = companyName.toLowerCase();
-                    const isResidentialIsp = companyType === "isp" || isResidential(companyName);
-                    return { countryCode, city, asn: `AS${asn}`, companyName, companyType, cidr, isResidentialIsp };
-                }
-            } catch {}
+            const ageInMs = Date.now() - new Date(cached.updatedAt).getTime();
+            const ageInDays = ageInMs / (1000 * 60 * 60 * 24);
+            if (ageInDays < 7) {
+                try {
+                    const rawData = JSON.parse(cached.rawJson);
+                    if (cached.countryCode === "UNRESOLVED" || rawData.unresolved) {
+                        return fallback;
+                    }
+                    const companyName = rawData.company?.name || rawData.asn?.name || rawData.as_name || rawData.org || "Unknown Network";
+                    if (companyName !== "Unknown Network") {
+                        const companyType = (rawData.company?.type || rawData.asn?.type || "unknown").toLowerCase();
+                        const cidr = rawData.asn?.route || rawData.network?.route || "N/A";
+                        const asnRaw = typeof rawData.asn === "object" ? (rawData.asn?.asn || "Unknown") : (rawData.asn || "Unknown");
+                        const asn = String(asnRaw).replace(/^AS/, '');
+                        const countryCode = rawData.country_code || cached.countryCode || "US";
+                        const city = rawData.city || cached.city || "N/A";
+                        const cleanComp = companyName.toLowerCase();
+                        const isResidentialIsp = companyType === "isp" || isResidential(companyName);
+                        return { countryCode, city, asn: `AS${asn}`, companyName, companyType, cidr, isResidentialIsp };
+                    }
+                } catch {}
+            }
         }
 
         // 2. Check local VpnEvent history (Have staff logged in via AnyConnect VPN before?)
