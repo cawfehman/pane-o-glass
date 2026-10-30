@@ -497,6 +497,52 @@ async function persistLatestSnapshot(
         console.error("[CRAWLER] Failed auto-registering discovered sites in Site Directory:", siteErr);
     }
 
+    // Auto-lock in discovered switches, working credential profiles, and Telnet flags
+    for (const dev of rawDevices) {
+        const canon = (dev.hostname || "").split(".")[0].split("(")[0].trim().toLowerCase();
+        if (!canon) continue;
+
+        const isReachable = dev.status === "REACHABLE";
+        const isTelnet = dev.protocol === "telnet" || Boolean(dev.telnet_detected);
+
+        if (isReachable || isTelnet) {
+            try {
+                const isCrmc = canon.startsWith("crm") || canon.startsWith("crmc") || (dev.site_info?.site || "").toUpperCase() === "CRM";
+                const workingCred = isReachable ? (dev.credential_used || (isCrmc ? "CRMC_TACACS" : "COOPER_TACACS")) : (isCrmc ? "CRMC_TACACS" : "COOPER_TACACS");
+                const proto = isTelnet ? "TELNET" : "SSH";
+                const port = isTelnet ? 23 : 22;
+
+                await prisma.crawlerDeviceOverride.upsert({
+                    where: { hostname: canon },
+                    create: {
+                        hostname: canon,
+                        rawHostname: dev.hostname,
+                        ipAddress: dev.ip_address || null,
+                        tag: "CUSTOM",
+                        siteOverride: dev.site_info?.site || null,
+                        idfOverride: dev.site_info?.idf || null,
+                        roleOverride: dev.role || null,
+                        credentialProfile: workingCred,
+                        protocolOverride: proto,
+                        portOverride: port,
+                        reason: isTelnet && !isReachable
+                            ? "Auto-flagged: Telnet (port 23 open), SSH disabled"
+                            : `Auto-learned: Authenticated via ${workingCred} (${proto})`,
+                        createdBy: userName
+                    },
+                    update: {
+                        credentialProfile: workingCred,
+                        protocolOverride: proto,
+                        portOverride: port,
+                        reason: isTelnet && !isReachable
+                            ? "Auto-flagged: Telnet (port 23 open), SSH disabled"
+                            : `Auto-learned: Authenticated via ${workingCred} (${proto})`
+                    }
+                });
+            } catch {}
+        }
+    }
+
     const { breakdown: hopBreakdown, textSummary: hopTextSummary } = buildHopBreakdown(rawDevices, overrideMap);
 
     return {

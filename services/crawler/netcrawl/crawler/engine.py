@@ -333,31 +333,38 @@ class NetworkCrawler:
                     if "auth" not in err_l and "password" not in err_l:
                         break
 
-            # Fallback Telnet probe only if SSH failed, NO override was configured, and allow_telnet is on
-            if not success and not dev_override and self.allow_telnet:
+            # Safe Telnet probe if SSH failed on all candidate credentials
+            telnet_detected = False
+            if not success and not dev_override:
                 is_telnet_open, telnet_banner = probe_telnet_service(target_ip, timeout=2.0)
                 if is_telnet_open:
-                    self._notify("warning", f"Device {target_ip}: SSH failed, attempting authorized cleartext Telnet fallback...")
-                    for prof_label, cred in creds_to_try:
-                        t_client = CiscoSSHClient(
-                            host=target_ip,
-                            username=cred.get("username", self.username),
-                            password=cred.get("password", ""),
-                            secret=cred.get("secret", ""),
-                            port=23,
-                            timeout=self.ssh_timeout,
-                            device_type="cisco_ios_telnet",
-                            protocol="telnet",
-                        )
-                        t_start = time.time()
-                        t_succ, t_err = t_client.connect()
-                        if t_succ:
-                            client = t_client
-                            success = True
-                            err = None
-                            credential_used = f"{prof_label} (Telnet)"
-                            auth_time_ms = int((time.time() - t_start) * 1000)
-                            break
+                    telnet_detected = True
+                    target_protocol = "telnet"
+                    if self.allow_telnet:
+                        self._notify("warning", f"Device {target_ip}: SSH failed, attempting authorized cleartext Telnet fallback...")
+                        for prof_label, cred in creds_to_try:
+                            t_client = CiscoSSHClient(
+                                host=target_ip,
+                                username=cred.get("username", self.username),
+                                password=cred.get("password", ""),
+                                secret=cred.get("secret", ""),
+                                port=23,
+                                timeout=self.ssh_timeout,
+                                device_type="cisco_ios_telnet",
+                                protocol="telnet",
+                            )
+                            t_start = time.time()
+                            t_succ, t_err = t_client.connect()
+                            if t_succ:
+                                client = t_client
+                                success = True
+                                err = None
+                                credential_used = f"{prof_label} (Telnet)"
+                                auth_time_ms = int((time.time() - t_start) * 1000)
+                                break
+                    else:
+                        self._notify("warning", f"Device {target_ip}: SSH failed, but port 23 (Telnet) is listening. Flagged as Telnet (credentials not transmitted).")
+                        err = "TELNET_DETECTED_SSH_FAILED: Port 23 (Telnet) is open, but SSH failed/disabled. Cleartext login was skipped for security."
 
         if not success:
             err_lower = (err or "").lower()
@@ -391,6 +398,7 @@ class NetworkCrawler:
                     hop_distance=current_hop,
                     site_info=site_info,
                     protocol=target_protocol,
+                    telnet_detected=telnet_detected,
                 )
 
         is_discovery = self.crawl_profile == "discovery"

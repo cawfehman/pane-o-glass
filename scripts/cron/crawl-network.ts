@@ -381,33 +381,49 @@ async function run() {
             console.error("Failed auto-registering sites:", e);
         }
 
-        // Auto-lock in newly discovered switches into CrawlerDeviceOverride
+        // Auto-lock in discovered switches, working credential profiles, and Telnet flags
         for (const dev of rawDevices) {
-            if (dev.status === "REACHABLE") {
-                const canon = (dev.hostname || "").split(".")[0].split("(")[0].trim().toLowerCase();
-                if (canon && !overrideMap.has(canon)) {
-                    try {
-                        const isCrmc = dev.hostname.toLowerCase().startsWith("crm") || (dev.site_info?.site || "").toUpperCase() === "CRM";
-                        const credProfile = dev.credential_used || (isCrmc ? "CRMC_TACACS" : "COOPER_TACACS");
-                        const proto = dev.protocol === "telnet" ? "TELNET" : "SSH";
-                        await prisma.crawlerDeviceOverride.create({
-                            data: {
-                                hostname: canon,
-                                rawHostname: dev.hostname,
-                                ipAddress: dev.ip_address || null,
-                                tag: "CUSTOM",
-                                siteOverride: dev.site_info?.site || null,
-                                idfOverride: dev.site_info?.idf || null,
-                                roleOverride: dev.role || null,
-                                credentialProfile: credProfile,
-                                protocolOverride: proto,
-                                portOverride: proto === "TELNET" ? 23 : 22,
-                                reason: "Auto-learned from verified crawl discovery",
-                                createdBy: "crawler-cron"
-                            }
-                        }).catch(() => {});
-                    } catch {}
-                }
+            const canon = (dev.hostname || "").split(".")[0].split("(")[0].trim().toLowerCase();
+            if (!canon) continue;
+
+            const isReachable = dev.status === "REACHABLE";
+            const isTelnet = dev.protocol === "telnet" || Boolean(dev.telnet_detected);
+
+            if (isReachable || isTelnet) {
+                try {
+                    const isCrmc = canon.startsWith("crm") || canon.startsWith("crmc") || (dev.site_info?.site || "").toUpperCase() === "CRM";
+                    const workingCred = isReachable ? (dev.credential_used || (isCrmc ? "CRMC_TACACS" : "COOPER_TACACS")) : (isCrmc ? "CRMC_TACACS" : "COOPER_TACACS");
+                    const proto = isTelnet ? "TELNET" : "SSH";
+                    const port = isTelnet ? 23 : 22;
+
+                    await prisma.crawlerDeviceOverride.upsert({
+                        where: { hostname: canon },
+                        create: {
+                            hostname: canon,
+                            rawHostname: dev.hostname,
+                            ipAddress: dev.ip_address || null,
+                            tag: "CUSTOM",
+                            siteOverride: dev.site_info?.site || null,
+                            idfOverride: dev.site_info?.idf || null,
+                            roleOverride: dev.role || null,
+                            credentialProfile: workingCred,
+                            protocolOverride: proto,
+                            portOverride: port,
+                            reason: isTelnet && !isReachable
+                                ? "Auto-flagged: Telnet (port 23 open), SSH disabled"
+                                : `Auto-learned: Authenticated via ${workingCred} (${proto})`,
+                            createdBy: "crawler-cron"
+                        },
+                        update: {
+                            credentialProfile: workingCred,
+                            protocolOverride: proto,
+                            portOverride: port,
+                            reason: isTelnet && !isReachable
+                                ? "Auto-flagged: Telnet (port 23 open), SSH disabled"
+                                : `Auto-learned: Authenticated via ${workingCred} (${proto})`
+                        }
+                    });
+                } catch {}
             }
         }
 
