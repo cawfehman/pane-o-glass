@@ -8,6 +8,7 @@ import { getBulkUserAdStatus } from '../../src/lib/ldap';
 import { getAdaptiveSearchWindow } from '../../src/lib/graylog-backlog-guardian';
 import { fetchImprivataBatchIndex, matchEventToImprivataSession, formatImprivataFailureReason } from '../../src/lib/imprivata-graylog';
 import { recordAuthFailure, recordAuthSuccess } from '../../src/lib/reputation-ledger';
+import { fillMissingFieldsFromNeighbor } from '../../src/lib/iplocate';
 dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 
 const prisma = new PrismaClient();
@@ -138,7 +139,19 @@ async function getIpInfo(ip: any, eventDate?: Date): Promise<any> {
                     city: cityStr
                 };
             } else {
-                // Empty / missing country: negative cache as UNRESOLVED
+                // Primary lookup returned empty/missing fields: Fallback to neighbor resolution (cache first, then ip ± 1)
+                const filled = await fillMissingFieldsFromNeighbor(cleanIp, res?.data, apiKey).catch(() => null);
+                if (filled && (filled.country_code || filled.country)) {
+                    return {
+                        asn: filled.asn ? String(typeof filled.asn === 'object' ? filled.asn.asn : filled.asn) : null,
+                        as_name: filled.company?.name || filled.asn?.name || filled.as_name || filled.org || null,
+                        as_domain: filled.company?.domain || filled.asn?.domain || filled.as_domain || null,
+                        country: filled.country || null,
+                        country_code: filled.country_code || null,
+                        city: filled.city || null
+                    };
+                }
+
                 const unresolvedData = { ip: cleanIp, country: "Unknown", country_code: "UNRESOLVED", city: "N/A", unresolved: true, timestamp: Date.now() };
                 await prisma.ipLookupCache.upsert({
                     where: { ip: cleanIp },
@@ -147,7 +160,19 @@ async function getIpInfo(ip: any, eventDate?: Date): Promise<any> {
                 }).catch(() => {});
             }
         } catch (e: any) {
-            // IPLocate failed or timed out: negative cache if not rate-limited
+            // Primary lookup failed: Fallback to neighbor resolution (cache first, then ip ± 1)
+            const filled = await fillMissingFieldsFromNeighbor(cleanIp, null, apiKey).catch(() => null);
+            if (filled && (filled.country_code || filled.country)) {
+                return {
+                    asn: filled.asn ? String(typeof filled.asn === 'object' ? filled.asn.asn : filled.asn) : null,
+                    as_name: filled.company?.name || filled.asn?.name || filled.as_name || filled.org || null,
+                    as_domain: filled.company?.domain || filled.asn?.domain || filled.as_domain || null,
+                    country: filled.country || null,
+                    country_code: filled.country_code || null,
+                    city: filled.city || null
+                };
+            }
+
             if (e.response?.status !== 429) {
                 const unresolvedData = { ip: cleanIp, country: "Unknown", country_code: "UNRESOLVED", city: "N/A", status: e.response?.status || "error", unresolved: true, timestamp: Date.now() };
                 await prisma.ipLookupCache.upsert({

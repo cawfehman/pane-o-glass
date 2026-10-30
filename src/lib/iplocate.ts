@@ -110,6 +110,169 @@ export function isStandardUsIsp(asnName: string | null | undefined): boolean {
 }
 
 /**
+ * Increment (or decrement if .255) an IPv4 address by 1 within its subnet
+ */
+export function getNeighborIp(ip: string): string | null {
+    if (!ip || isPrivateIp(ip)) return null;
+    const parts = ip.split('.').map(p => parseInt(p, 10));
+    if (parts.length !== 4 || parts.some(isNaN)) return null;
+
+    if (parts[3] >= 255) {
+        return `${parts[0]}.${parts[1]}.${parts[2]}.254`;
+    }
+    if (parts[3] <= 0) {
+        return `${parts[0]}.${parts[1]}.${parts[2]}.1`;
+    }
+    return `${parts[0]}.${parts[1]}.${parts[2]}.${parts[3] + 1}`;
+}
+
+/**
+ * Check local database cache for neighboring / similar IPs in the same /24 subnet
+ */
+export async function findSubnetNeighborInCache(ip: string): Promise<any | null> {
+    if (!ip || isPrivateIp(ip)) return null;
+    const parts = ip.split('.');
+    if (parts.length !== 4) return null;
+    const subnetPrefix = `${parts[0]}.${parts[1]}.${parts[2]}.`;
+    const targetLastOctet = parseInt(parts[3], 10);
+    if (isNaN(targetLastOctet)) return null;
+
+    try {
+        const neighbors = await prisma.ipLookupCache.findMany({
+            where: {
+                ip: { startsWith: subnetPrefix },
+                countryCode: { notIn: ["UNRESOLVED", "UNKNOWN"] }
+            },
+            take: 25
+        });
+
+        if (!neighbors || neighbors.length === 0) return null;
+
+        let closest: typeof neighbors[0] | null = null;
+        let minDistance = Infinity;
+
+        for (const n of neighbors) {
+            const last = parseInt(n.ip.split('.')[3], 10);
+            if (!isNaN(last)) {
+                const dist = Math.abs(last - targetLastOctet);
+                if (dist > 0 && dist < minDistance) {
+                    minDistance = dist;
+                    closest = n;
+                }
+            }
+        }
+
+        if (closest?.rawJson) {
+            try {
+                const data = JSON.parse(closest.rawJson);
+                if (data && (data.country_code || data.country)) {
+                    return data;
+                }
+            } catch {}
+        }
+    } catch {}
+
+    return null;
+}
+
+/**
+ * When an IP lookup fails or returns partial data, check cache for similar IPs
+ * or increment by 1 (ip ± 1) to fill in missing fields.
+ */
+export async function fillMissingFieldsFromNeighbor(
+    targetIp: string,
+    existingData: any = null,
+    apiKey?: string
+): Promise<any | null> {
+    const cleanIp = targetIp.trim();
+    if (!cleanIp || isPrivateIp(cleanIp)) return null;
+
+    // 1. Check local DB cache for any neighbor in the same /24 subnet (0 API credits)
+    let neighborData = await findSubnetNeighborInCache(cleanIp);
+
+    // 2. If no neighbor in cache and API key configured, probe neighbor IP (ip + 1 or ip - 1)
+    if (!neighborData && apiKey) {
+        const neighborIp = getNeighborIp(cleanIp);
+        if (neighborIp && neighborIp !== cleanIp) {
+            try {
+                const res = await axios.get(`https://www.iplocate.io/api/lookup/${neighborIp}`, {
+                    headers: { "X-API-KEY": apiKey },
+                    timeout: 5000
+                });
+                if (res.data && (res.data.country_code || res.data.country)) {
+                    neighborData = res.data;
+
+                    // Cache the neighbor IP so it's directly available for future lookups
+                    await prisma.ipLookupCache.upsert({
+                        where: { ip: neighborIp },
+                        create: {
+                            ip: neighborIp,
+                            latitude: neighborData.latitude || null,
+                            longitude: neighborData.longitude || null,
+                            countryCode: neighborData.country_code || null,
+                            city: neighborData.city || null,
+                            subdivision: neighborData.subdivision || null,
+                            rawJson: JSON.stringify(neighborData)
+                        },
+                        update: {
+                            latitude: neighborData.latitude || null,
+                            longitude: neighborData.longitude || null,
+                            countryCode: neighborData.country_code || null,
+                            city: neighborData.city || null,
+                            subdivision: neighborData.subdivision || null,
+                            rawJson: JSON.stringify(neighborData)
+                        }
+                    }).catch(() => {});
+                }
+            } catch {}
+        }
+    }
+
+    if (neighborData) {
+        // Fill in missing values using the neighboring IP
+        const merged = {
+            ...(existingData || {}),
+            ip: cleanIp,
+            country: existingData?.country || neighborData.country,
+            country_code: existingData?.country_code || neighborData.country_code,
+            city: existingData?.city || neighborData.city,
+            subdivision: existingData?.subdivision || neighborData.subdivision,
+            latitude: (existingData?.latitude !== undefined && existingData?.latitude !== null) ? existingData.latitude : (neighborData.latitude || null),
+            longitude: (existingData?.longitude !== undefined && existingData?.longitude !== null) ? existingData.longitude : (neighborData.longitude || null),
+            asn: existingData?.asn || neighborData.asn,
+            org: existingData?.org || neighborData.org,
+            company: existingData?.company || neighborData.company,
+            inheritedFrom: neighborData.ip || "subnet-neighbor"
+        };
+
+        await prisma.ipLookupCache.upsert({
+            where: { ip: cleanIp },
+            create: {
+                ip: cleanIp,
+                latitude: merged.latitude,
+                longitude: merged.longitude,
+                countryCode: merged.country_code,
+                city: merged.city,
+                subdivision: merged.subdivision,
+                rawJson: JSON.stringify(merged)
+            },
+            update: {
+                latitude: merged.latitude,
+                longitude: merged.longitude,
+                countryCode: merged.country_code,
+                city: merged.city,
+                subdivision: merged.subdivision,
+                rawJson: JSON.stringify(merged)
+            }
+        }).catch(() => {});
+
+        return merged;
+    }
+
+    return null;
+}
+
+/**
  * Bulk geocode multiple IP addresses at once using iplocate.io POST /api/batch
  */
 export async function enrichIpsBatch(ips: string[], isAdHoc: boolean = false): Promise<Record<string, any>> {
@@ -256,31 +419,36 @@ export async function enrichIpsBatch(ips: string[], isAdHoc: boolean = false): P
                                 });
                                 results[ip] = info;
                             } else {
-                                // IP was queried, but API returned empty, non-routable or missing country code
-                                // Cache as UNRESOLVED so subsequent cycles do not query it in a loop
-                                const unresolvedInfo = {
-                                    ip,
-                                    country: "Unknown",
-                                    country_code: "UNRESOLVED",
-                                    city: "N/A",
-                                    unresolved: true,
-                                    timestamp: Date.now()
-                                };
-                                await prisma.ipLookupCache.upsert({
-                                    where: { ip },
-                                    create: {
+                                // Primary batch lookup failed or returned partial fields: Fill missing values from neighbor (cache or ip ± 1)
+                                const filled = await fillMissingFieldsFromNeighbor(ip, info, apiKey).catch(() => null);
+                                if (filled && (filled.country_code || filled.country)) {
+                                    results[ip] = filled;
+                                } else {
+                                    // Both failed - cache as UNRESOLVED so subsequent cycles do not query it in a loop
+                                    const unresolvedInfo = {
                                         ip,
-                                        countryCode: "UNRESOLVED",
+                                        country: "Unknown",
+                                        country_code: "UNRESOLVED",
                                         city: "N/A",
-                                        rawJson: JSON.stringify(unresolvedInfo)
-                                    },
-                                    update: {
-                                        countryCode: "UNRESOLVED",
-                                        city: "N/A",
-                                        rawJson: JSON.stringify(unresolvedInfo)
-                                    }
-                                }).catch(() => {});
-                                results[ip] = unresolvedInfo;
+                                        unresolved: true,
+                                        timestamp: Date.now()
+                                    };
+                                    await prisma.ipLookupCache.upsert({
+                                        where: { ip },
+                                        create: {
+                                            ip,
+                                            countryCode: "UNRESOLVED",
+                                            city: "N/A",
+                                            rawJson: JSON.stringify(unresolvedInfo)
+                                        },
+                                        update: {
+                                            countryCode: "UNRESOLVED",
+                                            city: "N/A",
+                                            rawJson: JSON.stringify(unresolvedInfo)
+                                        }
+                                    }).catch(() => {});
+                                    results[ip] = unresolvedInfo;
+                                }
                             }
                         }));
 
@@ -329,28 +497,38 @@ export async function enrichIpsBatch(ips: string[], isAdHoc: boolean = false): P
                                         });
                                         results[ip] = info;
                                     } else {
-                                        const unresolvedInfo = { ip, country: "Unknown", country_code: "UNRESOLVED", city: "N/A", unresolved: true, timestamp: Date.now() };
-                                        await prisma.ipLookupCache.upsert({
-                                            where: { ip },
-                                            create: { ip, countryCode: "UNRESOLVED", city: "N/A", rawJson: JSON.stringify(unresolvedInfo) },
-                                            update: { countryCode: "UNRESOLVED", city: "N/A", rawJson: JSON.stringify(unresolvedInfo) }
-                                        }).catch(() => {});
-                                        results[ip] = unresolvedInfo;
+                                        const filled = await fillMissingFieldsFromNeighbor(ip, info, apiKey).catch(() => null);
+                                        if (filled && (filled.country_code || filled.country)) {
+                                            results[ip] = filled;
+                                        } else {
+                                            const unresolvedInfo = { ip, country: "Unknown", country_code: "UNRESOLVED", city: "N/A", unresolved: true, timestamp: Date.now() };
+                                            await prisma.ipLookupCache.upsert({
+                                                where: { ip },
+                                                create: { ip, countryCode: "UNRESOLVED", city: "N/A", rawJson: JSON.stringify(unresolvedInfo) },
+                                                update: { countryCode: "UNRESOLVED", city: "N/A", rawJson: JSON.stringify(unresolvedInfo) }
+                                            }).catch(() => {});
+                                            results[ip] = unresolvedInfo;
+                                        }
                                     }
                                 } else {
                                     console.error(`[iplocate] Sequential fallback failed for ${ip}:`, singleRes.status);
-                                    if (singleRes.status !== 429) {
-                                        const unresolvedInfo = { ip, country: "Unknown", country_code: "UNRESOLVED", city: "N/A", status: singleRes.status, unresolved: true, timestamp: Date.now() };
-                                        await prisma.ipLookupCache.upsert({
-                                            where: { ip },
-                                            create: { ip, countryCode: "UNRESOLVED", city: "N/A", rawJson: JSON.stringify(unresolvedInfo) },
-                                            update: { countryCode: "UNRESOLVED", city: "N/A", rawJson: JSON.stringify(unresolvedInfo) }
-                                        }).catch(() => {});
-                                        results[ip] = unresolvedInfo;
-                                    }
-                                    const staleCached = cachedMap.get(ip);
-                                    if (staleCached) {
-                                        results[ip] = JSON.parse(staleCached.rawJson);
+                                    const filled = await fillMissingFieldsFromNeighbor(ip, null, apiKey).catch(() => null);
+                                    if (filled && (filled.country_code || filled.country)) {
+                                        results[ip] = filled;
+                                    } else {
+                                        if (singleRes.status !== 429) {
+                                            const unresolvedInfo = { ip, country: "Unknown", country_code: "UNRESOLVED", city: "N/A", status: singleRes.status, unresolved: true, timestamp: Date.now() };
+                                            await prisma.ipLookupCache.upsert({
+                                                where: { ip },
+                                                create: { ip, countryCode: "UNRESOLVED", city: "N/A", rawJson: JSON.stringify(unresolvedInfo) },
+                                                update: { countryCode: "UNRESOLVED", city: "N/A", rawJson: JSON.stringify(unresolvedInfo) }
+                                            }).catch(() => {});
+                                            results[ip] = unresolvedInfo;
+                                        }
+                                        const staleCached = cachedMap.get(ip);
+                                        if (staleCached) {
+                                            results[ip] = JSON.parse(staleCached.rawJson);
+                                        }
                                     }
                                 }
                             } catch (err) {
@@ -483,7 +661,23 @@ export async function getIpEnrichment(ip: string): Promise<IpEnrichmentResult | 
                 city: city || undefined
             };
         } else {
-            // Live lookup returned empty / missing country - cache as UNRESOLVED
+            // Live lookup returned empty / missing country: Fallback to neighbor resolution (cache first, then ip ± 1)
+            const filled = await fillMissingFieldsFromNeighbor(cleanIp, response.data, apiKey).catch(() => null);
+            if (filled && (filled.country_code || filled.country)) {
+                const asnRaw = typeof filled.asn === "object" ? filled.asn?.asn : (filled.asn || filled.as_number);
+                const asName = filled.company?.name || filled.asn?.name || filled.as_name || filled.org || null;
+                const asDomain = filled.company?.domain || filled.asn?.domain || filled.as_domain || null;
+                return {
+                    ip: cleanIp,
+                    asn: asnRaw ? String(asnRaw) : undefined,
+                    as_name: asName || undefined,
+                    as_domain: asDomain || undefined,
+                    country_code: filled.country_code || undefined,
+                    country: filled.country || undefined,
+                    city: filled.city || undefined
+                };
+            }
+
             const unresolvedData = { ip: cleanIp, country: "Unknown", country_code: "UNRESOLVED", city: "N/A", unresolved: true, timestamp: Date.now() };
             await prisma.ipLookupCache.upsert({
                 where: { ip: cleanIp },
@@ -493,6 +687,23 @@ export async function getIpEnrichment(ip: string): Promise<IpEnrichmentResult | 
         }
     } catch (err: any) {
         console.error(`[iplocate] Failed lookup for ${cleanIp}:`, err.message);
+        // Primary lookup threw an error: Fallback to neighbor resolution (cache first, then ip ± 1)
+        const filled = await fillMissingFieldsFromNeighbor(cleanIp, null, apiKey).catch(() => null);
+        if (filled && (filled.country_code || filled.country)) {
+            const asnRaw = typeof filled.asn === "object" ? filled.asn?.asn : (filled.asn || filled.as_number);
+            const asName = filled.company?.name || filled.asn?.name || filled.as_name || filled.org || null;
+            const asDomain = filled.company?.domain || filled.asn?.domain || filled.as_domain || null;
+            return {
+                ip: cleanIp,
+                asn: asnRaw ? String(asnRaw) : undefined,
+                as_name: asName || undefined,
+                as_domain: asDomain || undefined,
+                country_code: filled.country_code || undefined,
+                country: filled.country || undefined,
+                city: filled.city || undefined
+            };
+        }
+
         if (err.response?.status !== 429) {
             const unresolvedData = { ip: cleanIp, country: "Unknown", country_code: "UNRESOLVED", city: "N/A", status: err.response?.status || 500, unresolved: true, timestamp: Date.now() };
             await prisma.ipLookupCache.upsert({

@@ -4,7 +4,7 @@ import https from "https";
 import axios from "axios";
 import { prisma } from "@/lib/prisma";
 import { getBulkUserAdStatus } from "@/lib/ldap";
-import { isPrivateIp } from "@/lib/iplocate";
+import { isPrivateIp, fillMissingFieldsFromNeighbor } from "@/lib/iplocate";
 import { NetscalerGraylogClient } from "@/lib/netscaler-graylog";
 import { executeFirewallBulkCommands } from "@/lib/netscaler-auto-shun";
 import { getFleetFirewalls } from "@/lib/universal-shun-sync";
@@ -408,7 +408,20 @@ async function enrichIpMetadata(ip: string, allowExternalLookup: boolean = true)
 
                     return { countryCode, city, asn, companyName, companyType, cidr, isResidentialIsp };
                 } else {
-                    // Empty or missing country - negative cache as UNRESOLVED
+                    // Primary lookup returned empty/missing: Fallback to neighbor resolution (cache first, then ip ± 1)
+                    const filled = await fillMissingFieldsFromNeighbor(cleanIp, res?.data, apiKey).catch(() => null);
+                    if (filled && (filled.country_code || filled.country)) {
+                        const companyName = filled.company?.name || filled.asn?.name || filled.as_name || filled.org || "Unknown Network";
+                        const companyType = (filled.company?.type || filled.asn?.type || "unknown").toLowerCase();
+                        const cidr = filled.asn?.route || filled.network?.route || "N/A";
+                        const asnRaw = typeof filled.asn === "object" ? (filled.asn?.asn || "Unknown") : (filled.asn || "Unknown");
+                        const asn = String(asnRaw);
+                        const countryCode = filled.country_code || "US";
+                        const city = filled.city || "N/A";
+                        const isResidentialIsp = companyType === "isp" || isResidential(companyName);
+                        return { countryCode, city, asn, companyName, companyType, cidr, isResidentialIsp };
+                    }
+
                     const unresolvedData = { ip: cleanIp, country: "Unknown", country_code: "UNRESOLVED", city: "N/A", unresolved: true, timestamp: Date.now() };
                     await prisma.ipLookupCache.upsert({
                         where: { ip: cleanIp },
@@ -417,6 +430,20 @@ async function enrichIpMetadata(ip: string, allowExternalLookup: boolean = true)
                     }).catch(() => {});
                 }
             } catch (err: any) {
+                // Primary lookup threw an error: Fallback to neighbor resolution (cache first, then ip ± 1)
+                const filled = await fillMissingFieldsFromNeighbor(cleanIp, null, apiKey).catch(() => null);
+                if (filled && (filled.country_code || filled.country)) {
+                    const companyName = filled.company?.name || filled.asn?.name || filled.as_name || filled.org || "Unknown Network";
+                    const companyType = (filled.company?.type || filled.asn?.type || "unknown").toLowerCase();
+                    const cidr = filled.asn?.route || filled.network?.route || "N/A";
+                    const asnRaw = typeof filled.asn === "object" ? (filled.asn?.asn || "Unknown") : (filled.asn || "Unknown");
+                    const asn = String(asnRaw);
+                    const countryCode = filled.country_code || "US";
+                    const city = filled.city || "N/A";
+                    const isResidentialIsp = companyType === "isp" || isResidential(companyName);
+                    return { countryCode, city, asn, companyName, companyType, cidr, isResidentialIsp };
+                }
+
                 if (err.response?.status !== 429) {
                     const unresolvedData = { ip: cleanIp, country: "Unknown", country_code: "UNRESOLVED", city: "N/A", status: err.response?.status || 500, unresolved: true, timestamp: Date.now() };
                     await prisma.ipLookupCache.upsert({
