@@ -1322,21 +1322,49 @@ export async function investigateAccountLockout(
         const isBlacklisted = Boolean(blacklist);
         const inThreatFeed = isStrikeEnforced || isBlacklisted;
 
-        let geoCountry = mostRecentRemoteIp.countryCode;
-        let geoCountryName = mostRecentRemoteIp.countryName;
+        // Filter out placeholder strings like "Unknown", "N/A"
+        let geoCountry = mostRecentRemoteIp.countryCode && !["UNKNOWN", "N/A", "UNRESOLVED"].includes(mostRecentRemoteIp.countryCode.toUpperCase())
+            ? mostRecentRemoteIp.countryCode.toUpperCase()
+            : null;
+        let geoCountryName = mostRecentRemoteIp.countryName && !["UNKNOWN", "N/A"].includes(mostRecentRemoteIp.countryName.toUpperCase())
+            ? mostRecentRemoteIp.countryName
+            : null;
         let asn: string | null = null;
         let org: string | null = null;
+
         if (cache?.rawJson) {
             try {
                 const geo = JSON.parse(cache.rawJson);
-                geoCountry = geoCountry || geo.country_code || geo.countryCode;
-                geoCountryName = geoCountryName || geo.country || geo.country_name;
+                const code = geo.country_code || geo.countryCode;
+                if (!geoCountry && code && !["UNKNOWN", "N/A", "UNRESOLVED"].includes(code.toUpperCase())) {
+                    geoCountry = code.toUpperCase();
+                }
+                geoCountryName = geoCountryName || geo.country || geo.country_name || null;
                 asn = geo.asn || geo.as || null;
                 org = geo.org || geo.isp || null;
             } catch {}
         }
 
-        const isFmcGeoBlocked = Boolean(geoCountry && geoCountry.toUpperCase() !== "US");
+        // If country is still not resolved and IP is a public address, enrich via IPLocate / subnet cache
+        if (!geoCountry) {
+            try {
+                const { enrichIp } = await import("@/lib/iplocate");
+                const enriched = await enrichIp(ip);
+                if (enriched) {
+                    const code = enriched.country_code || enriched.countryCode;
+                    if (code && !["UNKNOWN", "N/A", "UNRESOLVED"].includes(code.toUpperCase())) {
+                        geoCountry = code.toUpperCase();
+                    }
+                    geoCountryName = geoCountryName || enriched.country || enriched.country_name || null;
+                    asn = asn || enriched.asn || enriched.as || null;
+                    org = org || enriched.org || enriched.isp || null;
+                }
+            } catch {}
+        }
+
+        // FMC Geo-Fence only blocks verified foreign (non-US) countries with a valid 2-letter ISO code.
+        // Placeholder strings like "Unknown", "N/A", or unresolved values must NEVER trigger a perimeter block.
+        const isFmcGeoBlocked = Boolean(geoCountry && geoCountry.length === 2 && geoCountry !== "US" && !["UNKNOWN", "N/A", "UNRESOLVED"].includes(geoCountry));
         const isBlocked = inThreatFeed || inPerimeterVpnShun || isFmcGeoBlocked;
 
         perimeterPosture = {

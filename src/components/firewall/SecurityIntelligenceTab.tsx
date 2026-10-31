@@ -16,6 +16,16 @@ export function SecurityIntelligenceTab() {
     const [activeSubTab, setActiveSubTab] = useState<"reputation" | "feedInspector" | "monitored">("reputation");
     const [monitoredCount, setMonitoredCount] = useState<number | null>(null);
 
+    useEffect(() => {
+        if (typeof window !== "undefined") {
+            const params = new URLSearchParams(window.location.search);
+            const subtabParam = params.get("subtab");
+            if (subtabParam === "feedInspector" || subtabParam === "monitored") {
+                setActiveSubTab(subtabParam);
+            }
+        }
+    }, []);
+
     // Timeframe Filter State
     const [timeframe, setTimeframe] = useState<"1h" | "6h" | "24h" | "7d" | "30d" | "90d" | "all">("24h");
     

@@ -119,7 +119,8 @@ export async function GET(req: NextRequest) {
 
             // FMC GeoIP Rule 2/3 Evaluation
             const isUsGeo = countryCode.toUpperCase() === "US";
-            const fmcGeoBlocked = !isUsGeo;
+            const isUnresolvedGeo = ["UNKNOWN", "N/A", "UNRESOLVED"].includes(countryCode.toUpperCase()) || !countryCode;
+            const fmcGeoBlocked = !isUsGeo && !isUnresolvedGeo && countryCode.length === 2;
 
             let activeCategory = "NONE";
             let reason = "Not blocked in FMC Security Intelligence feed";
@@ -167,7 +168,9 @@ export async function GET(req: NextRequest) {
                         fmcGeoBlocked,
                         verdict: fmcGeoBlocked
                             ? `BLOCKED by FMC ACP Rule 3 (Non-US: ${countryCode})`
-                            : "PERMITTED by FMC ACP Rule 2 (Domestic US)"
+                            : isUsGeo
+                            ? "PERMITTED by FMC ACP Rule 2 (Domestic US)"
+                            : `UNRESOLVED / DOMESTIC (${countryCode})`
                     }
                 },
                 networkProfile: {
@@ -377,7 +380,8 @@ export async function POST(req: NextRequest) {
                 const isAsnBlacklisted = asnBlacklistSet.has(rawAsnNum.toUpperCase());
 
                 const isUsGeo = countryCode.toUpperCase() === "US";
-                const fmcGeoBlocked = !isUsGeo;
+                const isUnresolvedGeo = ["UNKNOWN", "N/A", "UNRESOLVED"].includes(countryCode.toUpperCase()) || !countryCode;
+                const fmcGeoBlocked = !isUsGeo && !isUnresolvedGeo && countryCode.length === 2;
 
                 let activeCategory = "NONE";
                 let reason = "Clean / Not blocked in SI feed";
@@ -420,7 +424,11 @@ export async function POST(req: NextRequest) {
                             countryCode,
                             isUsGeo,
                             fmcGeoBlocked,
-                            verdict: fmcGeoBlocked ? `BLOCKED by ACP Rule 3 (${countryCode})` : "PERMITTED by Rule 2 (US)"
+                            verdict: fmcGeoBlocked
+                                ? `BLOCKED by ACP Rule 3 (${countryCode})`
+                                : isUsGeo
+                                ? "PERMITTED by Rule 2 (US)"
+                                : `UNRESOLVED / DOMESTIC (${countryCode})`
                         }
                     },
                     networkProfile: {

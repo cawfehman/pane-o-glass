@@ -71,7 +71,17 @@ export function LiveFeedInspector() {
     }, [page, pageSize, searchQuery, categoryFilter]);
 
     useEffect(() => {
-        fetchFeedInspector(page, pageSize, searchQuery, categoryFilter);
+        let initialCheckIp = "";
+        if (typeof window !== "undefined") {
+            const params = new URLSearchParams(window.location.search);
+            const ipParam = params.get("ip");
+            if (ipParam && ipParam.trim()) {
+                initialCheckIp = ipParam.trim();
+                setCheckIpInput(initialCheckIp);
+                setCheckingIp(true);
+            }
+        }
+        fetchFeedInspector(page, pageSize, searchQuery, categoryFilter, initialCheckIp);
     }, [page, pageSize, categoryFilter, fetchFeedInspector]);
 
     // Handle Quick Check IP
@@ -512,7 +522,9 @@ export function LiveFeedInspector() {
                                             <span className="font-bold text-xs flex items-center gap-1">
                                                 {checkResult.blockPosture?.fmcGeoStatus?.isUsGeo 
                                                     ? "🟢 Domestic US (Rule 2)" 
-                                                    : `⚠️ Non-US (${checkResult.blockPosture?.fmcGeoStatus?.countryCode})`}
+                                                    : checkResult.blockPosture?.fmcGeoStatus?.fmcGeoBlocked
+                                                    ? `⚠️ Non-US (${checkResult.blockPosture?.fmcGeoStatus?.countryCode})`
+                                                    : `⚪ Unresolved / Domestic (${checkResult.blockPosture?.fmcGeoStatus?.countryCode || "N/A"})`}
                                             </span>
                                         </div>
 

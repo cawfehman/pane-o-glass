@@ -307,10 +307,16 @@ export default function CiscoFirewallPage() {
         // Check URL parameters for pre-filling IP (e.g. from NetScaler or IronPort pivots)
         if (typeof window !== "undefined") {
             const params = new URLSearchParams(window.location.search);
+            const tabParam = params.get("tab");
             const ipParam = params.get("ip") || params.get("shunIp");
-            if (ipParam) {
+            if (tabParam === "security-intelligence" || tabParam === "database" || tabParam === "telemetry" || tabParam === "guardian" || tabParam === "blacklist" || tabParam === "manual") {
+                setActiveTab(tabParam as any);
+            } else if (ipParam) {
                 setIpAddress(ipParam);
                 setActiveTab("manual");
+            }
+            if (ipParam && (tabParam === "manual" || !tabParam)) {
+                setIpAddress(ipParam);
             }
         }
 

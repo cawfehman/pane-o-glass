@@ -1415,7 +1415,7 @@ export default function AccountLockoutClient() {
                                 </p>
                                 <div className="pt-1">
                                     <a
-                                        href={`/firewall/si-feeds?ip=${encodeURIComponent(data.edgeAccess.perimeterPosture.ip)}`}
+                                        href={`/queries/firewall?tab=security-intelligence&subtab=feedInspector&ip=${encodeURIComponent(data.edgeAccess.perimeterPosture.ip)}`}
                                         className="inline-flex items-center gap-1.5 px-3 py-1 rounded bg-rose-600 hover:bg-rose-500 text-white font-semibold text-xs transition-colors shadow-xs"
                                     >
                                         <Shield size={13} />
@@ -1454,7 +1454,7 @@ export default function AccountLockoutClient() {
                                         <div className="flex justify-between items-center text-[11px]">
                                             <span className="text-zinc-400">Public IP:</span>
                                             <a
-                                                href={`/firewall/si-feeds?ip=${encodeURIComponent(data.edgeAccess.vpn.activeSession.sourceIp)}`}
+                                                href={`/queries/firewall?tab=security-intelligence&subtab=feedInspector&ip=${encodeURIComponent(data.edgeAccess.vpn.activeSession.sourceIp)}`}
                                                 className="font-mono font-bold text-cyan-300 hover:underline flex items-center gap-1"
                                             >
                                                 {data.edgeAccess.vpn.activeSession.sourceIp}
@@ -1485,7 +1485,7 @@ export default function AccountLockoutClient() {
                                                     <div className="flex items-center gap-2">
                                                         <span className={`w-1.5 h-1.5 rounded-full ${sess.status === "SUCCESS" ? "bg-emerald-400" : "bg-rose-400"}`} />
                                                         <a
-                                                            href={`/firewall/si-feeds?ip=${encodeURIComponent(sess.sourceIp)}`}
+                                                            href={`/queries/firewall?tab=security-intelligence&subtab=feedInspector&ip=${encodeURIComponent(sess.sourceIp)}`}
                                                             className="font-mono text-text-primary hover:underline"
                                                         >
                                                             {sess.sourceIp}
@@ -1542,7 +1542,7 @@ export default function AccountLockoutClient() {
                                                                 {att.action}
                                                             </span>
                                                             <a
-                                                                href={`/firewall/si-feeds?ip=${encodeURIComponent(att.clientIp)}`}
+                                                                href={`/queries/firewall?tab=security-intelligence&subtab=feedInspector&ip=${encodeURIComponent(att.clientIp)}`}
                                                                 className="font-mono text-text-primary hover:underline font-semibold"
                                                             >
                                                                 {att.clientIp}
