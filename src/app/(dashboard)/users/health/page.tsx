@@ -379,14 +379,14 @@ export default function SystemHealthPage() {
                     </div>
                 )}
 
-                {/* IPLocate API Credits & Quota */}
+                {/* IPLocate API Credits */}
                 {metrics.iplocate && (
                     <div className="glass-card p-5 border border-border-color rounded-2xl bg-gradient-to-r from-sky-500/[0.04] via-emerald-500/[0.02] to-transparent">
                         <div className="flex items-center justify-between flex-wrap gap-4">
                             <div className="flex items-center gap-3">
                                 <div className={`p-2.5 rounded-xl border ${
-                                    metrics.iplocate.status === "DEPLETED" ? "bg-rose-500/10 text-rose-400 border-rose-500/20" :
-                                    metrics.iplocate.status === "LOW" ? "bg-amber-500/10 text-amber-400 border-amber-500/20" :
+                                    metrics.iplocate.remaining !== null && metrics.iplocate.remaining < 5000 ? "bg-rose-500/10 text-rose-400 border-rose-500/20" :
+                                    metrics.iplocate.remaining !== null && metrics.iplocate.remaining < 15000 ? "bg-amber-500/10 text-amber-400 border-amber-500/20" :
                                     metrics.iplocate.status === "UNCONFIGURED" ? "bg-slate-500/10 text-slate-400 border-slate-500/20" :
                                     "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
                                 }`}>
@@ -395,15 +395,17 @@ export default function SystemHealthPage() {
                                 <div>
                                     <div className="flex items-center gap-2.5">
                                         <h3 className="text-base font-extrabold m-0 text-text-primary">
-                                            IPLocate.io API Credits & Quota
+                                            IPLocate.io API Credits
                                         </h3>
                                         <span className={`text-[0.68rem] px-2.5 py-0.5 rounded-full font-mono font-bold uppercase tracking-wider border ${
-                                            metrics.iplocate.status === "DEPLETED" ? "bg-rose-500/20 text-rose-300 border-rose-500/30" :
-                                            metrics.iplocate.status === "LOW" ? "bg-amber-500/20 text-amber-300 border-amber-500/30" :
+                                            metrics.iplocate.remaining !== null && metrics.iplocate.remaining < 5000 ? "bg-rose-500/20 text-rose-300 border-rose-500/30" :
+                                            metrics.iplocate.remaining !== null && metrics.iplocate.remaining < 15000 ? "bg-amber-500/20 text-amber-300 border-amber-500/30" :
                                             metrics.iplocate.status === "UNCONFIGURED" ? "bg-slate-500/20 text-slate-300 border-slate-500/30" :
                                             "bg-emerald-500/20 text-emerald-300 border-emerald-500/30"
                                         }`}>
-                                            {metrics.iplocate.status === "HEALTHY" ? "Active" : metrics.iplocate.status}
+                                            {metrics.iplocate.remaining !== null && metrics.iplocate.remaining < 5000 ? "Low (<5k)" :
+                                             metrics.iplocate.remaining !== null && metrics.iplocate.remaining < 15000 ? "Moderate (<15k)" :
+                                             metrics.iplocate.status === "UNCONFIGURED" ? "Unconfigured" : "Healthy"}
                                         </span>
                                         <span className="text-xs text-text-muted">
                                             (Auto-updates every 10m)
@@ -419,15 +421,16 @@ export default function SystemHealthPage() {
                             <div className="flex items-center gap-4 flex-wrap">
                                 <div className="text-right">
                                     <div className="flex items-baseline gap-1.5 justify-end">
-                                        <span className="text-2xl font-black text-text-primary font-mono">
+                                        <span className={`text-3xl font-black font-mono ${
+                                            metrics.iplocate.remaining !== null && metrics.iplocate.remaining < 5000 ? "text-rose-400" :
+                                            metrics.iplocate.remaining !== null && metrics.iplocate.remaining < 15000 ? "text-amber-400" :
+                                            metrics.iplocate.remaining !== null ? "text-emerald-400" : "text-text-primary"
+                                        }`}>
                                             {metrics.iplocate.remaining !== null ? metrics.iplocate.remaining.toLocaleString() : "—"}
-                                        </span>
-                                        <span className="text-sm font-semibold text-text-muted">
-                                            / {metrics.iplocate.limit !== null ? metrics.iplocate.limit.toLocaleString() : "∞"}
                                         </span>
                                     </div>
                                     <span className="text-[0.7rem] uppercase tracking-wider font-bold text-text-muted">
-                                        Remaining Credits
+                                        Credits Remaining
                                     </span>
                                 </div>
 
@@ -442,30 +445,6 @@ export default function SystemHealthPage() {
                                 </button>
                             </div>
                         </div>
-
-                        {/* Credit Utilization Progress Bar */}
-                        {metrics.iplocate.percentRemaining !== null && (
-                            <div className="mt-4 pt-3 border-t border-white/5 flex flex-col gap-1.5">
-                                <div className="flex justify-between text-xs text-text-muted font-mono">
-                                    <span>Quota Balance Available</span>
-                                    <strong className={
-                                        metrics.iplocate.percentRemaining < 15 ? "text-rose-400" :
-                                        metrics.iplocate.percentRemaining < 30 ? "text-amber-400" : "text-emerald-400"
-                                    }>
-                                        {metrics.iplocate.percentRemaining}% Available
-                                    </strong>
-                                </div>
-                                <div className="h-2 w-full bg-white/5 rounded-full overflow-hidden border border-white/10">
-                                    <div 
-                                        className={`h-full transition-all duration-500 rounded-full ${
-                                            metrics.iplocate.percentRemaining < 15 ? "bg-rose-500" :
-                                            metrics.iplocate.percentRemaining < 30 ? "bg-amber-500" : "bg-emerald-500"
-                                        }`}
-                                        style={{ width: `${Math.min(100, Math.max(0, metrics.iplocate.percentRemaining))}%` }}
-                                    />
-                                </div>
-                            </div>
-                        )}
                     </div>
                 )}
 

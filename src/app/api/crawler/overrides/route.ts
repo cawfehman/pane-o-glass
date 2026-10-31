@@ -6,6 +6,9 @@ import { hasPermission } from "@/app/actions/permissions";
 import { removeDirectorySites } from "@/lib/sites";
 import { invalidateCrawlerSnapshotCache } from "@/lib/crawlerSnapshotCache";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 export function normalizeHostname(h?: string | null): string {
     if (!h) return "";
     return h.split(".")[0].split("(")[0].trim().toLowerCase();

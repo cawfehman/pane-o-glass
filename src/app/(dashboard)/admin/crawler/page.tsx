@@ -151,7 +151,8 @@ export default function AdminCrawlerPage() {
                 if (res.status === 403) {
                     throw new Error("Forbidden: Netcrawler permission required.");
                 }
-                throw new Error("Failed to load snapshots list.");
+                const errData = await res.json().catch(() => ({}));
+                throw new Error(errData.error || `Failed to load snapshots list (HTTP ${res.status}).`);
             }
             const data = await res.json();
             clientSnapshotsList = data;

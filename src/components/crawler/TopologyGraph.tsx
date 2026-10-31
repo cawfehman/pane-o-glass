@@ -1479,7 +1479,7 @@ export default function TopologyGraph({
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                     query: q,
-                    snapshotId: snapshotNumber ? String(snapshotNumber) : "master"
+                    snapshotId: snapshotId ? String(snapshotId) : "master"
                 })
             });
             const data = await res.json();
@@ -1527,7 +1527,7 @@ export default function TopologyGraph({
                 body: JSON.stringify({
                     sourceIp: srcIp,
                     destIp: dstIp,
-                    snapshotId: snapshotNumber ? String(snapshotNumber) : "master"
+                    snapshotId: snapshotId ? String(snapshotId) : "master"
                 })
             });
 

@@ -18,7 +18,8 @@ export async function GET(
             return NextResponse.json({ error: "Forbidden: Netcrawler permission required." }, { status: 403 });
         }
 
-        const { id } = await context.params;
+        const resolvedParams = context?.params ? await context.params : (context as any);
+        const id = resolvedParams?.id || "";
         const cleanId = (id || "").trim();
         const isMaster = cleanId.toLowerCase() === "master";
 
@@ -186,8 +187,8 @@ export async function GET(
         }> = {};
         let snapshotFolders: string[] = [];
         try {
-            const { ensureSitesExistFromDevices } = await import("@/lib/sites");
-            const { siteMap } = await ensureSitesExistFromDevices(devices, session?.user as any);
+            const { getCurrentSiteMap } = await import("@/lib/sites");
+            const siteMap = await getCurrentSiteMap();
             siteMap.forEach((meta, code) => {
                 siteDirectory[code.toUpperCase()] = {
                     name: meta.name,

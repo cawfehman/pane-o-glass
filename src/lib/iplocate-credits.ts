@@ -53,16 +53,14 @@ export async function updateCreditInfoFromHeaders(headers: any): Promise<IpLocat
 
     let status: IpLocateCreditInfo["status"] = "HEALTHY";
     if (remaining !== null) {
-        if (remaining <= 0) {
-            status = "DEPLETED";
-        } else if (remaining < 5000 || (limit && (remaining / limit) < 0.15)) {
-            status = "LOW";
+        if (remaining < 5000) {
+            status = "DEPLETED"; // Rose (< 5k)
+        } else if (remaining < 15000) {
+            status = "LOW"; // Amber (5k - 15k)
+        } else {
+            status = "HEALTHY"; // Emerald (>= 15k)
         }
     }
-
-    const percentRemaining = (remaining !== null && limit && limit > 0)
-        ? Math.round((remaining / limit) * 100)
-        : null;
 
     const nowIso = new Date().toISOString();
     const info: IpLocateCreditInfo = {
@@ -71,10 +69,10 @@ export async function updateCreditInfoFromHeaders(headers: any): Promise<IpLocat
         limit,
         resetAt,
         lastChecked: nowIso,
-        percentRemaining,
+        percentRemaining: null,
         status,
         message: remaining !== null
-            ? `${remaining.toLocaleString()} / ${limit ? limit.toLocaleString() : '∞'} credits remaining`
+            ? `${remaining.toLocaleString()} credits remaining`
             : undefined
     };
 
