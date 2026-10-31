@@ -192,15 +192,6 @@ async function backfillVpnIpEnrichment() {
                     const ipCountry = data.country || null;
                     const ipCountryCode = data.country_code || null;
 
-                    // Log audit query
-                    await prisma.auditLog.create({
-                        data: {
-                            action: "IPLOCATE_API_QUERY",
-                            details: `Executed backfill lookup for IP: ${ip} via IPLocate.io.`,
-                            ipAddress: ip
-                        }
-                    }).catch(() => {});
-
                     // Cache in PostgreSQL
                     await prisma.ipLookupCache.upsert({
                         where: { ip },

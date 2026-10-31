@@ -11,6 +11,7 @@ import { runCitrixLoginAutoShunCycle } from '../../src/lib/netscaler-login-triag
 import { getAdaptiveSearchWindow } from '../../src/lib/graylog-backlog-guardian';
 import { replicateShunToFleet } from '../../src/lib/universal-shun-sync';
 import { isPrivateIp } from '../../src/lib/iplocate';
+import { updateCreditInfoFromHeaders } from '../../src/lib/iplocate-credits';
 import { isResidential } from '../../src/lib/isp-classification';
 
 async function checkCitrixSuccessHistory(ip: string, username?: string): Promise<{ hasCitrixSuccess: boolean; exactUserMatch: boolean }> {
@@ -631,6 +632,7 @@ async function runAutoUnshun() {
                             headers: apiKey ? { "X-API-KEY": apiKey } : {},
                             timeout: 5000
                         });
+                        updateCreditInfoFromHeaders(res.headers).catch(() => {});
                         ipData = res.data;
 
                         if (ipData && (ipData.country_code || ipData.country)) {
@@ -654,24 +656,6 @@ async function runAutoUnshun() {
                                     rawJson: JSON.stringify(ipData)
                                 }
                             });
-
-                            // Log IPLocate lookup to AuditLog for dashboard usage tracking
-                            try {
-                                const startOfUtcDay = new Date();
-                                startOfUtcDay.setUTCHours(0, 0, 0, 0);
-                                const dailyCount = await prisma.ipLookupCache.count({
-                                    where: { updatedAt: { gte: startOfUtcDay } }
-                                });
-                                await prisma.auditLog.create({
-                                    data: {
-                                        action: "IPLOCATE_API_QUERY",
-                                        details: `Executed lookup for IP: ${ip} via Guardian. Daily usage since 00:00 UTC: ${dailyCount} queries.`,
-                                        ipAddress: ip
-                                    }
-                                });
-                            } catch (auditErr: any) {
-                                console.error("[GUARDIAN] Audit logging error:", auditErr.message);
-                            }
                         } else {
                             // Missing country - cache as UNRESOLVED
                             const unresolvedData = { ip, country: "Unknown", country_code: "UNRESOLVED", city: "N/A", unresolved: true, timestamp: Date.now() };

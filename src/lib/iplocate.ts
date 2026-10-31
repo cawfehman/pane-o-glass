@@ -2,6 +2,7 @@ import { prisma } from "./prisma";
 import { logAudit } from "./audit";
 import axios from "axios";
 import { isResidential } from "./isp-classification";
+import { updateCreditInfoFromHeaders } from "./iplocate-credits";
 
 /**
  * Non-public IP ranges that should not be queried against external APIs.
@@ -335,14 +336,7 @@ export async function enrichIpsBatch(ips: string[], isAdHoc: boolean = false): P
             return results; // All resolved from fresh cache!
         }
 
-        // 2. Count current daily usage since 00:00 UTC (for analytics/tracking)
-        const startOfUtcDay = new Date();
-        startOfUtcDay.setUTCHours(0, 0, 0, 0);
-        const dailyCountBefore = await prisma.ipLookupCache.count({
-            where: { updatedAt: { gte: startOfUtcDay } }
-        });
-
-        // 3. Check for API key in environment
+        // 2. Check for API key in environment
         const apiKey = process.env.IPLOCATE_API_KEY;
         const lookupList: string[] = [];
         
@@ -413,6 +407,7 @@ export async function enrichIpsBatch(ips: string[], isAdHoc: boolean = false): P
                     });
 
                     if (response.ok) {
+                        updateCreditInfoFromHeaders(response.headers).catch(() => {});
                         const data = await response.json();
                         
                         // Save resolved results and negative cache unresolved IPs
@@ -474,11 +469,6 @@ export async function enrichIpsBatch(ips: string[], isAdHoc: boolean = false): P
                             }
                         }));
 
-                        const totalQueriesPerformed = Object.keys(data).length;
-                        await logAudit(
-                            "IPLOCATE_API_QUERY",
-                            `Executed batch lookup for ${totalQueriesPerformed} IPs. Daily usage since 00:00 UTC: ${dailyCountBefore + totalQueriesPerformed} queries.`
-                        );
                     } else {
                         if (response.status === 429) {
                             await logAudit(
@@ -495,6 +485,7 @@ export async function enrichIpsBatch(ips: string[], isAdHoc: boolean = false): P
                                 
                                 const singleRes = await fetch(singleUrl);
                                 if (singleRes.ok) {
+                                    updateCreditInfoFromHeaders(singleRes.headers).catch(() => {});
                                     const info = await singleRes.json();
                                     if (info && info.country_code) {
                                         await prisma.ipLookupCache.upsert({
@@ -562,12 +553,6 @@ export async function enrichIpsBatch(ips: string[], isAdHoc: boolean = false): P
                     console.error("[iplocate] Error executing chunk batch lookup:", chunkErr);
                 }
             }
-        } else if (uncachedIps.length > 0 && !apiKey) {
-            // Log the simulated geocoding runs under IPLOCATE_API_QUERY as well
-            await logAudit(
-                "IPLOCATE_API_QUERY",
-                `Simulated batch geocoding for ${uncachedIps.length} IPs (No API key configured).`
-            );
         }
 
     } catch (e) {
@@ -645,6 +630,7 @@ export async function getIpEnrichment(ip: string): Promise<IpEnrichmentResult | 
         });
 
         if (response.data && (response.data.country_code || response.data.country)) {
+            updateCreditInfoFromHeaders(response.headers).catch(() => {});
             const data = response.data;
             const countryCode = data.country_code || null;
             const city = data.city || null;
@@ -672,11 +658,6 @@ export async function getIpEnrichment(ip: string): Promise<IpEnrichmentResult | 
                     rawJson: JSON.stringify(data)
                 }
             }).catch(() => {});
-
-            await logAudit(
-                "IPLOCATE_API_QUERY",
-                `Enriched IP ${cleanIp} via IPLocate (${asName || "Unknown ASN"}).`
-            ).catch(() => {});
 
             return {
                 ip: cleanIp,

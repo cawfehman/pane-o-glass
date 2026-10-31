@@ -2,6 +2,7 @@ import { NodeSSH } from "node-ssh";
 import axios from "axios";
 import { prisma } from "@/lib/prisma";
 import { logAudit } from "@/lib/audit";
+import { updateCreditInfoFromHeaders } from "./iplocate-credits";
 
 function ipToLong(ip: string): number {
     return ip.split(".").reduce((long, octet) => (long << 8) + parseInt(octet, 10), 0) >>> 0;
@@ -193,60 +194,38 @@ export async function enrichPendingShunIps(maxPublicToEnrich?: number): Promise<
         }
     }
 
-    const startOfUtcDay = new Date();
-    startOfUtcDay.setUTCHours(0, 0, 0, 0);
+    let limitToEnrich = maxPublicToEnrich !== undefined ? maxPublicToEnrich : 200;
 
-    const queriesUsedToday = await prisma.auditLog.count({
-        where: {
-            action: "IPLOCATE_API_QUERY",
-            createdAt: { gte: startOfUtcDay }
-        }
+    const pendingPublicIps = await prisma.shunDatabaseIp.findMany({
+        where: { enrichedAt: null },
+        take: limitToEnrich,
+        select: { ip: true }
     });
 
-    const dailyQuota = parseInt(process.env.IPLOCATE_DAILY_QUOTA || "1000", 10);
-    let remainingQuota = Math.max(0, dailyQuota - queriesUsedToday);
-    if (maxPublicToEnrich !== undefined) {
-        remainingQuota = Math.min(remainingQuota, maxPublicToEnrich);
-    }
+    if (pendingPublicIps.length > 0) {
+        const ipList = pendingPublicIps.map(p => p.ip);
+        let quotaExhausted = false;
+        const apiKey = process.env.IPLOCATE_API_KEY;
 
-    if (remainingQuota > 0) {
-        const pendingPublicIps = await prisma.shunDatabaseIp.findMany({
-            where: { enrichedAt: null },
-            take: remainingQuota,
-            select: { ip: true }
-        });
+        for (let i = 0; i < ipList.length && !quotaExhausted; i += 100) {
+            const batch = ipList.slice(i, i + 100);
+            const results: Record<string, any> = {};
 
-        if (pendingPublicIps.length > 0) {
-            const ipList = pendingPublicIps.map(p => p.ip);
-            let quotaExhausted = false;
-            const apiKey = process.env.IPLOCATE_API_KEY;
-
-            for (let i = 0; i < ipList.length && !quotaExhausted; i += 100) {
-                const batch = ipList.slice(i, i + 100);
-                const results: Record<string, any> = {};
-
-                for (const batchIp of batch) {
-                    try {
-                        const res = await axios.get(`https://www.iplocate.io/api/lookup/${batchIp}`, {
-                            headers: apiKey ? { "X-API-KEY": apiKey } : {},
-                            timeout: 5000
-                        });
-                        results[batchIp] = res.data;
-
-                        await prisma.auditLog.create({
-                            data: {
-                                action: "IPLOCATE_API_QUERY",
-                                details: `Executed lookup for IP: ${batchIp} via Shun Database Sync.`,
-                                ipAddress: batchIp
-                            }
-                        });
-                    } catch (e: any) {
-                        if (e.response?.status === 429) {
-                            quotaExhausted = true;
-                            break;
-                        }
+            for (const batchIp of batch) {
+                try {
+                    const res = await axios.get(`https://www.iplocate.io/api/lookup/${batchIp}`, {
+                        headers: apiKey ? { "X-API-KEY": apiKey } : {},
+                        timeout: 5000
+                    });
+                    updateCreditInfoFromHeaders(res.headers).catch(() => {});
+                    results[batchIp] = res.data;
+                } catch (e: any) {
+                    if (e.response?.status === 429) {
+                        quotaExhausted = true;
+                        break;
                     }
                 }
+            }
 
                 for (const ip of batch) {
                     const data = results[ip];
@@ -309,7 +288,6 @@ export async function enrichPendingShunIps(maxPublicToEnrich?: number): Promise<
                 }
             }
         }
-    }
 
     return { privateCount: localPrivateCount, publicCount: enrichedCount };
 }

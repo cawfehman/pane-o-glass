@@ -5,6 +5,7 @@ import axios from "axios";
 import { prisma } from "@/lib/prisma";
 import { getBulkUserAdStatus } from "@/lib/ldap";
 import { isPrivateIp, fillMissingFieldsFromNeighbor, getCacheTtlDays } from "@/lib/iplocate";
+import { updateCreditInfoFromHeaders } from "@/lib/iplocate-credits";
 import { NetscalerGraylogClient } from "@/lib/netscaler-graylog";
 import { executeFirewallBulkCommands } from "@/lib/netscaler-auto-shun";
 import { getFleetFirewalls } from "@/lib/universal-shun-sync";
@@ -387,13 +388,14 @@ async function enrichIpMetadata(ip: string, allowExternalLookup: boolean = true)
         } catch {}
 
         // 4. On-demand explicit lookup via IPLocate if specifically requested
-        if (allowExternalLookup && process.env.IPLOCATE_API_KEY) {
+        const apiKey = process.env.IPLOCATE_API_KEY;
+        if (allowExternalLookup && apiKey) {
             try {
-                const apiKey = process.env.IPLOCATE_API_KEY;
                 const res = await axios.get(`https://www.iplocate.io/api/lookup/${cleanIp}`, {
                     headers: { "X-API-KEY": apiKey },
                     timeout: 4000,
                 });
+                updateCreditInfoFromHeaders(res.headers).catch(() => {});
                 if (res.data && (res.data.country_code || res.data.country)) {
                     const rawData = res.data;
                     const companyName = rawData.company?.name || rawData.asn?.name || rawData.as_name || rawData.org || "Unknown Network";

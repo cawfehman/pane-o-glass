@@ -3,6 +3,7 @@ import { NodeSSH } from 'node-ssh';
 import * as dotenv from 'dotenv';
 import path from 'path';
 import axios from 'axios';
+import { updateCreditInfoFromHeaders } from '../../src/lib/iplocate-credits';
 
 // Load environment variables for standalone script execution
 dotenv.config({ path: path.resolve(__dirname, '../../.env') });
@@ -274,65 +275,41 @@ async function run() {
             }
         }
 
-        const startOfUtcDay = new Date();
-        startOfUtcDay.setUTCHours(0, 0, 0, 0);
-
-        const queriesUsedToday = await prisma.auditLog.count({
-            where: { 
-                action: "IPLOCATE_API_QUERY",
-                createdAt: { gte: startOfUtcDay }
-            }
+        // Find unenriched public IPs
+        const pendingPublicIps = await prisma.shunDatabaseIp.findMany({
+            where: { enrichedAt: null },
+            take: 200,
+            select: { ip: true }
         });
-
-        // Default to 1000, but allow override for initial seed runs with large credit balances
-        const dailyQuota = parseInt(process.env.IPLOCATE_DAILY_QUOTA || "1000", 10);
-        const remainingQuota = Math.max(0, dailyQuota - queriesUsedToday);
-        console.log(`IPLocate daily limit: ${dailyQuota}. Used today: ${queriesUsedToday}. Remaining quota: ${remainingQuota}.`);
 
         let enrichedCount = 0;
         
-        if (remainingQuota > 0) {
-            // Find unenriched public IPs
-            const pendingPublicIps = await prisma.shunDatabaseIp.findMany({
-                where: { enrichedAt: null },
-                take: remainingQuota,
-                select: { ip: true }
-            });
-
-            if (pendingPublicIps.length > 0) {
-                console.log(`Found ${pendingPublicIps.length} pending public IPs for enrichment. Processing batches...`);
-                const ipList = pendingPublicIps.map(p => p.ip);
-                let quotaExhausted = false;
-                
-                // Process in batches of 100
-                for (let i = 0; i < ipList.length && !quotaExhausted; i += 100) {
-                    const batch = ipList.slice(i, i + 100);
-                    const results: any = {};
-                    const apiKey = process.env.IPLOCATE_API_KEY!;
-                    for (const batchIp of batch) {
-                        try {
-                            const res = await axios.get(`https://www.iplocate.io/api/lookup/${batchIp}`, {
-                                headers: apiKey ? { "X-API-KEY": apiKey } : {},
-                                timeout: 5000
-                            });
-                            results[batchIp] = res.data;
-                            
-                            // Log the usage to AuditLog for dashboard usage tracking
-                            await prisma.auditLog.create({
-                                data: {
-                                    action: "IPLOCATE_API_QUERY",
-                                    details: `Executed lookup for IP: ${batchIp} via Shun Database Cron.`,
-                                    ipAddress: batchIp
-                                }
-                            });
-                        } catch (e: any) {
-                            if (e.response?.status === 429) {
-                                console.warn(`[cron] IPLocate API rate limit / quota exceeded (HTTP 429) at IP ${batchIp}. Halting queue.`);
-                                quotaExhausted = true;
-                                break;
-                            }
-                            console.error(`Failed to enrich IP ${batchIp}:`, e.message);
+        if (pendingPublicIps.length > 0) {
+            console.log(`Found ${pendingPublicIps.length} pending public IPs for enrichment. Processing batches...`);
+            const ipList = pendingPublicIps.map(p => p.ip);
+            let quotaExhausted = false;
+            
+            // Process in batches of 100
+            for (let i = 0; i < ipList.length && !quotaExhausted; i += 100) {
+                const batch = ipList.slice(i, i + 100);
+                const results: any = {};
+                const apiKey = process.env.IPLOCATE_API_KEY!;
+                for (const batchIp of batch) {
+                    try {
+                        const res = await axios.get(`https://www.iplocate.io/api/lookup/${batchIp}`, {
+                            headers: apiKey ? { "X-API-KEY": apiKey } : {},
+                            timeout: 5000
+                        });
+                        updateCreditInfoFromHeaders(res.headers).catch(() => {});
+                        results[batchIp] = res.data;
+                    } catch (e: any) {
+                        if (e.response?.status === 429) {
+                            console.warn(`[cron] IPLocate API rate limit / quota exceeded (HTTP 429) at IP ${batchIp}. Halting queue.`);
+                            quotaExhausted = true;
+                            break;
                         }
+                        console.error(`Failed to enrich IP ${batchIp}:`, e.message);
+                    }
                     }
                     
                     for (const ip of batch) {
@@ -398,7 +375,6 @@ async function run() {
             } else {
                 console.log("No pending IPs require enrichment at this time.");
             }
-        }
 
         // 5. Prune old snapshots (> 365 days)
         console.log("Pruning historical snapshots older than 365 days...");

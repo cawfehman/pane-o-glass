@@ -9,6 +9,7 @@ import * as https from "https";
 import { getRotatingPassword } from "@/lib/rotatingPassword";
 import { getSqliteTelemetry } from "@/lib/sqliteTelemetry";
 import { getCpuUsagePercent, getDiskUsage, getMemoryUsage, getSystemLoad, getNodeProcessStats, maybeAutoRecordSystemSnapshot } from "@/lib/systemMetricsHistory";
+import { getIpLocateCreditStatus } from "@/lib/iplocate-credits";
 
 const execAsync = promisify(exec);
 
@@ -190,6 +191,14 @@ export async function GET() {
         } catch (dbErr) {
             console.error("[Health] Failed to collect SQLite telemetry:", dbErr);
             metrics.sqlite = null;
+        }
+
+        // Fetch IPLocate API Credit Status (10-minute cache)
+        try {
+            metrics.iplocate = await getIpLocateCreditStatus();
+        } catch (ipLocateErr) {
+            console.error("[Health] Failed to fetch IPLocate credit status:", ipLocateErr);
+            metrics.iplocate = null;
         }
 
         return NextResponse.json(metrics);

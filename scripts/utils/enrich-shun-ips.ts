@@ -164,14 +164,6 @@ async function main() {
                         timeout: 5000
                     });
                     results[batchIp] = res.data;
-
-                    await prisma.auditLog.create({
-                        data: {
-                            action: "IPLOCATE_API_QUERY",
-                            details: `Executed lookup for IP: ${batchIp} via Shun IP Enrichment Utility.`,
-                            ipAddress: batchIp
-                        }
-                    });
                 } catch (e: any) {
                     if (e.response?.status === 429) {
                         console.warn(`[utility] IPLocate API rate limit / quota exceeded (HTTP 429) at IP ${batchIp}. Halting queue.`);
