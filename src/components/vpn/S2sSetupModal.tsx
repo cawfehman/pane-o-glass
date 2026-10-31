@@ -177,6 +177,10 @@ export function S2sSetupModal({
                 save: true
             };
 
+            const formattedUrl = fmcUrl.trim()
+                ? (fmcUrl.trim().startsWith("http") ? fmcUrl.trim() : `https://${fmcUrl.trim()}`)
+                : "";
+
             if (activeTab === "fmc" || formattedUrl) {
                 payload.fmc = {
                     url: formattedUrl,

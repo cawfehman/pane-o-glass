@@ -5,6 +5,7 @@ import { hasPermission } from "@/app/actions/permissions";
 import { logAudit } from "@/lib/audit";
 import { getSecurityIntelligenceFeed, invalidateFeedCache } from "../route";
 import { enqueueFirewallCommand, drainFirewallQueue } from "@/lib/firewall-queue";
+import { evaluateSingleIpPosture, evaluateBatchIpPosture } from "@/lib/perimeter-posture";
 
 export const dynamic = "force-dynamic";
 
@@ -61,15 +62,10 @@ export async function GET(req: NextRequest) {
         // 3. Single IP Lookup Mode (Instant Positive Confirmation & 360° Profile)
         let lookupResult: any = null;
         if (targetIp) {
-            const inFeed = feedIpSet.has(targetIp);
-
-            const [residential, blacklist, cve, allShunStats, vpnSessions, pendingQueue, cache] = await Promise.all([
-                prisma.residentialStrikeLedger.findUnique({ where: { ip: targetIp } }),
-                prisma.guardianBlacklist.findUnique({ where: { ip: targetIp } }),
-                prisma.netscalerCveShun.findUnique({ where: { ip: targetIp } }),
-                prisma.firewallShunStats.findMany({
-                    where: { ip: targetIp },
-                    include: { shunIp: true }
+            const [evaluated, vpnSessions, pendingQueue] = await Promise.all([
+                evaluateSingleIpPosture(targetIp, {
+                    inFeed: feedIpSet.has(targetIp),
+                    enrichIfMissing: true
                 }),
                 prisma.vpnEvent.findMany({
                     where: { sourceIp: targetIp },
@@ -84,124 +80,25 @@ export async function GET(req: NextRequest) {
                         createdAt: true
                     }
                 }),
-                prisma.firewallCommandQueue.findMany({ where: { ip: targetIp, status: "PENDING" } }),
-                prisma.ipLookupCache.findUnique({ where: { ip: targetIp } })
+                prisma.firewallCommandQueue.findMany({ where: { ip: targetIp, status: "PENDING" } })
             ]);
 
-            // Active firewall shuns
-            const activeShunNodes = allShunStats.filter(s => s.isActive).map(s => s.firewall);
-            const inPerimeterVpnShun = activeShunNodes.length > 0;
-
-            // Extract ASN & Org
-            let rawGeo = null;
-            if (cache?.rawJson) {
-                try { rawGeo = JSON.parse(cache.rawJson); } catch {}
+            if (evaluated) {
+                lookupResult = {
+                    ...evaluated,
+                    vpnTelemetry: {
+                        recentSessions: vpnSessions.map(v => ({
+                            username: v.username,
+                            status: v.status,
+                            failureReason: v.failureReason,
+                            vpnStream: v.vpnStream,
+                            vpnType: v.vpnType,
+                            timestamp: v.createdAt
+                        }))
+                    },
+                    pendingCommandsCount: pendingQueue.length
+                };
             }
-
-            const ispOrg = rawGeo?.company?.name || rawGeo?.asn?.name || residential?.ispOrg || allShunStats[0]?.shunIp?.org || "Unknown Provider";
-            const asnStr = rawGeo?.asn?.asn ? String(rawGeo.asn.asn) : (residential?.asn || allShunStats[0]?.shunIp?.ipAsn || "Unknown");
-            const countryCode = cache?.countryCode || residential?.country || allShunStats[0]?.shunIp?.ipCountryCode || "US";
-            const city = cache?.city || residential?.city || allShunStats[0]?.shunIp?.city || "Unknown";
-
-            // Check if ASN is blacklisted
-            let isAsnBlacklisted = false;
-            let asnBlacklistReason: string | null = null;
-            if (asnStr && asnStr !== "Unknown") {
-                const rawNum = asnStr.replace(/^AS/i, "");
-                const asnEntry = await prisma.guardianAsnBlacklist.findFirst({
-                    where: { OR: [{ asn: `AS${rawNum}` }, { asn: rawNum }] }
-                });
-                if (asnEntry) {
-                    isAsnBlacklisted = true;
-                    asnBlacklistReason = asnEntry.reason;
-                }
-            }
-
-            // FMC GeoIP Rule 2/3 Evaluation
-            const isUsGeo = countryCode.toUpperCase() === "US";
-            const isUnresolvedGeo = ["UNKNOWN", "N/A", "UNRESOLVED"].includes(countryCode.toUpperCase()) || !countryCode;
-            const fmcGeoBlocked = !isUsGeo && !isUnresolvedGeo && countryCode.length === 2;
-
-            let activeCategory = "NONE";
-            let reason = "Not blocked in FMC Security Intelligence feed";
-
-            if (cve && cve.status === "ACTIVE") {
-                activeCategory = "CVE_IOC";
-                reason = `NetScaler CVE-2026 Exploit IOC (${cve.cve})`;
-            } else if (blacklist) {
-                activeCategory = "BLACKLIST";
-                reason = `Permanent Guardian Blacklist: ${blacklist.reason || "Administrative block"}`;
-            } else if (residential && (residential.status === "ENFORCED" || residential.status === "QUARANTINED" || residential.strikeCount >= 2)) {
-                activeCategory = "RESIDENTIAL_STRIKE";
-                reason = `Citrix Strike ${residential.strikeCount} (${residential.status}): ${residential.attemptedUsers.length} account(s) probed`;
-            } else if (inPerimeterVpnShun) {
-                activeCategory = "PERIMETER_VPN_SHUN";
-                reason = `Perimeter VPN Shun active on: ${activeShunNodes.join(", ")}`;
-            } else if (fmcGeoBlocked) {
-                activeCategory = "FMC_GEOIP_BLOCKED";
-                reason = `Non-US Location (${countryCode}): Blocked by FMC ACP Rule 3 ('Block access to Netscaler') unless whitelisted in Rule 1`;
-            }
-
-            // Overall Block Flag
-            const isCurrentlyBlocked = inFeed || inPerimeterVpnShun || isAsnBlacklisted || Boolean(blacklist) || fmcGeoBlocked || (residential && residential.strikeCount >= 2 && residential.status !== "PARDONED");
-
-            lookupResult = {
-                ip: targetIp,
-                inFeed,
-                isCurrentlyBlocked,
-                activeCategory,
-                reason,
-                blockPosture: {
-                    inFmcFeed: inFeed,
-                    inPerimeterVpnShun,
-                    activeShunNodes,
-                    strikeCount: residential?.strikeCount ?? 0,
-                    strikeStatus: residential?.status ?? "CLEAN",
-                    isBlacklisted: Boolean(blacklist),
-                    blacklistReason: blacklist?.reason || null,
-                    isAsnBlacklisted,
-                    asnBlacklistReason,
-                    isCveExploit: Boolean(cve && cve.status === "ACTIVE"),
-                    fmcGeoStatus: {
-                        countryCode,
-                        isUsGeo,
-                        fmcGeoBlocked,
-                        verdict: fmcGeoBlocked
-                            ? `BLOCKED by FMC ACP Rule 3 (Non-US: ${countryCode})`
-                            : isUsGeo
-                            ? "PERMITTED by FMC ACP Rule 2 (Domestic US)"
-                            : `UNRESOLVED / DOMESTIC (${countryCode})`
-                    }
-                },
-                networkProfile: {
-                    isp: ispOrg,
-                    asn: asnStr,
-                    city,
-                    countryCode,
-                    carrierType: rawGeo?.carrier?.name || "Broadband / Hosting"
-                },
-                shunHistory: {
-                    hasShunHistory: allShunStats.length > 0,
-                    nodes: allShunStats.map(s => ({
-                        node: s.firewall,
-                        isActive: s.isActive,
-                        daysShunned: s.daysShunned,
-                        firstSeen: s.firstSeen,
-                        lastSeen: s.lastSeen
-                    }))
-                },
-                vpnTelemetry: {
-                    recentSessions: vpnSessions.map(v => ({
-                        username: v.username,
-                        status: v.status,
-                        failureReason: v.failureReason,
-                        vpnStream: v.vpnStream,
-                        vpnType: v.vpnType,
-                        timestamp: v.createdAt
-                    }))
-                },
-                pendingCommandsCount: pendingQueue.length
-            };
         }
 
         // 4. Feed Entries Filtering & Pagination
@@ -320,126 +217,10 @@ export async function POST(req: NextRequest) {
                 return NextResponse.json({ error: "No valid IPv4 addresses provided for batch inspection." }, { status: 400 });
             }
 
-            // Fetch live feed snapshot
+            // Fetch live feed snapshot and evaluate batch posture through single shared engine
             const feed = await getSecurityIntelligenceFeed("all");
             const feedIpSet = new Set(feed.ips);
-
-            // Fetch all DB records in bulk
-            const [residentialList, blacklistList, cveList, allShunStats, allCache, allAsnBlacklist, pendingCommands] = await Promise.all([
-                prisma.residentialStrikeLedger.findMany({ where: { ip: { in: cleanIps } } }),
-                prisma.guardianBlacklist.findMany({ where: { ip: { in: cleanIps } } }),
-                prisma.netscalerCveShun.findMany({ where: { ip: { in: cleanIps } } }),
-                prisma.firewallShunStats.findMany({
-                    where: { ip: { in: cleanIps } },
-                    include: { shunIp: true }
-                }),
-                prisma.ipLookupCache.findMany({ where: { ip: { in: cleanIps } } }),
-                prisma.guardianAsnBlacklist.findMany(),
-                prisma.firewallCommandQueue.findMany({ where: { ip: { in: cleanIps }, status: "PENDING" } })
-            ]);
-
-            const resMap = new Map(residentialList.map(r => [r.ip, r]));
-            const blMap = new Map(blacklistList.map(b => [b.ip, b]));
-            const cveMap = new Map(cveList.map(c => [c.ip, c]));
-            const cacheMap = new Map(allCache.map(c => [c.ip, c]));
-            const pendingMap = new Map<string, number>();
-            for (const p of pendingCommands) {
-                pendingMap.set(p.ip, (pendingMap.get(p.ip) || 0) + 1);
-            }
-
-            const shunStatsMap = new Map<string, typeof allShunStats>();
-            for (const s of allShunStats) {
-                if (!shunStatsMap.has(s.ip)) shunStatsMap.set(s.ip, []);
-                shunStatsMap.get(s.ip)!.push(s);
-            }
-
-            const asnBlacklistSet = new Set(allAsnBlacklist.map(a => a.asn.toUpperCase().replace(/^AS/, '')));
-
-            const results = cleanIps.map(currIp => {
-                const inFeed = feedIpSet.has(currIp);
-                const residential = resMap.get(currIp);
-                const blacklist = blMap.get(currIp);
-                const cve = cveMap.get(currIp);
-                const shunStats = shunStatsMap.get(currIp) || [];
-                const cache = cacheMap.get(currIp);
-
-                const activeShunNodes = shunStats.filter(s => s.isActive).map(s => s.firewall);
-                const inPerimeterVpnShun = activeShunNodes.length > 0;
-
-                let rawGeo = null;
-                if (cache?.rawJson) {
-                    try { rawGeo = JSON.parse(cache.rawJson); } catch {}
-                }
-
-                const ispOrg = rawGeo?.company?.name || rawGeo?.asn?.name || residential?.ispOrg || shunStats[0]?.shunIp?.org || "Unknown";
-                const asnStr = rawGeo?.asn?.asn ? String(rawGeo.asn.asn) : (residential?.asn || shunStats[0]?.shunIp?.ipAsn || "Unknown");
-                const countryCode = cache?.countryCode || residential?.country || shunStats[0]?.shunIp?.ipCountryCode || "US";
-                const city = cache?.city || residential?.city || shunStats[0]?.shunIp?.city || "Unknown";
-
-                const rawAsnNum = asnStr.replace(/^AS/i, "");
-                const isAsnBlacklisted = asnBlacklistSet.has(rawAsnNum.toUpperCase());
-
-                const isUsGeo = countryCode.toUpperCase() === "US";
-                const isUnresolvedGeo = ["UNKNOWN", "N/A", "UNRESOLVED"].includes(countryCode.toUpperCase()) || !countryCode;
-                const fmcGeoBlocked = !isUsGeo && !isUnresolvedGeo && countryCode.length === 2;
-
-                let activeCategory = "NONE";
-                let reason = "Clean / Not blocked in SI feed";
-
-                if (cve && cve.status === "ACTIVE") {
-                    activeCategory = "CVE_IOC";
-                    reason = `CVE-2026 Exploit IOC (${cve.cve})`;
-                } else if (blacklist) {
-                    activeCategory = "BLACKLIST";
-                    reason = `Permanent Blacklist: ${blacklist.reason || "Administrative block"}`;
-                } else if (residential && (residential.status === "ENFORCED" || residential.status === "QUARANTINED" || residential.strikeCount >= 2)) {
-                    activeCategory = "RESIDENTIAL_STRIKE";
-                    reason = `Strike ${residential.strikeCount} (${residential.status}): ${residential.attemptedUsers.length} account(s)`;
-                } else if (inPerimeterVpnShun) {
-                    activeCategory = "PERIMETER_VPN_SHUN";
-                    reason = `Active VPN Shun on ${activeShunNodes.join(", ")}`;
-                } else if (fmcGeoBlocked) {
-                    activeCategory = "FMC_GEOIP_BLOCKED";
-                    reason = `Non-US Location (${countryCode}): Blocked by FMC ACP Rule 3`;
-                }
-
-                const isCurrentlyBlocked = inFeed || inPerimeterVpnShun || isAsnBlacklisted || Boolean(blacklist) || fmcGeoBlocked || (residential && residential.strikeCount >= 2 && residential.status !== "PARDONED");
-
-                return {
-                    ip: currIp,
-                    inFeed,
-                    isCurrentlyBlocked,
-                    activeCategory,
-                    reason,
-                    blockPosture: {
-                        inFmcFeed: inFeed,
-                        inPerimeterVpnShun,
-                        activeShunNodes,
-                        strikeCount: residential?.strikeCount ?? 0,
-                        strikeStatus: residential?.status ?? "CLEAN",
-                        isBlacklisted: Boolean(blacklist),
-                        isAsnBlacklisted,
-                        isCveExploit: Boolean(cve && cve.status === "ACTIVE"),
-                        fmcGeoStatus: {
-                            countryCode,
-                            isUsGeo,
-                            fmcGeoBlocked,
-                            verdict: fmcGeoBlocked
-                                ? `BLOCKED by ACP Rule 3 (${countryCode})`
-                                : isUsGeo
-                                ? "PERMITTED by Rule 2 (US)"
-                                : `UNRESOLVED / DOMESTIC (${countryCode})`
-                        }
-                    },
-                    networkProfile: {
-                        isp: ispOrg,
-                        asn: asnStr,
-                        city,
-                        countryCode
-                    },
-                    pendingCommandsCount: pendingMap.get(currIp) || 0
-                };
-            });
+            const results = await evaluateBatchIpPosture(cleanIps, feedIpSet);
 
             return NextResponse.json({
                 success: true,

@@ -64,7 +64,8 @@ __pycache__/
 .pytest_cache/
 
 # Crawler & Execution Logs
-logs/
+/logs/
+services/crawler/logs/
 *.log
 
 # Scratch scripts

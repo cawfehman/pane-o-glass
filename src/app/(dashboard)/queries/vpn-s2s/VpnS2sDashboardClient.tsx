@@ -35,6 +35,7 @@ import {
     HelpCircle,
     Settings2,
     Maximize2,
+    Minimize2,
     WrapText,
     ClipboardList,
     MessageSquareText,

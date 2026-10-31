@@ -304,19 +304,21 @@ export default function CiscoFirewallPage() {
             }
         };
 
-        // Check URL parameters for pre-filling IP (e.g. from NetScaler or IronPort pivots)
+        // Check URL parameters for pre-filling IP or deep-linking to a tab
         if (typeof window !== "undefined") {
             const params = new URLSearchParams(window.location.search);
             const tabParam = params.get("tab");
             const ipParam = params.get("ip") || params.get("shunIp");
-            if (tabParam === "security-intelligence" || tabParam === "database" || tabParam === "telemetry" || tabParam === "guardian" || tabParam === "blacklist" || tabParam === "manual") {
-                setActiveTab(tabParam as any);
+            const validTabs = new Set(["security-intelligence", "database", "telemetry", "guardian", "blacklist", "manual"]);
+
+            if (tabParam && validTabs.has(tabParam)) {
+                setActiveTab(tabParam as typeof activeTab);
+                if (ipParam && tabParam === "manual") {
+                    setIpAddress(ipParam);
+                }
             } else if (ipParam) {
                 setIpAddress(ipParam);
                 setActiveTab("manual");
-            }
-            if (ipParam && (tabParam === "manual" || !tabParam)) {
-                setIpAddress(ipParam);
             }
         }
 

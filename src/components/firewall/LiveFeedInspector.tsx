@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { 
     Shield, Search, CheckCircle2, ShieldAlert, 
     RefreshCw, Trash2, ExternalLink, Copy, Check, Clock,
@@ -70,9 +70,12 @@ export function LiveFeedInspector() {
         }
     }, [page, pageSize, searchQuery, categoryFilter]);
 
+    const didReadUrlIp = useRef(false);
+
     useEffect(() => {
         let initialCheckIp = "";
-        if (typeof window !== "undefined") {
+        if (!didReadUrlIp.current && typeof window !== "undefined") {
+            didReadUrlIp.current = true;
             const params = new URLSearchParams(window.location.search);
             const ipParam = params.get("ip");
             if (ipParam && ipParam.trim()) {
@@ -524,7 +527,7 @@ export function LiveFeedInspector() {
                                                     ? "🟢 Domestic US (Rule 2)" 
                                                     : checkResult.blockPosture?.fmcGeoStatus?.fmcGeoBlocked
                                                     ? `⚠️ Non-US (${checkResult.blockPosture?.fmcGeoStatus?.countryCode})`
-                                                    : `⚪ Unresolved / Domestic (${checkResult.blockPosture?.fmcGeoStatus?.countryCode || "N/A"})`}
+                                                    : "⚪ Unresolved (Geo Unverified)"}
                                             </span>
                                         </div>
 

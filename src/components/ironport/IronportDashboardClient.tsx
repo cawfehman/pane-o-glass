@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { ShieldAlert, MailWarning, Activity, ServerCrash, RefreshCw, Search, Clock, AlertTriangle, FileText, Info, ExternalLink, Filter, Send, Inbox, Link2, Server, CheckCircle2, ShieldCheck, Mail, FileCode2, Globe, PieChart as PieIcon, Wrench, X, Lock, Users, LayoutDashboard } from "lucide-react";
+import { useSearchParams } from "next/navigation";
+import { ShieldAlert, MailWarning, Activity, ServerCrash, RefreshCw, Search, Clock, AlertCircle, AlertTriangle, FileText, Info, ExternalLink, Filter, Send, Inbox, Link2, Server, CheckCircle2, ShieldCheck, Mail, FileCode2, Globe, PieChart as PieIcon, Wrench, X, Lock, Users, LayoutDashboard } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Area, AreaChart, PieChart, Pie, Cell, Legend } from "recharts";
 import { GraylogStats, OFFICIAL_M365_AUTH_ENDPOINTS, M365AuthEndpoint, OFFICIAL_AUTH_HOSTS } from "@/lib/og-graylog";
 import { SmartSearchBar } from "@/components/common/SmartSearchBar";
@@ -77,15 +78,6 @@ export default function IronportDashboardClient() {
         setAuthEndpoints(OFFICIAL_M365_AUTH_ENDPOINTS);
         if (typeof window !== "undefined") {
             localStorage.removeItem("pane_m365_auth_endpoints");
-        }
-    };
-
-    const handleResetBecDefaults = () => {
-        setWatchedKeywords(DEFAULT_M365_KEYWORDS);
-        setLegitDomains(DEFAULT_LEGIT_MS_DOMAINS);
-        if (typeof window !== "undefined") {
-            localStorage.removeItem("pane_bec_keywords");
-            localStorage.removeItem("pane_bec_legit_domains");
         }
     };
 

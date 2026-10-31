@@ -12,6 +12,8 @@ import {
 } from "./imprivata-graylog";
 import { getAdaptiveSearchWindow } from "./graylog-backlog-guardian";
 import { NetscalerGraylogClient } from "./netscaler-graylog";
+import { isPrivateIp } from "./iplocate";
+import { evaluateSingleIpPosture, cleanCountryCode } from "./perimeter-posture";
 
 const httpsAgent = new https.Agent({
     rejectUnauthorized: false
@@ -1307,81 +1309,31 @@ export async function investigateAccountLockout(
     }
 
     let perimeterPosture: PerimeterIpPosture | null = null;
-    if (mostRecentRemoteIp && mostRecentRemoteIp.ip && !mostRecentRemoteIp.ip.startsWith("10.") && !mostRecentRemoteIp.ip.startsWith("172.") && !mostRecentRemoteIp.ip.startsWith("192.168.")) {
-        const ip = mostRecentRemoteIp.ip;
-        const [shunStats, blacklist, strikeLedger, cache] = await Promise.all([
-            prisma.firewallShunStats.findMany({ where: { ip, isActive: true } }).catch(() => []),
-            prisma.guardianBlacklist.findUnique({ where: { ip } }).catch(() => null),
-            prisma.residentialStrikeLedger.findUnique({ where: { ip } }).catch(() => null),
-            prisma.ipLookupCache.findUnique({ where: { ip } }).catch(() => null)
-        ]);
+    if (mostRecentRemoteIp && mostRecentRemoteIp.ip && !isPrivateIp(mostRecentRemoteIp.ip)) {
+        const evaluated = await evaluateSingleIpPosture(mostRecentRemoteIp.ip, {
+            enrichIfMissing: true,
+            hintCountryCode: mostRecentRemoteIp.countryCode,
+            hintCountryName: mostRecentRemoteIp.countryName
+        });
 
-        const activeShunNodes = (shunStats || []).map(s => s.firewall || "Perimeter ASA");
-        const inPerimeterVpnShun = activeShunNodes.length > 0;
-        const isStrikeEnforced = Boolean(strikeLedger && strikeLedger.strikeCount >= 2 && strikeLedger.status !== "PARDONED");
-        const isBlacklisted = Boolean(blacklist);
-        const inThreatFeed = isStrikeEnforced || isBlacklisted;
-
-        // Filter out placeholder strings like "Unknown", "N/A"
-        let geoCountry = mostRecentRemoteIp.countryCode && !["UNKNOWN", "N/A", "UNRESOLVED"].includes(mostRecentRemoteIp.countryCode.toUpperCase())
-            ? mostRecentRemoteIp.countryCode.toUpperCase()
-            : null;
-        let geoCountryName = mostRecentRemoteIp.countryName && !["UNKNOWN", "N/A"].includes(mostRecentRemoteIp.countryName.toUpperCase())
-            ? mostRecentRemoteIp.countryName
-            : null;
-        let asn: string | null = null;
-        let org: string | null = null;
-
-        if (cache?.rawJson) {
-            try {
-                const geo = JSON.parse(cache.rawJson);
-                const code = geo.country_code || geo.countryCode;
-                if (!geoCountry && code && !["UNKNOWN", "N/A", "UNRESOLVED"].includes(code.toUpperCase())) {
-                    geoCountry = code.toUpperCase();
-                }
-                geoCountryName = geoCountryName || geo.country || geo.country_name || null;
-                asn = geo.asn || geo.as || null;
-                org = geo.org || geo.isp || null;
-            } catch {}
+        if (evaluated) {
+            const cleanCode = cleanCountryCode(evaluated.networkProfile.countryCode);
+            perimeterPosture = {
+                ip: evaluated.ip,
+                source: mostRecentRemoteIp.source,
+                isBlocked: evaluated.isCurrentlyBlocked,
+                inThreatFeed: evaluated.blockPosture.inFmcFeed || evaluated.blockPosture.isBlacklisted || evaluated.blockPosture.isAsnBlacklisted || evaluated.blockPosture.isCveExploit,
+                inPerimeterVpnShun: evaluated.blockPosture.inPerimeterVpnShun,
+                activeShunNodes: evaluated.blockPosture.activeShunNodes,
+                isFmcGeoBlocked: evaluated.blockPosture.fmcGeoStatus.fmcGeoBlocked,
+                strikeCount: evaluated.blockPosture.strikeCount,
+                strikeStatus: evaluated.blockPosture.strikeStatus,
+                countryCode: cleanCode,
+                countryName: evaluated.networkProfile.countryName || (evaluated.networkProfile.city !== "Unknown" ? evaluated.networkProfile.city : null),
+                asn: evaluated.networkProfile.asn !== "Unknown" ? evaluated.networkProfile.asn : null,
+                org: evaluated.networkProfile.isp !== "Unknown Provider" ? evaluated.networkProfile.isp : null
+            };
         }
-
-        // If country is still not resolved and IP is a public address, enrich via IPLocate / subnet cache
-        if (!geoCountry) {
-            try {
-                const { enrichIp } = await import("@/lib/iplocate");
-                const enriched = await enrichIp(ip);
-                if (enriched) {
-                    const code = enriched.country_code || enriched.countryCode;
-                    if (code && !["UNKNOWN", "N/A", "UNRESOLVED"].includes(code.toUpperCase())) {
-                        geoCountry = code.toUpperCase();
-                    }
-                    geoCountryName = geoCountryName || enriched.country || enriched.country_name || null;
-                    asn = asn || enriched.asn || enriched.as || null;
-                    org = org || enriched.org || enriched.isp || null;
-                }
-            } catch {}
-        }
-
-        // FMC Geo-Fence only blocks verified foreign (non-US) countries with a valid 2-letter ISO code.
-        // Placeholder strings like "Unknown", "N/A", or unresolved values must NEVER trigger a perimeter block.
-        const isFmcGeoBlocked = Boolean(geoCountry && geoCountry.length === 2 && geoCountry !== "US" && !["UNKNOWN", "N/A", "UNRESOLVED"].includes(geoCountry));
-        const isBlocked = inThreatFeed || inPerimeterVpnShun || isFmcGeoBlocked;
-
-        perimeterPosture = {
-            ip,
-            source: mostRecentRemoteIp.source,
-            isBlocked,
-            inThreatFeed,
-            inPerimeterVpnShun,
-            activeShunNodes,
-            isFmcGeoBlocked,
-            strikeCount: strikeLedger?.strikeCount ?? 0,
-            strikeStatus: strikeLedger?.status ?? "CLEAN",
-            countryCode: geoCountry,
-            countryName: geoCountryName,
-            asn,
-            org
-        };
     }
 
     // Active AnyConnect VPN: status === "SUCCESS" and recent (last 12h) without explicit disconnect

@@ -15,12 +15,17 @@ export interface IpLocateCreditInfo {
 // In-memory cache for fast, zero-delay retrieval
 let cachedCreditInfo: IpLocateCreditInfo | null = null;
 let lastFetchEpoch = 0;
+let lastDbPersistEpoch = 0;
 const CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
+const DB_PERSIST_INTERVAL_MS = 60 * 1000; // Throttle passive DB writes to at most once per minute
 
 /**
  * Update the in-memory and database credit cache from response headers
  */
-export async function updateCreditInfoFromHeaders(headers: any): Promise<IpLocateCreditInfo | null> {
+export async function updateCreditInfoFromHeaders(
+    headers: any,
+    forceDbWrite: boolean = false
+): Promise<IpLocateCreditInfo | null> {
     if (!headers) return null;
 
     // Axios headers can be lowercase or standard case
@@ -53,16 +58,17 @@ export async function updateCreditInfoFromHeaders(headers: any): Promise<IpLocat
 
     let status: IpLocateCreditInfo["status"] = "HEALTHY";
     if (remaining !== null) {
-        if (remaining < 5000) {
-            status = "DEPLETED"; // Rose (< 5k)
+        if (remaining <= 0) {
+            status = "DEPLETED";
         } else if (remaining < 15000) {
-            status = "LOW"; // Amber (5k - 15k)
+            status = "LOW"; // Rose (< 5k) or Amber (5k - 15k) in UI
         } else {
             status = "HEALTHY"; // Emerald (>= 15k)
         }
     }
 
-    const nowIso = new Date().toISOString();
+    const nowMs = Date.now();
+    const nowIso = new Date(nowMs).toISOString();
     const info: IpLocateCreditInfo = {
         configured: Boolean(process.env.IPLOCATE_API_KEY),
         remaining,
@@ -77,25 +83,28 @@ export async function updateCreditInfoFromHeaders(headers: any): Promise<IpLocat
     };
 
     cachedCreditInfo = info;
-    lastFetchEpoch = Date.now();
+    lastFetchEpoch = nowMs;
 
-    // Persist to BackgroundJob table for System Health monitor visibility
-    try {
-        await prisma.backgroundJob.upsert({
-            where: { name: "IPLocate Quota & Credits" },
-            create: {
-                name: "IPLocate Quota & Credits",
-                status: status === "DEPLETED" ? "FAILURE" : "SUCCESS",
-                message: JSON.stringify(info),
-                lastRun: new Date()
-            },
-            update: {
-                status: status === "DEPLETED" ? "FAILURE" : "SUCCESS",
-                message: JSON.stringify(info),
-                lastRun: new Date()
-            }
-        });
-    } catch {}
+    // Persist to BackgroundJob table (throttled during batch lookups unless forced)
+    if (forceDbWrite || nowMs - lastDbPersistEpoch >= DB_PERSIST_INTERVAL_MS) {
+        lastDbPersistEpoch = nowMs;
+        try {
+            await prisma.backgroundJob.upsert({
+                where: { name: "IPLocate Quota & Credits" },
+                create: {
+                    name: "IPLocate Quota & Credits",
+                    status: status === "DEPLETED" ? "FAILURE" : "SUCCESS",
+                    message: JSON.stringify(info),
+                    lastRun: new Date(nowMs)
+                },
+                update: {
+                    status: status === "DEPLETED" ? "FAILURE" : "SUCCESS",
+                    message: JSON.stringify(info),
+                    lastRun: new Date(nowMs)
+                }
+            });
+        } catch {}
+    }
 
     return info;
 }
@@ -149,13 +158,13 @@ export async function getIpLocateCreditStatus(forceRefresh: boolean = false): Pr
             timeout: 5000
         });
 
-        const updated = await updateCreditInfoFromHeaders(response.headers);
+        const updated = await updateCreditInfoFromHeaders(response.headers, true);
         if (updated) {
             return updated;
         }
     } catch (err: any) {
         if (err.response?.headers) {
-            const updated = await updateCreditInfoFromHeaders(err.response.headers);
+            const updated = await updateCreditInfoFromHeaders(err.response.headers, true);
             if (updated) {
                 return updated;
             }
