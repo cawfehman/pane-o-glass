@@ -13,7 +13,7 @@ async function buildShunSummary() {
         if (Array.isArray(parsed) && parsed.length > 0) configuredCount = parsed.length;
     } catch {}
 
-    const [activeTotal, clearedTotal, latestRecord, fwGroups, activeIpGroups, ipActiveCounts] = await Promise.all([
+    const [activeTotal, clearedTotal, latestRecord, fwGroups, activeIpGroups, ipActiveCounts, pendingEnrichmentCount] = await Promise.all([
         prisma.firewallShunStats.count({ where: { isActive: true } }),
         prisma.firewallShunStats.count({ where: { isActive: false } }),
         prisma.firewallShunStats.findFirst({
@@ -32,6 +32,9 @@ async function buildShunSummary() {
             by: ["ip"],
             where: { isActive: true },
             _count: { firewall: true }
+        }),
+        prisma.shunDatabaseIp.count({
+            where: { enrichedAt: null }
         })
     ]);
 
@@ -72,6 +75,7 @@ async function buildShunSummary() {
         configuredFirewallsCount: configuredCount,
         clearedTotal,
         totalTracked: activeTotal + clearedTotal,
+        pendingEnrichmentCount,
         lastSyncedAt: latestRecord?.lastSeen?.toISOString() || null,
         byFirewall
     };
@@ -104,6 +108,8 @@ export async function GET(req: Request) {
             where.isActive = true;
         } else if (statusFilter === "cleared") {
             where.isActive = false;
+        } else if (statusFilter === "pending_enrichment" || statusFilter === "unenriched") {
+            where.shunIp = { enrichedAt: null };
         } else if (statusFilter === "partial") {
             const configStr = process.env.FIREWALL_CONFIG || "[]";
             let configuredFirewallsCount = 4;

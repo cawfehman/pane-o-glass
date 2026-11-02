@@ -418,7 +418,29 @@ export default function SystemHealthPage() {
                                 </div>
                             </div>
 
-                            <div className="flex items-center gap-4 flex-wrap">
+                            <div className="flex items-center gap-6 flex-wrap">
+                                {metrics.iplocate.queueBacklog && (
+                                    <div className="text-right border-r border-white/10 pr-6 hidden sm:block">
+                                        <div className="flex items-baseline gap-1.5 justify-end">
+                                            <span className={`text-2xl font-black font-mono ${
+                                                metrics.iplocate.queueBacklog.pending === 0
+                                                    ? "text-emerald-400"
+                                                    : metrics.iplocate.queueBacklog.pending < 500
+                                                        ? "text-amber-400"
+                                                        : "text-rose-400"
+                                            }`}>
+                                                {metrics.iplocate.queueBacklog.pending.toLocaleString()}
+                                            </span>
+                                            <span className="text-xs text-text-muted font-mono">
+                                                / {metrics.iplocate.queueBacklog.total.toLocaleString()}
+                                            </span>
+                                        </div>
+                                        <span className="text-[0.7rem] uppercase tracking-wider font-bold text-text-muted">
+                                            Shun Enrichment Queue
+                                        </span>
+                                    </div>
+                                )}
+
                                 <div className="text-right">
                                     <div className="flex items-baseline gap-1.5 justify-end">
                                         <span className={`text-3xl font-black font-mono ${

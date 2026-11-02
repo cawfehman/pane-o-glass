@@ -193,9 +193,20 @@ export async function GET() {
             metrics.sqlite = null;
         }
 
-        // Fetch IPLocate API Credit Status (10-minute cache)
+        // Fetch IPLocate API Credit Status (10-minute cache) and Shun Enrichment Queue Backlog
         try {
-            metrics.iplocate = await getIpLocateCreditStatus();
+            const [creditInfo, pendingQueueCount, totalShunCount] = await Promise.all([
+                getIpLocateCreditStatus(),
+                prisma.shunDatabaseIp.count({ where: { enrichedAt: null } }).catch(() => 0),
+                prisma.shunDatabaseIp.count().catch(() => 0)
+            ]);
+            metrics.iplocate = creditInfo ? {
+                ...creditInfo,
+                queueBacklog: {
+                    pending: pendingQueueCount,
+                    total: totalShunCount
+                }
+            } : null;
         } catch (ipLocateErr) {
             console.error("[Health] Failed to fetch IPLocate credit status:", ipLocateErr);
             metrics.iplocate = null;

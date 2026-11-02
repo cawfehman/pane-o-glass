@@ -16,6 +16,7 @@ interface ShunSummary {
     configuredFirewallsCount?: number;
     clearedTotal: number;
     totalTracked: number;
+    pendingEnrichmentCount?: number;
     lastSyncedAt: string | null;
     byFirewall: Array<{
         firewall: string;
@@ -41,7 +42,7 @@ export function ShunDatabaseTab({ initialSearch = "", onClose, isModal = false }
     
     const [search, setSearch] = useState(initialSearch);
     const [activeSearch, setActiveSearch] = useState(initialSearch);
-    const [statusFilter, setStatusFilter] = useState<"all" | "active" | "cleared" | "partial" | "full">("active");
+    const [statusFilter, setStatusFilter] = useState<"all" | "active" | "cleared" | "partial" | "full" | "pending_enrichment">("active");
     
     // Timeframe filters: 1h, 4h, 12h, 24h, 7d, 30d, all
     const [timeframe, setTimeframe] = useState<TimeframeOption>("all");
@@ -239,6 +240,38 @@ export function ShunDatabaseTab({ initialSearch = "", onClose, isModal = false }
             });
         } finally {
             setIsSyncing(false);
+        }
+    };
+
+    const [isEnrichingQueue, setIsEnrichingQueue] = useState(false);
+    const handleEnrichQueue = async () => {
+        setIsEnrichingQueue(true);
+        try {
+            const res = await fetch("/api/firewall/shun-database/enrich", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ limit: 200 })
+            });
+            const data = await res.json();
+            if (res.ok && data.success) {
+                setSyncBanner({
+                    type: "success",
+                    message: `Enriched ${data.enriched?.enriched || 0} IPs (${data.remainingPending?.toLocaleString() || 0} pending remaining).`
+                });
+                await fetchRecords();
+            } else {
+                setSyncBanner({
+                    type: "error",
+                    message: data.error || "Failed to drain enrichment queue."
+                });
+            }
+        } catch (err: any) {
+            setSyncBanner({
+                type: "error",
+                message: err?.message || "Failed to trigger queue enrichment."
+            });
+        } finally {
+            setIsEnrichingQueue(false);
         }
     };
 
@@ -601,6 +634,59 @@ export function ShunDatabaseTab({ initialSearch = "", onClose, isModal = false }
                         >
                             All Tracked ({summary ? summary.totalTracked.toLocaleString() : "—"})
                         </button>
+
+                        {/* Status Filter: Enrichment Queue Backlog */}
+                        <div className="flex items-center gap-1">
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    const next = statusFilter === "pending_enrichment" ? "all" : "pending_enrichment";
+                                    setStatusFilter(next);
+                                    setPage(1);
+                                }}
+                                className={`px-2.5 py-1.5 rounded-lg border text-xs font-medium transition-all flex items-center gap-1.5 ${
+                                    statusFilter === "pending_enrichment"
+                                        ? "bg-amber-500/25 border-amber-500/60 text-amber-200 shadow-sm"
+                                        : (summary?.pendingEnrichmentCount ?? 0) > 0
+                                            ? "bg-amber-500/10 border-amber-500/30 text-amber-300 hover:bg-amber-500/15"
+                                            : "bg-emerald-500/10 border-emerald-500/30 text-emerald-300 hover:bg-emerald-500/15"
+                                }`}
+                                title={(summary?.pendingEnrichmentCount ?? 0) > 0
+                                    ? "Click to filter IPs waiting for ASN/Geo metadata enrichment"
+                                    : "Enrichment queue is completely caught up (0 pending)"
+                                }
+                            >
+                                {(summary?.pendingEnrichmentCount ?? 0) > 0 ? (
+                                    <>
+                                        <Clock className="w-3.5 h-3.5 text-amber-400 animate-pulse" />
+                                        <span>Enrichment Queue:</span>
+                                        <span className="font-bold text-amber-300">
+                                            {summary?.pendingEnrichmentCount?.toLocaleString()} Pending
+                                        </span>
+                                    </>
+                                ) : (
+                                    <>
+                                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                                        <span>Enrichment Queue:</span>
+                                        <span className="font-bold text-emerald-300">
+                                            Caught Up
+                                        </span>
+                                    </>
+                                )}
+                            </button>
+                            {(summary?.pendingEnrichmentCount ?? 0) > 0 && (
+                                <button
+                                    type="button"
+                                    onClick={handleEnrichQueue}
+                                    disabled={isEnrichingQueue}
+                                    className="px-2 py-1.5 rounded-lg border border-amber-500/40 bg-amber-500/15 hover:bg-amber-500/25 text-amber-200 text-xs font-semibold flex items-center gap-1 transition-all disabled:opacity-50 cursor-pointer"
+                                    title="Drain enrichment queue (fetches ASN, ISP, and Geo metadata for up to 200 IPs)"
+                                >
+                                    <RefreshCw className={`w-3 h-3 ${isEnrichingQueue ? "animate-spin text-amber-300" : "text-amber-400"}`} />
+                                    <span>{isEnrichingQueue ? "Enriching..." : "Enrich Next 200"}</span>
+                                </button>
+                            )}
+                        </div>
 
                         {/* Per-Firewall Live Counts */}
                         {summary?.byFirewall && summary.byFirewall.length > 0 && (
@@ -1087,8 +1173,9 @@ export function ShunDatabaseTab({ initialSearch = "", onClose, isModal = false }
                                                             <span className="text-[var(--text-muted)]">No ASN Data</span>
                                                         )
                                                     ) : (
-                                                        <span className="inline-flex items-center gap-1 text-[11px] font-medium text-amber-500/80 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">
-                                                            Pending Quota
+                                                        <span className="inline-flex items-center gap-1 text-[11px] font-medium text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20" title="Waiting for background metadata enrichment (ASN, ISP, Country)">
+                                                            <Clock className="w-3 h-3 text-amber-400" />
+                                                            Queued (Pending Enrichment)
                                                         </span>
                                                     )}
                                                 </td>
