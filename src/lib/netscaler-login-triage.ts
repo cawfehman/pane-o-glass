@@ -2544,6 +2544,14 @@ export async function runCitrixLoginAutoShunCycle(options?: {
         ? `Shunned ${newlyShunned.length} IP(s): ${newlyShunned.map((n) => n.ip).join(", ")}`
         : `Scanned ${triage.ipEvaluations.length} IP(s) (${Math.round(cfg.windowSeconds / 60)}m window${graylogLagSeconds > 0 ? ` + ${Math.round(graylogLagSeconds / 60)}m backlog offset` : ""}) — 0 new shuns`;
 
+    // Asynchronously keep the Citrix Anomaly Review Queue in sync with latest evaluations
+    try {
+        const { syncAnomaliesToDatabase } = await import("./login-anomaly-engine");
+        void syncAnomaliesToDatabase(triage.ipEvaluations).catch((e: any) => {
+            console.error("[CITRIX-GUARDIAN] Anomaly sync error:", e.message);
+        });
+    } catch {}
+
     await updateCitrixAutoShunConfig(
         {
             lastRunAt: new Date().toISOString(),
