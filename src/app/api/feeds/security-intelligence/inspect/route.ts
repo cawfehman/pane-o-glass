@@ -6,6 +6,7 @@ import { logAudit } from "@/lib/audit";
 import { getSecurityIntelligenceFeed, invalidateFeedCache } from "../route";
 import { enqueueFirewallCommand, drainFirewallQueue } from "@/lib/firewall-queue";
 import { evaluateSingleIpPosture, evaluateBatchIpPosture } from "@/lib/perimeter-posture";
+import { getStrikeEvidence } from "@/lib/strike-evidence";
 
 export const dynamic = "force-dynamic";
 
@@ -62,7 +63,7 @@ export async function GET(req: NextRequest) {
         // 3. Single IP Lookup Mode (Instant Positive Confirmation & 360° Profile)
         let lookupResult: any = null;
         if (targetIp) {
-            const [evaluated, vpnSessions, pendingQueue] = await Promise.all([
+            const [evaluated, vpnSessions, pendingQueue, strikeEvidence] = await Promise.all([
                 evaluateSingleIpPosture(targetIp, {
                     inFeed: feedIpSet.has(targetIp),
                     enrichIfMissing: true
@@ -70,7 +71,7 @@ export async function GET(req: NextRequest) {
                 prisma.vpnEvent.findMany({
                     where: { sourceIp: targetIp },
                     orderBy: { createdAt: "desc" },
-                    take: 10,
+                    take: 25,
                     select: {
                         username: true,
                         status: true,
@@ -80,7 +81,11 @@ export async function GET(req: NextRequest) {
                         createdAt: true
                     }
                 }),
-                prisma.firewallCommandQueue.findMany({ where: { ip: targetIp, status: "PENDING" } })
+                prisma.firewallCommandQueue.findMany({ where: { ip: targetIp, status: "PENDING" } }),
+                getStrikeEvidence(targetIp).catch((e) => {
+                    console.error("[Inspect] Strike evidence build failed:", e?.message || e);
+                    return null;
+                })
             ]);
 
             if (evaluated) {
@@ -96,7 +101,8 @@ export async function GET(req: NextRequest) {
                             timestamp: v.createdAt
                         }))
                     },
-                    pendingCommandsCount: pendingQueue.length
+                    pendingCommandsCount: pendingQueue.length,
+                    strikeEvidence
                 };
             }
         }

@@ -16,7 +16,7 @@ export async function logAudit(
             }
         });
 
-        // Note: 30 day rotating log cleanup should be handled by a separate background job
+        // Note: 180 day rotating log cleanup is handled by scripts/cron/audit-cleanup.ts
 
     } catch (error) {
         console.error("Failed to write to audit log:", error);

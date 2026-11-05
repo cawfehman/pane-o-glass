@@ -10,6 +10,7 @@ import {
 import { SmartSearchBar } from "@/components/common/SmartSearchBar";
 import { LiveFeedInspector } from "./LiveFeedInspector";
 import { MonitoredWatchlistTab } from "./MonitoredWatchlistTab";
+import { StrikeEvidencePanel } from "./StrikeEvidencePanel";
 
 export function SecurityIntelligenceTab() {
     // Sub-Tab Switcher State (Reputation Ledger vs Live FMC Feed Inspector vs Monitored Watchlist)
@@ -780,7 +781,15 @@ export function SecurityIntelligenceTab() {
                                     return (
                                         <tr key={row.id} className="hover:bg-bg-surface/50 transition-colors">
                                             <td className="py-2.5 px-3 font-mono font-medium text-text-primary">
-                                                {row.ip}
+                                                <button
+                                                    type="button"
+                                                    onClick={() => executeInvestigate(row.ip)}
+                                                    className="text-text-primary hover:text-accent-primary hover:underline inline-flex items-center gap-1 cursor-pointer"
+                                                    title={`Investigate ${row.ip} and view strike root cause`}
+                                                >
+                                                    {row.ip}
+                                                    <Search className="w-3 h-3 opacity-60" />
+                                                </button>
                                             </td>
                                             <td className="py-2.5 px-3 text-text-muted max-w-[200px] truncate" title={row.ispOrg || "Unknown"}>
                                                 {row.ispOrg || row.asn || "Broadband ISP"}
@@ -1116,6 +1125,10 @@ export function SecurityIntelligenceTab() {
                                         </>
                                     )}
                                 </div>
+
+                                {investigateResult.type === "IP" && investigateResult.strikeEvidence && (
+                                    <StrikeEvidencePanel evidence={investigateResult.strikeEvidence} />
+                                )}
 
                                 <div className="p-3 rounded-lg border bg-accent-primary/5 border-accent-primary/20 space-y-1">
                                     <div className="font-bold text-accent-primary flex items-center gap-1.5">

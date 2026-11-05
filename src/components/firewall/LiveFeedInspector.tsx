@@ -7,6 +7,7 @@ import {
     AlertTriangle, Filter, Server, Zap, Flame, UserCheck,
     ChevronLeft, ChevronRight, ArrowRight, ShieldCheck, Ban, Info
 } from "lucide-react";
+import { StrikeEvidencePanel } from "./StrikeEvidencePanel";
 
 export function LiveFeedInspector() {
     // Inspection & Feed Data
@@ -549,6 +550,11 @@ export function LiveFeedInspector() {
                                     </div>
                                 </div>
 
+                                {/* Strike Root Cause & Evidence */}
+                                {checkResult.strikeEvidence && (
+                                    <StrikeEvidencePanel evidence={checkResult.strikeEvidence} />
+                                )}
+
                                 {/* Network Metadata & Telecom Identity */}
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
                                     <div className="bg-bg-card border border-border-color rounded-lg p-3 space-y-1.5">
@@ -594,13 +600,14 @@ export function LiveFeedInspector() {
                                                     <tr>
                                                         <th className="py-1.5 px-2.5">User</th>
                                                         <th className="py-1.5 px-2.5">Status</th>
+                                                        <th className="py-1.5 px-2.5">Failure Reason</th>
                                                         <th className="py-1.5 px-2.5">Gateway Stream</th>
                                                         <th className="py-1.5 px-2.5">Type</th>
                                                         <th className="py-1.5 px-2.5">Time</th>
                                                     </tr>
                                                 </thead>
                                                 <tbody className="divide-y divide-border-color font-mono">
-                                                    {checkResult.vpnTelemetry.recentSessions.slice(0, 5).map((s: any, idx: number) => (
+                                                    {checkResult.vpnTelemetry.recentSessions.slice(0, 10).map((s: any, idx: number) => (
                                                 <tr key={idx} className="hover:bg-bg-card/50">
                                                     <td className="py-1 px-2.5 font-semibold text-text-primary">
                                                         <a
@@ -618,6 +625,9 @@ export function LiveFeedInspector() {
                                                         }`}>
                                                             {s.status}
                                                         </span>
+                                                    </td>
+                                                    <td className="py-1 px-2.5 text-text-secondary font-sans max-w-[260px] truncate" title={s.failureReason || undefined}>
+                                                        {s.status === "FAILURE" ? (s.failureReason || "Unspecified") : "—"}
                                                     </td>
                                                     <td className="py-1 px-2.5 text-text-muted">{s.vpnStream || "AnyConnect"}</td>
                                                     <td className="py-1 px-2.5 text-text-muted">{s.vpnType || "SSL"}</td>

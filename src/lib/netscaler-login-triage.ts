@@ -2030,6 +2030,35 @@ export async function runCitrixLoginAutoShunCycle(options?: {
             : [];
     const existingLedgerMap = new Map(existingLedgerRows.map((r) => [r.ip, r]));
 
+    /**
+     * Builds a human-readable evidence string for the strike ledger audit trail so the
+     * Strike Evidence panel can explain exactly why a Citrix strike was assigned.
+     */
+    const describeCitrixEvidence = (ipEval: CitrixIpEvaluation, cause: string): string => {
+        const users = ipEval.targetedUsers
+            .filter((u) => u.username.toLowerCase() !== "anonymous")
+            .map((u) => `${u.username} [${u.isCorporateFormat ? "corp" : "non-corp"}, AD ${u.adStatus || "?"}, ${u.failures} fail${u.failures === 1 ? "" : "s"}${u.succeededLater ? ", later OK" : ""}]`)
+            .slice(0, 8);
+        const counters = [
+            ipEval.loginFailedCount && `login ${ipEval.loginFailedCount}`,
+            ipEval.policyFailedCount && `policy ${ipEval.policyFailedCount}`,
+            ipEval.staFailedCount && `STA ${ipEval.staFailedCount}`,
+            ipEval.cookieFailedCount && `cookie ${ipEval.cookieFailedCount}`,
+            ipEval.imprivataBadPasswordCount && `bad pwd ${ipEval.imprivataBadPasswordCount}`,
+            ipEval.imprivataMfaTimeoutCount && `MFA timeout ${ipEval.imprivataMfaTimeoutCount}`,
+            ipEval.imprivataInvalidUserCount && `invalid user ${ipEval.imprivataInvalidUserCount}`
+        ].filter(Boolean).join(", ");
+        const rules = ipEval.triggeredRules.map((r) => r.label).join("; ");
+        return [
+            `Cause: ${cause}.`,
+            `Citrix failures: ${ipEval.totalFailures} total${counters ? ` (${counters})` : ""}, peak ${ipEval.maxAuthFailuresIn10m}/10m.`,
+            users.length ? `Users: ${users.join("; ")}.` : null,
+            rules ? `Rules: ${rules}.` : null,
+            `Verdict: ${ipEval.verdict} — ${ipEval.verdictReason}`,
+            `Network: ${ipEval.companyName || "Unknown"} ${ipEval.asn ? `(${ipEval.asn})` : ""} ${ipEval.countryCode || ""}`.trim()
+        ].filter(Boolean).join(" ");
+    };
+
     const candidatesToShun: {
         ipEval: CitrixIpEvaluation;
         authFailures: number;
@@ -2116,6 +2145,21 @@ export async function runCitrixLoginAutoShunCycle(options?: {
                 }
             }).catch(() => {});
 
+            // Audit only when an IP with active strikes is downgraded to protected (avoids per-cycle noise)
+            if (existingLedger && existingLedger.strikeCount > 0) {
+                const protectCause = ipEval.isOnWatchlist
+                    ? "IP is on the Guardian watchlist"
+                    : ipEval.verdict === "LEGIT_USER_ISSUE"
+                    ? "Classified as legitimate corporate user issue"
+                    : "Prior successful Citrix/VPN authentication or pardon (single-failure immunity)";
+                void logAudit(
+                    "CITRIX_STRIKE_PROTECTED_PARDON",
+                    `Strike ${existingLedger.strikeCount} → 0 (PARDONED). ${describeCitrixEvidence(ipEval, protectCause)}`,
+                    "REPUTATION_ENGINE",
+                    ipEval.ip
+                );
+            }
+
             protectedCount++;
             continue;
         }
@@ -2158,6 +2202,15 @@ export async function runCitrixLoginAutoShunCycle(options?: {
                 }
             }).catch(() => {});
 
+            if (!existingLedger || existingLedger.strikeCount !== 1 || existingLedger.status !== "WATCHING") {
+                void logAudit(
+                    "CITRIX_STRIKE_1_WATCH",
+                    `Strike ${existingLedger?.strikeCount ?? "new"} → 1 (WATCHING, 14d, no shun). ${describeCitrixEvidence(ipEval, `Single valid corporate account failing below the ${cfg.minAuthFailuresIn10m}/10m burst threshold`)}`,
+                    "REPUTATION_ENGINE",
+                    ipEval.ip
+                );
+            }
+
             protectedCount++;
             continue;
         }
@@ -2167,20 +2220,30 @@ export async function runCitrixLoginAutoShunCycle(options?: {
             let strikeCount = 1;
             let status = "WATCHING";
             let holdDays = 14;
+            let strikeCause = "";
 
             if (ipEval.isFullyShunned || ipEval.verdict === "ABUSIVE_BLOCK" || matchesBlacklistedAsnRule) {
                 strikeCount = 3;
                 status = "QUARANTINED";
                 holdDays = 90;
+                strikeCause = matchesBlacklistedAsnRule
+                    ? `Citrix failure from Guardian-blacklisted ASN ${ipEval.asn}`
+                    : ipEval.verdict === "ABUSIVE_BLOCK"
+                    ? `Abusive verdict (risk ${ipEval.riskScore})${ipEval.residentialBlockReason ? `: ${ipEval.residentialBlockReason}` : ""}`
+                    : "Already shunned on all perimeter firewalls";
             } else if (isMultiUser) {
                 // Multi-user spray
                 strikeCount = 2;
                 status = "ENFORCED";
                 holdDays = 7;
+                strikeCause = `Multi-user spray: ${nonAnonUsers.length} distinct usernames`;
             } else {
                 strikeCount = totalFails >= 3 ? 3 : (totalFails >= 2 ? 2 : 1);
                 status = strikeCount === 3 ? "QUARANTINED" : (strikeCount === 2 ? "ENFORCED" : "WATCHING");
                 holdDays = strikeCount === 3 ? 90 : (strikeCount === 2 ? 7 : 14);
+                strikeCause = hasInvalidOrNotFoundUser
+                    ? `${totalFails} failure(s) using non-corporate or non-existent AD account(s)`
+                    : `${totalFails} repeated Citrix failure(s)`;
             }
 
             prisma.residentialStrikeLedger.upsert({
@@ -2211,6 +2274,23 @@ export async function runCitrixLoginAutoShunCycle(options?: {
                     city: ipEval.cityName
                 }
             }).catch(() => {});
+
+            const prevCount = existingLedger?.strikeCount ?? 0;
+            const prevStatus = existingLedger?.status ?? "";
+            const prevUsersCount = existingLedger?.attemptedUsers?.length ?? 0;
+            if (!existingLedger || prevCount !== strikeCount || prevStatus !== status || uList.length > prevUsersCount) {
+                const actionCode = strikeCount >= 3
+                    ? "CITRIX_STRIKE_3_QUARANTINED"
+                    : strikeCount === 2
+                    ? "CITRIX_STRIKE_2_ENFORCED"
+                    : "CITRIX_STRIKE_1_WATCH";
+                void logAudit(
+                    actionCode,
+                    `Strike ${existingLedger?.strikeCount ?? "new"} → ${strikeCount} (${status}, ${holdDays}d). ${describeCitrixEvidence(ipEval, strikeCause)}`,
+                    "REPUTATION_ENGINE",
+                    ipEval.ip
+                );
+            }
         }
 
         // Only skip if the IP is ALREADY fully protected across all perimeter firewalls.
@@ -2334,6 +2414,13 @@ export async function runCitrixLoginAutoShunCycle(options?: {
                         city: ipEval.cityName
                     }
                 }).catch(() => {});
+
+                void logAudit(
+                    "CITRIX_AUTO_SHUN_STRIKE_3",
+                    `Auto-shunned across perimeter & locked at Strike 3 (QUARANTINED, 90d). ${describeCitrixEvidence(ipEval, triggerReason)}`,
+                    "REPUTATION_ENGINE",
+                    ipEval.ip
+                );
             }
         }
     }

@@ -4,6 +4,7 @@ import { auth } from "@/lib/auth";
 import { hasPermission } from "@/app/actions/permissions";
 import { logAudit } from "@/lib/audit";
 import { isPrivateIp } from "@/lib/iplocate";
+import { getStrikeEvidence } from "@/lib/strike-evidence";
 import axios from "axios";
 import https from "https";
 
@@ -231,7 +232,7 @@ export async function GET(req: NextRequest) {
             }
         }
 
-        const [blacklisted, activeShunStats, cveRecord, residentialRecord, pendingCommands] = await Promise.all([
+        const [blacklisted, activeShunStats, cveRecord, residentialRecord, pendingCommands, strikeEvidence] = await Promise.all([
             prisma.guardianBlacklist.findUnique({ where: { ip: ipToInspect } }),
             prisma.firewallShunStats.findMany({
                 where: { ip: ipToInspect, isActive: true },
@@ -239,7 +240,11 @@ export async function GET(req: NextRequest) {
             }),
             prisma.netscalerCveShun.findUnique({ where: { ip: ipToInspect } }),
             prisma.residentialStrikeLedger.findUnique({ where: { ip: ipToInspect } }),
-            prisma.firewallCommandQueue.findMany({ where: { ip: ipToInspect, status: "PENDING" } })
+            prisma.firewallCommandQueue.findMany({ where: { ip: ipToInspect, status: "PENDING" } }),
+            getStrikeEvidence(ipToInspect).catch((e) => {
+                console.error("[Investigate] Strike evidence build failed:", e?.message || e);
+                return null;
+            })
         ]);
 
         const inResidentialBlock = Boolean(residentialRecord && (residentialRecord.strikeCount >= 2 || residentialRecord.status === "ENFORCED" || residentialRecord.status === "QUARANTINED"));
@@ -451,6 +456,7 @@ export async function GET(req: NextRequest) {
                 country: cacheInfo?.countryCode || "Unknown",
                 city: cacheInfo?.city || null
             },
+            strikeEvidence,
             telemetry: {
                 ftdSecurityIntelligenceDropsPast24h: ftdDropCount,
                 lastFtdDropTimestamp: lastFtdDropAt,

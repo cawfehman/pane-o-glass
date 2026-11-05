@@ -3,11 +3,11 @@ const prisma = new PrismaClient();
 
 async function cleanup() {
     try {
-        // 1. Audit Logs (30 days retention)
-        const thirtyDaysAgo = new Date();
-        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+        // 1. Audit Logs (180 days retention)
+        const auditCutoff = new Date();
+        auditCutoff.setDate(auditCutoff.getDate() - 180);
         const auditResult = await prisma.auditLog.deleteMany({
-            where: { createdAt: { lt: thirtyDaysAgo } }
+            where: { createdAt: { lt: auditCutoff } }
         });
 
         // 2. BEC Raw URLs (14 days retention - prevents table bloat)
@@ -18,6 +18,8 @@ async function cleanup() {
         });
 
         // 3. Health Probes (30 days retention)
+        const thirtyDaysAgo = new Date();
+        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
         const healthResult = await prisma.healthProbe.deleteMany({
             where: { createdAt: { lt: thirtyDaysAgo } }
         });
@@ -56,7 +58,7 @@ async function cleanup() {
             expiredExportsDeleted++;
         }
 
-        const msg = `System Retention Cleanup: Deleted ${auditResult.count} audit logs (30d), ${becResult.count} BEC raw URLs (14d), ${healthResult.count} health probes (30d), ${shunSnapshotResult.count} shun snapshots (90d), ${expiredExportsDeleted} expired Graylog export bundles.`;
+        const msg = `System Retention Cleanup: Deleted ${auditResult.count} audit logs (180d), ${becResult.count} BEC raw URLs (14d), ${healthResult.count} health probes (30d), ${shunSnapshotResult.count} shun snapshots (90d), ${expiredExportsDeleted} expired Graylog export bundles.`;
         console.log(`[${new Date().toISOString()}] ${msg}`);
         
         await prisma.backgroundJob.upsert({
