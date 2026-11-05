@@ -492,9 +492,21 @@
     </div>
   </div>
 
+  <h2>7. Anomaly Login Review Tracker &amp; Triage Actions</h2>
+  <p>
+    The <strong>Anomaly Login Tracker</strong> presents login anomalies for analyst review <em>even if the automated engine already acted upon them</em>. To maintain objective investigation integrity:
+  </p>
+  <ul>
+    <li><strong>Unbiased Trigger Reasons:</strong> Events display factual, objective trigger reasons (e.g. <em>"Single anchor account with delimiter/typo variations"</em>, <em>"Repeated Imprivata MFA push timeouts on unverified IP"</em>) without pre-judging guilt or forcing rigid categories before analyst review.</li>
+    <li><strong>Prominent Decision Visibility:</strong> Each entry clearly displays its current status (<code>CURRENT DECISION: BLOCKED</code> vs. <code>CURRENT DECISION: ALLOWED</code>) along with exact firewall/feed enforcement details.</li>
+    <li><strong>Whitelisting with Mandatory Justification:</strong> Placing an IP on the monitored Whitelist adds it directly to <code>GuardianWatchIp</code> (the continuous auto-unshun engine) and sets 0 strikes in the Residential Ledger. A <strong>formal business justification is strictly required</strong> and logged in the immutable audit ledger.</li>
+    <li><strong>Closing / Acknowledging Anomalies:</strong> Resolving or dismissing an anomaly marks it as acknowledged by the analyst with optional notes, and <strong>does not send any user notification</strong>.</li>
+    <li><strong>Notification Center Integration &amp; 1-Click Advisory:</strong> If user outreach is warranted, analysts can stage the notification in the Notification Center or dispatch a 1-Click Advisory using the pre-approved <em>Citrix Gateway Remote Access Guidance</em> template. All communications provide sanitized, generic login assistance (username format, badge number tips, Imprivata push guidance) without exposing sensitive internal syslog details.</li>
+  </ul>
+
   <div class="footer">
     <span>Pane-O-Glass Security Operations Platform • Cooper University Health Care</span>
-    <span>Updated: November 2026 (180-Day Audit Retention &amp; Typo-Resilient Anchor Correlation)</span>
+    <span>Updated: November 2026 (Anomaly Login Tracker &amp; Typo-Resilient Triage Integration)</span>
   </div>
 </div>
 

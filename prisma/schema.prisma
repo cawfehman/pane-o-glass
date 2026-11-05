@@ -777,3 +777,50 @@ model IncidentActionItem {
   @@index([status])
 }
 
+model CitrixLoginAnomaly {
+  id                String    @id @default(cuid())
+  anomalyKey        String    @unique
+  ip                String
+  flagReason        String    @db.Text
+  triggerSignals    String[]
+  suggestedTag      String?
+  severity          String    @default("MEDIUM") // "CRITICAL", "HIGH", "MEDIUM", "LOW"
+  status            String    @default("PENDING_REVIEW") // "PENDING_REVIEW", "ACKNOWLEDGED", "PARDONED", "BLOCKED", "WHITELISTED", "DISMISSED"
+
+  currentDecision   String    // "BLOCKED" or "ALLOWED"
+  decisionDetails   String?   @db.Text
+
+  ispOrg            String?
+  asn               String?
+  cityName          String?
+  countryCode       String?
+  isResidential     Boolean   @default(false)
+
+  anchorUsername    String?
+  anchorDisplayName String?
+  anchorDepartment  String?
+  targetedUsers     String[]
+  variantStrings    String[]
+
+  failureCount      Int       @default(1)
+  citrixSuccesses   Int       @default(0)
+  hasPriorVpn       Boolean   @default(false)
+  firstSeen         DateTime  @default(now())
+  lastSeen          DateTime  @default(now())
+
+  reviewedBy        String?
+  reviewedAt        DateTime?
+  analystNotes      String?   @db.Text
+  notifiedAt        DateTime?
+  notifiedBy        String?
+
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@index([status, createdAt])
+  @@index([ip])
+  @@index([severity])
+  @@index([currentDecision])
+}
+
+

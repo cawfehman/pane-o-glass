@@ -11,6 +11,7 @@ import {
 import { ToolHelp } from "@/components/ToolHelp";
 import Link from "next/link";
 import { ShunDatabaseTab } from "@/components/firewall/ShunDatabaseTab";
+import { CitrixAnomalyQueueTab } from "./CitrixAnomalyQueueTab";
 import type {
     CitrixLoginTriageResponse,
     CitrixAsnMetric,
@@ -41,7 +42,8 @@ export default function CitrixLoginTriageTab({
     const [error, setError] = useState<string | null>(null);
 
     // Sub-navigation inside the tab
-    const [subView, setSubView] = useState<"ips" | "asns" | "users" | "events">("ips");
+    const [subView, setSubView] = useState<"ips" | "asns" | "users" | "events" | "anomalies">("ips");
+    const [anomalyCount, setAnomalyCount] = useState<number>(0);
 
     // Filters
     const [verdictFilter, setVerdictFilter] = useState<"ALL" | GuardianAbuseVerdict | "ABUSIVE_RESIDENTIAL">("ALL");
@@ -1053,8 +1055,27 @@ export default function CitrixLoginTriageTab({
                     >
                         Raw Failure & Policy Events ({data?.events.length ?? 0})
                     </button>
+                    <button
+                        onClick={() => setSubView("anomalies")}
+                        className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 ${
+                            subView === "anomalies"
+                                ? "bg-amber-600 text-white shadow-sm"
+                                : "text-slate-400 hover:text-white hover:bg-slate-800"
+                        }`}
+                    >
+                        <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                        <span>Anomaly Tracker</span>
+                        {anomalyCount > 0 && (
+                            <span className={`px-1.5 py-0.2 rounded font-mono text-[10px] font-bold ${
+                                subView === "anomalies" ? "bg-amber-800 text-amber-100" : "bg-amber-500/20 text-amber-300 border border-amber-500/30"
+                            }`}>
+                                {anomalyCount}
+                            </span>
+                        )}
+                    </button>
                 </div>
 
+                {subView !== "anomalies" && (
                 <div className="flex items-center gap-2">
                     {subView === "ips" && (
                         <select
@@ -1118,6 +1139,7 @@ export default function CitrixLoginTriageTab({
                         />
                     </div>
                 </div>
+                )}
             </div>
 
             {error && (
@@ -1778,6 +1800,15 @@ export default function CitrixLoginTriageTab({
                         </div>
                     )}
                 </div>
+            )}
+
+            {/* VIEW 5: ANOMALY LOGIN REVIEW TRACKER */}
+            {subView === "anomalies" && (
+                <CitrixAnomalyQueueTab
+                    timeframe={timeframe}
+                    onInvestigateTarget={onInvestigateTarget}
+                    onCountChange={setAnomalyCount}
+                />
             )}
 
             {/* SHUN & GUARDIAN BLACKLIST CONFIRMATION MODAL */}

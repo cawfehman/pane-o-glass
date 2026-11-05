@@ -77,6 +77,70 @@ Information Security
 Cooper University Health Care`
 };
 
+export const CITRIX_LOGIN_ADVISORY_TEMPLATE = {
+    name: "Citrix Gateway Remote Access Guidance",
+    description: "Official Cooper University Health Care security notification advising staff regarding Citrix NetScaler remote access authentication issues, non-standard login formatting (e.g. employee badge numbers), or MFA verification guidance.",
+    category: "SECURITY_ALERT",
+    subject: "Security Advisory: Citrix Gateway Remote Access Guidance",
+    isEnabled: true,
+    bodyHtml: `<div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 620px; margin: 0 auto; color: #1e293b; line-height: 1.6; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden; background-color: #ffffff;">
+    <div style="background-color: #0f172a; padding: 22px 28px; text-align: left; border-bottom: 4px solid #C3002F;">
+        <h2 style="color: #ffffff; margin: 0; font-size: 19px; font-weight: 700; letter-spacing: 0.02em;">Cooper University Health Care</h2>
+        <p style="color: #94a3b8; margin: 4px 0 0 0; font-size: 13px;">Information Security Remote Access Advisory</p>
+    </div>
+    <div style="padding: 28px;">
+        <p style="margin-top: 0; font-size: 15px;">Hello {{Name}},</p>
+        
+        <p style="font-size: 14px;">Information Security is contacting you regarding recent remote authentication activity on the Citrix NetScaler Gateway for your account (<strong>{{Username}}</strong>).</p>
+
+        <div style="background-color: #fdf2f4; border-left: 4px solid #C3002F; padding: 14px 18px; margin: 20px 0; border-radius: 0 6px 6px 0; font-size: 13px;">
+            <p style="margin: 0 0 4px 0; color: #1e293b;"><strong>System:</strong> Citrix NetScaler Gateway</p>
+            <p style="margin: 0 0 4px 0; color: #1e293b;"><strong>Connection Notice:</strong> Multiple unsuccessful login attempts or non-standard credential formatting were detected.</p>
+            <p style="margin: 0; color: #1e293b;"><strong>Recorded Date:</strong> {{CurrentDate}}</p>
+        </div>
+
+        <p style="font-size: 14px; font-weight: 600; margin-bottom: 8px;">To ensure uninterrupted access to Cooper systems, please follow these guidelines:</p>
+        <ul style="margin-top: 0; padding-left: 22px; font-size: 14px;">
+            <li style="margin-bottom: 6px;"><strong>Username Format:</strong> Always sign in using your standard Cooper corporate username (<code>firstname-lastname</code>). <em>Do not enter your numeric employee badge number in the username field.</em></li>
+            <li style="margin-bottom: 6px;"><strong>Multi-Factor Authentication:</strong> Ensure you approve the Imprivata Confirm ID prompt on your registered mobile device within 60 seconds.</li>
+            <li style="margin-bottom: 6px;"><strong>Domain Format:</strong> If using a full address, use <code>firstname-lastname@cooperhealth.edu</code>.</li>
+        </ul>
+
+        <p style="font-size: 14px;">If you did not attempt to sign in to Citrix Gateway recently, or if you are experiencing difficulty accessing remote applications, please reach out to the IT Service Desk or Information Security immediately.</p>
+
+        <p style="background-color: #fff1f2; border: 1px solid #fecdd3; border-radius: 6px; padding: 12px 16px; font-size: 13px; color: #9f1239; margin: 22px 0;">
+            For access assistance, contact the <strong>IT Service Desk @ ext. 4357 (856-968-4357)</strong> or Information Security @ <a href="mailto:infosec@cooperhealth.edu" style="color: #C3002F; font-weight: 700; text-decoration: underline;">infosec@cooperhealth.edu</a>.
+        </p>
+
+        <p style="margin-top: 24px; margin-bottom: 0; font-size: 14px;">Thank you,</p>
+        <p style="margin-top: 4px; margin-bottom: 0; font-weight: 700; color: #0f172a; font-size: 14px;">
+            Information Security<br>
+            <span style="font-weight: 500; color: #475569;">Cooper University Health Care</span>
+        </p>
+    </div>
+    <div style="background-color: #f8fafc; padding: 14px 28px; text-align: center; font-size: 12px; color: #64748b; border-top: 1px solid #e2e8f0;">
+        This is an official communication from Cooper University Health Care Information Security.
+    </div>
+</div>`,
+    bodyText: `Hello {{Name}},
+
+Information Security is contacting you regarding recent remote authentication activity on the Citrix NetScaler Gateway for your account ({{Username}}).
+
+Our perimeter monitoring detected repeated unsuccessful login attempts or non-standard credential formatting submitted from a remote connection.
+
+To ensure uninterrupted access to Cooper systems, please follow these guidelines:
+- Username Format: Always sign in using your standard Cooper corporate username (firstname-lastname). Do not enter your numeric employee badge number in the username field.
+- Multi-Factor Authentication: Ensure you approve the Imprivata Confirm ID prompt on your registered mobile device within 60 seconds.
+- Domain Format: If using a full address, use firstname-lastname@cooperhealth.edu.
+
+If you did not attempt to sign in to Citrix Gateway recently, or if you need access assistance, please contact the IT Service Desk @ ext. 4357 (856-968-4357) or Information Security @ infosec@cooperhealth.edu.
+
+Thank you,
+
+Information Security
+Cooper University Health Care`
+};
+
 const LEGACY_SEED_TEMPLATES = [
     {
         name: "Standard Credential Breach Notice (Archived)",
@@ -141,6 +205,18 @@ export async function GET(req: Request) {
                 },
                 data: { isEnabled: false }
             });
+        }
+
+        const existingAdvisory = await prisma.notificationTemplate.findUnique({
+            where: { name: CITRIX_LOGIN_ADVISORY_TEMPLATE.name }
+        });
+        if (!existingAdvisory) {
+            await prisma.notificationTemplate.create({
+                data: {
+                    ...CITRIX_LOGIN_ADVISORY_TEMPLATE,
+                    createdBy: "Information Security",
+                }
+            }).catch(() => {});
         }
 
         const where: any = {};
