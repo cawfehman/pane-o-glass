@@ -45,6 +45,14 @@ export function extractAnomaliesFromEvaluations(
         const users = ev.targetedUsers || [];
         if (users.length === 0) continue;
 
+        const hasPriorSuccess = ev.citrixSuccessCount > 0 || ev.hasVpnSuccessHistory;
+        const isForeignOrBlacklisted = ev.countryCode !== "US" || ev.isOnAsnBlacklist;
+
+        // Skip foreign origin or hosting/cloud IPs with ZERO authentication history (standard expected attacks, not review anomalies)
+        if (isForeignOrBlacklisted && !hasPriorSuccess) {
+            continue;
+        }
+
         // Check for verified corporate anchor account
         const anchorUsers = users.filter(
             (u) =>
@@ -205,12 +213,12 @@ export function extractAnomaliesFromEvaluations(
         }
 
         // Anomaly Pattern 5: Automated Block on Corporate Employee with Mitigating Factors
-        const hasMitigations = ev.citrixSuccessCount > 0 || ev.hasVpnSuccessHistory || primaryAnchor !== null;
-        if (isBlockedDecision && hasMitigations) {
+        // Strictly requires ACTUAL prior authentication history (not merely an external attacker probing an AD username)
+        if (isBlockedDecision && hasPriorSuccess && primaryAnchor) {
             anomalies.push({
                 anomalyKey: `${ev.ip}-MITIGATED_BLOCK`,
                 ip: ev.ip,
-                flagReason: `Automated perimeter block active (${decisionDetails}) on connection with verified corporate employee '${primaryAnchor?.username || "AD User"}' and ${ev.citrixSuccessCount} prior successful logins.`,
+                flagReason: `Automated perimeter block active (${decisionDetails}) on connection with verified corporate employee '${primaryAnchor.username}' despite ${ev.citrixSuccessCount} prior successful logins.`,
                 triggerSignals: ["ACTIVE_PERIMETER_BLOCK", "PRIOR_AUTHENTICATION_SUCCESS", "VALID_ANCHOR_PRESENT"],
                 suggestedTag: "Automated Block on Verified Corporate Employee",
                 severity: "HIGH",
