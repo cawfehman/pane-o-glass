@@ -10,8 +10,13 @@ export async function GET(req: Request) {
         const role = (session?.user as any)?.role;
         const userId = session?.user?.id;
 
-        if (!session?.user || !(await hasPermission(role, "firewall", userId))) {
-            return NextResponse.json({ error: "Forbidden: Access restricted to firewall operators." }, { status: 403 });
+        const [hasFw, hasNs, hasVpn] = await Promise.all([
+            hasPermission(role, "firewall", userId),
+            hasPermission(role, "netscaler", userId),
+            hasPermission(role, "vpn", userId)
+        ]);
+        if (!session?.user || !(hasFw || hasNs || hasVpn)) {
+            return NextResponse.json({ error: "Forbidden: Access restricted to perimeter operators." }, { status: 403 });
         }
 
         const url = new URL(req.url);

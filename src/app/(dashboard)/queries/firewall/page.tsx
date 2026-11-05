@@ -282,6 +282,19 @@ export default function CiscoFirewallPage() {
         }
     }, [activeTab, guardianSearch, guardianFilter, guardianQueryLimit]);
 
+    // Sync activeTab to URL query parameters so session timeout returns to the exact view
+    const [tabUrlSynced, setTabUrlSynced] = useState(false);
+    useEffect(() => {
+        if (!tabUrlSynced || typeof window === "undefined") return;
+        const url = new URL(window.location.href);
+        url.searchParams.set("tab", activeTab);
+        if (activeTab !== "security-intelligence") {
+            url.searchParams.delete("subtab");
+            url.searchParams.delete("tf");
+        }
+        window.history.replaceState({}, "", url.toString());
+    }, [activeTab, tabUrlSynced]);
+
     // Fetch configured firewalls on load
     useEffect(() => {
         const fetchHosts = async () => {
@@ -320,6 +333,7 @@ export default function CiscoFirewallPage() {
                 setIpAddress(ipParam);
                 setActiveTab("manual");
             }
+            setTabUrlSynced(true);
         }
 
         fetchHosts();
@@ -413,28 +427,30 @@ export default function CiscoFirewallPage() {
                     }
                 />
 
-                <div className="flex gap-3 border-b border-border-color pb-[1px] mb-3">
+                <div className="flex flex-wrap gap-3 border-b border-border-color pb-[1px] mb-3">
                     <button
-                        onClick={() => setActiveTab("manual")}
-                        className="px-4 py-2 border-none font-semibold cursor-pointer"
+                        onClick={() => setActiveTab("telemetry")}
+                        className="px-4 py-2 border-none font-semibold cursor-pointer flex items-center gap-1.5"
                         style={{
-                            background: activeTab === "manual" ? 'rgba(59, 130, 246, 0.1)' : 'transparent',
-                            borderBottom: activeTab === "manual" ? '2px solid var(--accent-primary)' : '2px solid transparent',
-                            color: activeTab === "manual" ? 'var(--text-primary)' : 'var(--text-secondary)',
+                            background: activeTab === "telemetry" ? 'rgba(59, 130, 246, 0.1)' : 'transparent',
+                            borderBottom: activeTab === "telemetry" ? '2px solid var(--accent-primary)' : '2px solid transparent',
+                            color: activeTab === "telemetry" ? 'var(--text-primary)' : 'var(--text-secondary)',
                         }}
                     >
-                        Manual Shuns
+                        <Activity className="w-4 h-4 text-indigo-400 animate-pulse" />
+                        Perimeter Telemetry
                     </button>
                     <button
-                        onClick={() => setActiveTab("guardian")}
-                        className="px-4 py-2 border-none font-semibold cursor-pointer"
+                        onClick={() => setActiveTab("security-intelligence")}
+                        className="px-4 py-2 border-none font-semibold cursor-pointer flex items-center gap-1.5"
                         style={{
-                            background: activeTab === "guardian" ? 'rgba(59, 130, 246, 0.1)' : 'transparent',
-                            borderBottom: activeTab === "guardian" ? '2px solid var(--accent-primary)' : '2px solid transparent',
-                            color: activeTab === "guardian" ? 'var(--text-primary)' : 'var(--text-secondary)',
+                            background: activeTab === "security-intelligence" ? 'rgba(59, 130, 246, 0.1)' : 'transparent',
+                            borderBottom: activeTab === "security-intelligence" ? '2px solid var(--accent-primary)' : '2px solid transparent',
+                            color: activeTab === "security-intelligence" ? 'var(--text-primary)' : 'var(--text-secondary)',
                         }}
                     >
-                        Guardian Auto-Unshun Logs
+                        <Shield className="w-4 h-4 text-accent-primary" />
+                        3-Strike &amp; SI Defense
                     </button>
                     <button
                         onClick={() => setActiveTab("blacklist")}
@@ -447,40 +463,20 @@ export default function CiscoFirewallPage() {
                     >
                         Guardian Blacklist
                     </button>
-                                        <button
-                        onClick={() => setActiveTab("database")}
+                    <button
+                        onClick={() => {
+                            if (activeTab !== "database" && activeTab !== "guardian" && activeTab !== "manual") {
+                                setActiveTab("database");
+                            }
+                        }}
                         className="px-4 py-2 border-none font-semibold cursor-pointer"
                         style={{
-                            background: activeTab === "database" ? 'rgba(59, 130, 246, 0.1)' : 'transparent',
-                            borderBottom: activeTab === "database" ? '2px solid var(--accent-primary)' : '2px solid transparent',
-                            color: activeTab === "database" ? 'var(--text-primary)' : 'var(--text-secondary)',
+                            background: (activeTab === "database" || activeTab === "guardian" || activeTab === "manual") ? 'rgba(59, 130, 246, 0.1)' : 'transparent',
+                            borderBottom: (activeTab === "database" || activeTab === "guardian" || activeTab === "manual") ? '2px solid var(--accent-primary)' : '2px solid transparent',
+                            color: (activeTab === "database" || activeTab === "guardian" || activeTab === "manual") ? 'var(--text-primary)' : 'var(--text-secondary)',
                         }}
                     >
-                        Shun Database
-                    </button>
-                    <button
-                        onClick={() => setActiveTab("security-intelligence")}
-                        className="px-4 py-2 border-none font-semibold cursor-pointer flex items-center gap-1.5"
-                        style={{
-                            background: activeTab === "security-intelligence" ? 'rgba(59, 130, 246, 0.1)' : 'transparent',
-                            borderBottom: activeTab === "security-intelligence" ? '2px solid var(--accent-primary)' : '2px solid transparent',
-                            color: activeTab === "security-intelligence" ? 'var(--text-primary)' : 'var(--text-secondary)',
-                        }}
-                    >
-                        <Shield className="w-4 h-4 text-accent-primary" />
-                        Security Intelligence (SI)
-                    </button>
-                    <button
-                        onClick={() => setActiveTab("telemetry")}
-                        className="px-4 py-2 border-none font-semibold cursor-pointer flex items-center gap-1.5"
-                        style={{
-                            background: activeTab === "telemetry" ? 'rgba(59, 130, 246, 0.1)' : 'transparent',
-                            borderBottom: activeTab === "telemetry" ? '2px solid var(--accent-primary)' : '2px solid transparent',
-                            color: activeTab === "telemetry" ? 'var(--text-primary)' : 'var(--text-secondary)',
-                        }}
-                    >
-                        <Activity className="w-4 h-4 text-indigo-400 animate-pulse" />
-                        Perimeter Telemetry
+                        ASA Shuns &amp; CLI
                     </button>
                     <a
                         href="/docs/reputation-ledger-guide.html"
@@ -494,6 +490,47 @@ export default function CiscoFirewallPage() {
                         <ExternalLink className="w-3 h-3 opacity-80" />
                     </a>
                 </div>
+
+                {(activeTab === "database" || activeTab === "guardian" || activeTab === "manual") && (
+                    <div className="flex flex-wrap items-center gap-2 bg-bg-surface/60 p-1.5 rounded-xl border border-border-color mb-3">
+                        <span className="text-[11px] font-bold uppercase tracking-wider text-text-muted px-2.5">
+                            ASA Shun Operations:
+                        </span>
+                        <button
+                            type="button"
+                            onClick={() => setActiveTab("database")}
+                            className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                                activeTab === "database"
+                                    ? "bg-accent-primary text-white shadow-sm"
+                                    : "text-text-muted hover:text-text-primary hover:bg-bg-card border border-border-color/60"
+                            }`}
+                        >
+                            Shun Database
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setActiveTab("guardian")}
+                            className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                                activeTab === "guardian"
+                                    ? "bg-accent-primary text-white shadow-sm"
+                                    : "text-text-muted hover:text-text-primary hover:bg-bg-card border border-border-color/60"
+                            }`}
+                        >
+                            Guardian Auto-Unshun Logs
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setActiveTab("manual")}
+                            className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                                activeTab === "manual"
+                                    ? "bg-accent-primary text-white shadow-sm"
+                                    : "text-text-muted hover:text-text-primary hover:bg-bg-card border border-border-color/60"
+                            }`}
+                        >
+                            Manual Shun CLI
+                        </button>
+                    </div>
+                )}
 
             </div>
 

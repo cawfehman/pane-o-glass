@@ -6,7 +6,7 @@ import {
     Activity, CheckCircle2, AlertTriangle, ExternalLink, RefreshCw, 
     X, Lock, Shield, ArrowUpRight, Filter, ChevronRight, Terminal, Laptop, Plus, Bug, Zap,
     AlertOctagon, UserX, Flame, Copy, Download, Check, Play, Pause, RotateCcw, FileText, Radio,
-    DownloadCloud, Calendar
+    DownloadCloud, Calendar, Sparkles
 } from "lucide-react";
 import { 
     AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, 
@@ -20,6 +20,7 @@ import {
 } from "@/lib/netscaler-graylog";
 import { SmartSearchBar } from "@/components/common/SmartSearchBar";
 import CitrixLoginTriageTab from "@/components/netscaler/CitrixLoginTriageTab";
+import { CitrixAnomalyQueueTab } from "@/components/netscaler/CitrixAnomalyQueueTab";
 
 const COUNTRY_COLORS: Record<string, string> = {
     US: "#3b82f6",
@@ -44,10 +45,33 @@ export default function NetscalerDashboardClient() {
     const [error, setError] = useState<string | null>(null);
 
     // Timeframe (seconds): 3600=1h, 21600=6h, 43200=12h, 86400=24h, 259200=3d, 604800=7d
-    const [timeframe, setTimeframe] = useState<number>(86400);
+    const [timeframe, setTimeframeState] = useState<number>(() => {
+        if (typeof window !== "undefined") {
+            const r = parseInt(new URLSearchParams(window.location.search).get("range") || "", 10);
+            if ([3600, 21600, 43200, 86400, 259200, 604800].includes(r)) return r;
+        }
+        return 86400;
+    });
+    const setTimeframe = (val: number) => {
+        setTimeframeState(val);
+        if (typeof window !== "undefined") {
+            const url = new URL(window.location.href);
+            url.searchParams.set("range", String(val));
+            window.history.replaceState({}, "", url.toString());
+        }
+    };
 
-    // Active tab
-    const [activeTab, setActiveTab] = useState<"overview" | "login-triage" | "foreign" | "investigate" | "iocs" | "cve-shuns">("overview");
+    // Active tab (URL-synced for session timeout persistence)
+    const [activeTab, setActiveTabState] = useState<"overview" | "login-triage" | "anomalies" | "foreign" | "investigate" | "iocs" | "cve-shuns">("overview");
+    const [pendingAnomalyCount, setPendingAnomalyCount] = useState<number>(0);
+    const setActiveTab = (next: "overview" | "login-triage" | "anomalies" | "foreign" | "investigate" | "iocs" | "cve-shuns") => {
+        setActiveTabState(next);
+        if (typeof window !== "undefined") {
+            const url = new URL(window.location.href);
+            url.searchParams.set("tab", next);
+            window.history.replaceState({}, "", url.toString());
+        }
+    };
 
     // CVE-2026 Auto-Shun & Dedicated Tracking State
     const [cveShuns, setCveShuns] = useState<any[]>([]);
@@ -436,9 +460,12 @@ export default function NetscalerDashboardClient() {
     useEffect(() => {
         const queryParam = searchParams.get("query");
         const tabParam = searchParams.get("tab");
+        const subviewParam = searchParams.get("subview");
 
-        if (tabParam && ["overview", "login-triage", "foreign", "investigate", "iocs", "cve-shuns"].includes(tabParam)) {
-            setActiveTab(tabParam as any);
+        if (subviewParam === "anomalies") {
+            setActiveTabState("anomalies");
+        } else if (tabParam && ["overview", "login-triage", "anomalies", "foreign", "investigate", "iocs", "cve-shuns"].includes(tabParam)) {
+            setActiveTabState(tabParam as any);
         }
 
         if (queryParam) {
@@ -446,6 +473,16 @@ export default function NetscalerDashboardClient() {
             setActiveTab("investigate");
             runInvestigation(queryParam, timeframe);
         }
+
+        // Load initial pending anomaly count for top-level tab badge
+        fetch("/api/netscaler/anomalies?status=PENDING_REVIEW&pageSize=10")
+            .then((r) => (r.ok ? r.json() : null))
+            .then((d) => {
+                if (typeof d?.counts?.pendingCount === "number") {
+                    setPendingAnomalyCount(d.counts.pendingCount);
+                }
+            })
+            .catch(() => {});
     }, []);
 
     // Fetch stats and active tab data when timeframe changes
@@ -655,14 +692,14 @@ export default function NetscalerDashboardClient() {
                     </button>
                     <button
                         onClick={() => setActiveTab("login-triage")}
-                        className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                        className={`px-3.5 py-2 rounded-lg text-sm font-medium transition-all ${
                             activeTab === "login-triage"
                                 ? "bg-indigo-500/20 text-indigo-300 border border-indigo-500/40 shadow-sm"
                                 : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/50"
                         }`}
                     >
                         <span className="flex items-center gap-2">
-                            <Lock size={16} className="text-indigo-400" /> Citrix Login & Abuse Triage
+                            <Lock size={15} className="text-indigo-400" /> Login & Abuse Triage
                             {stats?.authFailureCount ? (
                                 <span className="px-1.5 py-0.5 text-xs rounded-full bg-indigo-500/30 text-indigo-200 font-mono">
                                     {stats.authFailureCount}
@@ -671,15 +708,32 @@ export default function NetscalerDashboardClient() {
                         </span>
                     </button>
                     <button
+                        onClick={() => setActiveTab("anomalies")}
+                        className={`px-3.5 py-2 rounded-lg text-sm font-medium transition-all ${
+                            activeTab === "anomalies"
+                                ? "bg-amber-500/20 text-amber-200 border border-amber-500/40 shadow-sm"
+                                : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/50"
+                        }`}
+                    >
+                        <span className="flex items-center gap-2">
+                            <Sparkles size={15} className="text-amber-400" /> Anomaly Review
+                            {pendingAnomalyCount > 0 ? (
+                                <span className="px-1.5 py-0.5 text-xs rounded-full bg-amber-500/30 text-amber-200 font-mono font-bold">
+                                    {pendingAnomalyCount}
+                                </span>
+                            ) : null}
+                        </span>
+                    </button>
+                    <button
                         onClick={() => setActiveTab("foreign")}
-                        className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                        className={`px-3.5 py-2 rounded-lg text-sm font-medium transition-all ${
                             activeTab === "foreign"
                                 ? "bg-amber-500/20 text-amber-300 border border-amber-500/40 shadow-sm"
                                 : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/50"
                         }`}
                     >
                         <span className="flex items-center gap-2">
-                            <Globe size={16} /> Geo Access & Location Intel
+                            <Globe size={15} /> Geo Intel
                             {stats?.geoTrafficCount ? (
                                 <span className="px-1.5 py-0.5 text-xs rounded-full bg-amber-500/30 text-amber-200 font-mono">
                                     {stats.geoTrafficCount > 1000 ? `${(stats.geoTrafficCount / 1000).toFixed(1)}k` : stats.geoTrafficCount}
@@ -689,46 +743,33 @@ export default function NetscalerDashboardClient() {
                     </button>
                     <button
                         onClick={() => setActiveTab("investigate")}
-                        className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                        className={`px-3.5 py-2 rounded-lg text-sm font-medium transition-all ${
                             activeTab === "investigate"
                                 ? "bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 shadow-sm"
                                 : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/50"
                         }`}
                     >
                         <span className="flex items-center gap-2">
-                            <Search size={16} /> User & IP Investigator
+                            <Search size={15} /> Investigator
                         </span>
                     </button>
                     <button
                         onClick={() => {
-                            setActiveTab("iocs");
-                            if (iocFindings.length === 0) runIocScan();
+                            if (activeTab !== "iocs" && activeTab !== "cve-shuns") {
+                                setActiveTab("cve-shuns");
+                                fetchCveShuns();
+                            }
                         }}
-                        className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-                            activeTab === "iocs"
+                        className={`px-3.5 py-2 rounded-lg text-sm font-medium transition-all ${
+                            activeTab === "cve-shuns" || activeTab === "iocs"
                                 ? "bg-rose-500/20 text-rose-300 border border-rose-500/40 shadow-sm"
                                 : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/50"
                         }`}
                     >
                         <span className="flex items-center gap-2">
-                            <ShieldAlert size={16} className="text-rose-400" /> Zero-Day & Threat Hunt
-                        </span>
-                    </button>
-                    <button
-                        onClick={() => {
-                            setActiveTab("cve-shuns");
-                            fetchCveShuns();
-                        }}
-                        className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-                            activeTab === "cve-shuns"
-                                ? "bg-red-600/20 text-red-300 border border-red-500/40 shadow-sm"
-                                : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/50"
-                        }`}
-                    >
-                        <span className="flex items-center gap-2">
-                            <Shield size={16} className="text-rose-400" /> CVE-2026 Auto-Shun Tracker
+                            <ShieldAlert size={15} className="text-rose-400" /> Exploit & CVE Defense
                             {cveStats?.activeCount ? (
-                                <span className="px-1.5 py-0.5 text-xs rounded-full bg-rose-500/30 text-rose-200 font-mono font-bold animate-pulse">
+                                <span className="px-1.5 py-0.5 text-xs rounded-full bg-rose-500/30 text-rose-200 font-mono font-bold">
                                     {cveStats.activeCount}
                                 </span>
                             ) : null}
@@ -1726,6 +1767,50 @@ export default function NetscalerDashboardClient() {
                             </div>
                         )}
                     </div>
+                </div>
+            )}
+
+            {/* UNIFIED EXPLOIT & CVE DEFENSE SUB-SWITCHER */}
+            {(activeTab === "cve-shuns" || activeTab === "iocs") && (
+                <div className="flex items-center justify-between gap-3 p-2.5 rounded-xl bg-slate-900/70 border border-slate-800">
+                    <div className="flex items-center gap-2">
+                        <button
+                            onClick={() => {
+                                setActiveTab("cve-shuns");
+                                fetchCveShuns();
+                            }}
+                            className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-2 transition-all ${
+                                activeTab === "cve-shuns"
+                                    ? "bg-rose-600 text-white shadow-sm"
+                                    : "text-slate-400 hover:text-white hover:bg-slate-800"
+                            }`}
+                        >
+                            <Shield size={14} />
+                            CVE-2026 Auto-Shun Tracker
+                            {cveStats?.activeCount ? (
+                                <span className="px-1.5 py-0.2 rounded bg-black/30 text-rose-100 font-mono text-[10px]">
+                                    {cveStats.activeCount} Active
+                                </span>
+                            ) : null}
+                        </button>
+                        <button
+                            onClick={() => {
+                                setActiveTab("iocs");
+                                if (iocFindings.length === 0) runIocScan();
+                            }}
+                            className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-2 transition-all ${
+                                activeTab === "iocs"
+                                    ? "bg-rose-600 text-white shadow-sm"
+                                    : "text-slate-400 hover:text-white hover:bg-slate-800"
+                            }`}
+                        >
+                            <ShieldAlert size={14} />
+                            Zero-Day & Custom IOC Signatures ({iocRules.length})
+                        </button>
+                    </div>
+                    <span className="text-[11px] text-slate-400 pr-2 hidden sm:inline">
+                        Citrix ADC / Gateway Exploit Detection &amp; Automated Perimeter Mitigation
+                    </span>
                 </div>
             )}
 
@@ -2962,6 +3047,19 @@ export default function NetscalerDashboardClient() {
                         setActiveTab("investigate");
                         runInvestigation(term, timeframe);
                     }}
+                />
+            )}
+
+            {/* TOP-LEVEL ANOMALY REVIEW QUEUE TAB */}
+            {activeTab === "anomalies" && (
+                <CitrixAnomalyQueueTab
+                    timeframe={timeframe}
+                    onInvestigateTarget={(term) => {
+                        setSearchQuery(term);
+                        setActiveTab("investigate");
+                        runInvestigation(term, timeframe);
+                    }}
+                    onCountChange={setPendingAnomalyCount}
                 />
             )}
 

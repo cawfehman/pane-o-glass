@@ -18,7 +18,17 @@ export default function SessionTimeout() {
         }
         timerRef.current = setTimeout(() => {
             console.log(`[SessionTimeout] Idle for ${timeoutMinutes}m. Logging out...`);
-            signOut({ callbackUrl: `${window.location.origin}/login?timeout=true` });
+            const currentPath = `${window.location.pathname}${window.location.search}`;
+            const isLoginPage = window.location.pathname.startsWith("/login");
+            if (!isLoginPage && currentPath && currentPath !== "/") {
+                try {
+                    sessionStorage.setItem("pane_post_login_return_to", currentPath);
+                } catch {}
+            }
+            const returnParam = !isLoginPage && currentPath && currentPath !== "/"
+                ? `&returnTo=${encodeURIComponent(currentPath)}`
+                : "";
+            signOut({ callbackUrl: `${window.location.origin}/login?timeout=true${returnParam}` });
         }, timeoutMs);
     };
 

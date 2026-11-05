@@ -3,6 +3,45 @@
 import { signIn } from "next-auth/react"
 import { useState, Suspense, useEffect } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
+import { getEffectivePermissions } from "@/app/actions/permissions"
+
+const ROUTE_PERMISSION_MAP: Array<{ prefix: string; toolId: string }> = [
+    { prefix: "/queries/firewall", toolId: "firewall" },
+    { prefix: "/queries/netscaler", toolId: "netscaler" },
+    { prefix: "/queries/vpn-reporting", toolId: "vpn-reporting" },
+    { prefix: "/queries/vpn-s2s", toolId: "vpn-s2s" },
+    { prefix: "/queries/vpn", toolId: "vpn" },
+    { prefix: "/queries/ise", toolId: "ise" },
+    { prefix: "/queries/tacacs", toolId: "ise-tacacs" },
+    { prefix: "/queries/meraki", toolId: "meraki" },
+    { prefix: "/queries/account-lockout", toolId: "account-lockout" },
+    { prefix: "/queries/ironport", toolId: "ironport" },
+    { prefix: "/queries/bec", toolId: "bec" },
+    { prefix: "/queries/etd", toolId: "etd" },
+    { prefix: "/queries/hibp/account", toolId: "hibp-account" },
+    { prefix: "/queries/hibp/domain", toolId: "hibp-domain" },
+    { prefix: "/queries/threat-intel", toolId: "threat-intel" },
+    { prefix: "/queries/crawler", toolId: "crawler" },
+    { prefix: "/notifications", toolId: "notification-center" },
+    { prefix: "/queries/graylog-exporter", toolId: "graylog-exporter" },
+];
+
+function sanitizeReturnPath(raw: string | null | undefined): string | null {
+    if (!raw) return null;
+    let candidate = raw.trim();
+    if (typeof window !== "undefined" && candidate.startsWith(window.location.origin)) {
+        candidate = candidate.slice(window.location.origin.length);
+    }
+    if (
+        !candidate.startsWith("/") ||
+        candidate.startsWith("//") ||
+        candidate.startsWith("/login") ||
+        candidate.startsWith("/api/auth")
+    ) {
+        return null;
+    }
+    return candidate;
+}
 
 export default function LoginPage() {
     return (
@@ -32,6 +71,35 @@ function LoginContent() {
 
         return () => clearTimeout(refreshTimer);
     }, [isLoading]);
+
+    const resolveAuthorizedTarget = async (): Promise<string> => {
+        let rawReturn = searchParams.get("returnTo") || searchParams.get("callbackUrl");
+        if (!rawReturn && typeof window !== "undefined") {
+            try {
+                rawReturn = sessionStorage.getItem("pane_post_login_return_to");
+            } catch {}
+        }
+        if (typeof window !== "undefined") {
+            try {
+                sessionStorage.removeItem("pane_post_login_return_to");
+            } catch {}
+        }
+
+        const safePath = sanitizeReturnPath(rawReturn);
+        if (!safePath || safePath === "/") return "/";
+
+        try {
+            const allowedTools = await getEffectivePermissions();
+            const matchedRule = ROUTE_PERMISSION_MAP.find((r) => safePath.startsWith(r.prefix));
+            if (matchedRule && !allowedTools.includes(matchedRule.toolId)) {
+                return "/";
+            }
+        } catch {
+            // If permission lookup fails, allow navigation and let server page guard handle it
+        }
+
+        return safePath;
+    };
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -64,7 +132,8 @@ function LoginContent() {
                 setPassword("");
                 setTimeout(() => setError(false), 2000);
             } else if (res?.ok) {
-                router.push("/");
+                const targetUrl = await resolveAuthorizedTarget();
+                router.push(targetUrl);
                 router.refresh();
             }
         } catch (err) {
@@ -86,7 +155,7 @@ function LoginContent() {
                 </h1>
                 {isTimeout && (
                     <div className="bg-amber-500/10 border border-amber-500 text-amber-500 p-3 rounded mb-4 text-sm">
-                        Your session has expired due to inactivity. Please sign in again.
+                        Your session has expired due to inactivity. Please sign in again to resume where you left off.
                     </div>
                 )}
                 <p>Sign in to your dashboard</p>

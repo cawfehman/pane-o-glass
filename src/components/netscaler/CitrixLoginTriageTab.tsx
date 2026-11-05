@@ -41,9 +41,26 @@ export default function CitrixLoginTriageTab({
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
-    // Sub-navigation inside the tab
-    const [subView, setSubView] = useState<"ips" | "asns" | "users" | "events" | "anomalies">("ips");
+    // Sub-navigation inside the tab (URL-synced for session timeout persistence)
+    const [subView, setSubViewState] = useState<"ips" | "asns" | "users" | "events" | "anomalies">(() => {
+        if (typeof window !== "undefined") {
+            const sv = new URLSearchParams(window.location.search).get("subview");
+            if (sv && ["ips", "asns", "users", "events", "anomalies"].includes(sv)) {
+                return sv as any;
+            }
+        }
+        return "ips";
+    });
+    const setSubView = (next: "ips" | "asns" | "users" | "events" | "anomalies") => {
+        setSubViewState(next);
+        if (typeof window !== "undefined") {
+            const url = new URL(window.location.href);
+            url.searchParams.set("subview", next);
+            window.history.replaceState({}, "", url.toString());
+        }
+    };
     const [anomalyCount, setAnomalyCount] = useState<number>(0);
+    const [showToolsMenu, setShowToolsMenu] = useState<boolean>(false);
 
     // Filters
     const [verdictFilter, setVerdictFilter] = useState<"ALL" | GuardianAbuseVerdict | "ABUSIVE_RESIDENTIAL">("ALL");
@@ -692,7 +709,7 @@ export default function CitrixLoginTriageTab({
                     </div>
                 </div>
 
-                <div className="flex flex-wrap items-center gap-2.5">
+                <div className="flex flex-wrap items-center gap-2 relative">
                     {unshunnedAbusiveIps.length > 0 && (
                         <button
                             onClick={() =>
@@ -707,72 +724,111 @@ export default function CitrixLoginTriageTab({
                                 })
                             }
                             title={`Enforces all ${unshunnedAbusiveIps.length} unblocked Abusive IPs into Cisco FMC Security Intelligence feed and Guardian Do-Not-Unshun Blacklist.`}
-                            className="flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-semibold bg-red-600 hover:bg-red-500 text-white shadow-lg shadow-red-600/20 transition-all"
+                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-red-600 hover:bg-red-500 text-white shadow-md shadow-red-600/20 transition-all"
                         >
-                            <Flame className="w-4 h-4" />
-                            Enforce All in Security Intelligence Feed ({unshunnedAbusiveIps.length})
+                            <Flame className="w-3.5 h-3.5" />
+                            Enforce All ({unshunnedAbusiveIps.length})
                         </button>
                     )}
 
                     <button
-                        onClick={handleOpenTypoScanner}
-                        disabled={typoScannerLoading}
-                        title="Scan 7D for active corporate employees blocked by typos (Mandatory Dry Run)"
-                        className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-semibold bg-emerald-600/90 hover:bg-emerald-500 text-white shadow-lg shadow-emerald-600/20 transition-all border border-emerald-400/30"
-                    >
-                        <Sparkles className={`w-3.5 h-3.5 ${typoScannerLoading ? "animate-spin text-white" : "text-amber-300"}`} />
-                        {typoScannerLoading ? "Scanning 7D..." : "Scan Typo Candidates (7D)"}
-                    </button>
-
-                    <button
                         onClick={() => setShowRulesPanel(!showRulesPanel)}
-                        title="Toggle the Smart Guardian scoring panel to adjust thresholds for foreign IPs, password sprays, and AD protection."
-                        className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium border transition-all ${
+                        title="Toggle Smart Guardian scoring thresholds"
+                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-all ${
                             showRulesPanel
                                 ? "bg-indigo-600/20 border-indigo-500/40 text-indigo-300"
                                 : "bg-slate-800/80 border-slate-700 text-slate-300 hover:text-white"
                         }`}
                     >
                         <Sliders className="w-3.5 h-3.5" />
-                        Guardian Rules
+                        Scoring Rules
                     </button>
 
-                    <button
-                        onClick={exportEvaluationsCsv}
-                        disabled={!data?.ipEvaluations.length}
-                        title="Download a CSV report containing all IP verdicts, risk scores, geolocation, ISP, failure counts, and triggered rules."
-                        className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium bg-slate-800/80 hover:bg-slate-700 text-slate-300 border border-slate-700 disabled:opacity-40"
-                    >
-                        <FileSpreadsheet className="w-3.5 h-3.5" />
-                        Export CSV
-                    </button>
-
-                    <button
-                        onClick={() => {
-                            setShunDbInitialSearch("");
-                            setShowShunDbModal(true);
-                        }}
-                        title="Search all perimeter shunned IPs, browse recently shunned addresses, and un-shun across firewalls."
-                        className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold bg-indigo-600/30 hover:bg-indigo-600/50 text-indigo-200 border border-indigo-500/40 shadow-sm transition-all"
-                    >
-                        <Shield className="w-3.5 h-3.5 text-indigo-400" />
-                        Search Shunned IPs
-                    </button>
-
-                    <button
-                        onClick={() => setShowShunLogModal(true)}
-                        title="Open Positive Confirmation Shun Action Audit Log to verify firewall shuns and download log files."
-                        className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium bg-slate-800/80 hover:bg-slate-700 text-slate-200 border border-slate-700"
-                    >
-                        <ClipboardCheck className="w-3.5 h-3.5 text-emerald-400" />
-                        Shun Audit Log
-                    </button>
+                    {/* Consolidated Utilities Dropdown */}
+                    <div className="relative">
+                        <button
+                            onClick={() => setShowToolsMenu((prev) => !prev)}
+                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600/25 hover:bg-indigo-600/40 text-indigo-200 border border-indigo-500/40 transition-all"
+                        >
+                            <Shield className="w-3.5 h-3.5 text-indigo-400" />
+                            Triage Utilities ▾
+                        </button>
+                        {showToolsMenu && (
+                            <>
+                                <div
+                                    className="fixed inset-0 z-30"
+                                    onClick={() => setShowToolsMenu(false)}
+                                />
+                                <div className="absolute right-0 mt-1.5 w-64 rounded-xl bg-slate-900 border border-slate-700 shadow-2xl py-1.5 z-40 divide-y divide-slate-800">
+                                    <div className="py-1">
+                                        <button
+                                            onClick={() => {
+                                                setShowToolsMenu(false);
+                                                handleOpenTypoScanner();
+                                            }}
+                                            disabled={typoScannerLoading}
+                                            className="w-full px-3.5 py-2 text-left text-xs text-slate-200 hover:bg-slate-800 flex items-center gap-2.5"
+                                        >
+                                            <Sparkles className="w-4 h-4 text-emerald-400 shrink-0" />
+                                            <div>
+                                                <div className="font-semibold text-white">Scan Typo Candidates (7D)</div>
+                                                <div className="text-[10px] text-slate-400">Dry-run &amp; bulk pardon false positives</div>
+                                            </div>
+                                        </button>
+                                        <button
+                                            onClick={() => {
+                                                setShowToolsMenu(false);
+                                                setShunDbInitialSearch("");
+                                                setShowShunDbModal(true);
+                                            }}
+                                            className="w-full px-3.5 py-2 text-left text-xs text-slate-200 hover:bg-slate-800 flex items-center gap-2.5"
+                                        >
+                                            <Shield className="w-4 h-4 text-indigo-400 shrink-0" />
+                                            <div>
+                                                <div className="font-semibold text-white">Search Shunned IPs</div>
+                                                <div className="text-[10px] text-slate-400">Inspect &amp; un-shun across firewalls</div>
+                                            </div>
+                                        </button>
+                                    </div>
+                                    <div className="py-1">
+                                        <button
+                                            onClick={() => {
+                                                setShowToolsMenu(false);
+                                                setShowShunLogModal(true);
+                                            }}
+                                            className="w-full px-3.5 py-2 text-left text-xs text-slate-200 hover:bg-slate-800 flex items-center gap-2.5"
+                                        >
+                                            <ClipboardCheck className="w-4 h-4 text-teal-400 shrink-0" />
+                                            <div>
+                                                <div className="font-semibold text-white">Shun Confirmation Audit Log</div>
+                                                <div className="text-[10px] text-slate-400">Positive verification of firewall shuns</div>
+                                            </div>
+                                        </button>
+                                        <button
+                                            onClick={() => {
+                                                setShowToolsMenu(false);
+                                                exportEvaluationsCsv();
+                                            }}
+                                            disabled={!data?.ipEvaluations.length}
+                                            className="w-full px-3.5 py-2 text-left text-xs text-slate-200 hover:bg-slate-800 flex items-center gap-2.5 disabled:opacity-40"
+                                        >
+                                            <FileSpreadsheet className="w-4 h-4 text-amber-400 shrink-0" />
+                                            <div>
+                                                <div className="font-semibold text-white">Export Verdict Matrix CSV</div>
+                                                <div className="text-[10px] text-slate-400">Download full IP evaluation dataset</div>
+                                            </div>
+                                        </button>
+                                    </div>
+                                </div>
+                            </>
+                        )}
+                    </div>
 
                     <button
                         onClick={fetchTriage}
                         disabled={loading}
                         title="Re-query Graylog and recalculate Citrix login triage telemetry."
-                        className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium bg-slate-800/80 hover:bg-slate-700 text-slate-200 border border-slate-700"
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-800/80 hover:bg-slate-700 text-slate-200 border border-slate-700"
                     >
                         <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin text-indigo-400" : ""}`} />
                         Refresh

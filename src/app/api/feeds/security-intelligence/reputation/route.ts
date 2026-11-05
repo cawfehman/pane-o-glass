@@ -14,11 +14,12 @@ async function isAuthorized(session: any): Promise<boolean> {
     const role = (session.user as any)?.role;
     if (role === "ADMIN") return true;
     const userId = session.user.id;
-    const [hasFw, hasNetscaler] = await Promise.all([
+    const [hasFw, hasNetscaler, hasVpn] = await Promise.all([
         hasPermission(role, "firewall", userId),
-        hasPermission(role, "netscaler", userId)
+        hasPermission(role, "netscaler", userId),
+        hasPermission(role, "vpn", userId)
     ]);
-    return Boolean(hasFw || hasNetscaler);
+    return Boolean(hasFw || hasNetscaler || hasVpn);
 }
 
 // GET: Fetch reputation ledger metrics across requested timeframe with pagination & search

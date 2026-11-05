@@ -16,19 +16,33 @@ export function SecurityIntelligenceTab() {
     // Sub-Tab Switcher State (Reputation Ledger vs Live FMC Feed Inspector vs Monitored Watchlist)
     const [activeSubTab, setActiveSubTab] = useState<"reputation" | "feedInspector" | "monitored">("reputation");
     const [monitoredCount, setMonitoredCount] = useState<number | null>(null);
+    const [activeToolPanel, setActiveToolPanel] = useState<"none" | "investigate" | "adhoc">("none");
+
+    // Timeframe Filter State
+    const [timeframe, setTimeframe] = useState<"1h" | "6h" | "24h" | "7d" | "30d" | "90d" | "all">("24h");
 
     useEffect(() => {
         if (typeof window !== "undefined") {
             const params = new URLSearchParams(window.location.search);
             const subtabParam = params.get("subtab");
-            if (subtabParam === "feedInspector" || subtabParam === "monitored") {
+            if (subtabParam === "reputation" || subtabParam === "feedInspector" || subtabParam === "monitored") {
                 setActiveSubTab(subtabParam);
+            }
+            const tfParam = params.get("tf");
+            if (tfParam && ["1h", "6h", "24h", "7d", "30d", "90d", "all"].includes(tfParam)) {
+                setTimeframe(tfParam as any);
             }
         }
     }, []);
 
-    // Timeframe Filter State
-    const [timeframe, setTimeframe] = useState<"1h" | "6h" | "24h" | "7d" | "30d" | "90d" | "all">("24h");
+    useEffect(() => {
+        if (typeof window !== "undefined") {
+            const url = new URL(window.location.href);
+            url.searchParams.set("subtab", activeSubTab);
+            url.searchParams.set("tf", timeframe);
+            window.history.replaceState({}, "", url.toString());
+        }
+    }, [activeSubTab, timeframe]);
     
     // Status Filter & Search State
     const [statusFilter, setStatusFilter] = useState<"ALL" | "STRIKE_1" | "STRIKE_2" | "STRIKE_3" | "PARDONED">("ALL");
@@ -209,6 +223,7 @@ export function SecurityIntelligenceTab() {
         const cleanQuery = (overrideTarget || searchQuery).trim();
         if (!cleanQuery) return;
         if (overrideTarget) setSearchQuery(overrideTarget);
+        setActiveToolPanel("investigate");
 
         if (forceEnrich) {
             setEnriching(true);
@@ -539,29 +554,56 @@ export function SecurityIntelligenceTab() {
                         </div>
                     </div>
 
-                    {/* Timeframe Selector Pills */}
-                    <div className="flex items-center gap-1.5 bg-bg-surface p-1 rounded-xl border border-border-color self-start md:self-auto">
-                        {(["1h", "6h", "24h", "7d", "30d", "90d", "all"] as const).map((tf) => (
-                            <button
-                                key={tf}
-                                onClick={() => handleTimeframeChange(tf)}
-                                className={`px-2.5 py-1 text-xs font-semibold rounded-lg transition-colors cursor-pointer ${
-                                    timeframe === tf
-                                        ? "bg-accent-primary text-white shadow-sm"
-                                        : "text-text-muted hover:text-text-primary hover:bg-bg-dark"
-                                }`}
-                            >
-                                {tf === "all" ? "All Time" : tf.toUpperCase()}
-                            </button>
-                        ))}
+                    {/* Timeframe Selector Pills & Collapsible Tool Drawers */}
+                    <div className="flex flex-wrap items-center gap-2 self-start md:self-auto">
                         <button
-                            onClick={() => { fetchFeedStats(); fetchReputation(); }}
-                            disabled={loadingMetrics || loadingReputation}
-                            className="p-1 text-text-muted hover:text-text-primary hover:bg-bg-dark rounded-lg transition-colors ml-1 cursor-pointer"
-                            title="Refresh Now"
+                            type="button"
+                            onClick={() => setActiveToolPanel(activeToolPanel === "investigate" ? "none" : "investigate")}
+                            className={`px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all flex items-center gap-1.5 cursor-pointer ${
+                                activeToolPanel === "investigate"
+                                    ? "bg-accent-primary text-white border-accent-primary shadow-sm"
+                                    : "bg-bg-surface text-text-secondary hover:text-text-primary border-border-color"
+                            }`}
                         >
-                            <RefreshCw className={`w-3.5 h-3.5 ${(loadingMetrics || loadingReputation) ? "animate-spin" : ""}`} />
+                            <Search className="w-3.5 h-3.5" />
+                            Investigate IP / ASN
                         </button>
+                        <button
+                            type="button"
+                            onClick={() => setActiveToolPanel(activeToolPanel === "adhoc" ? "none" : "adhoc")}
+                            className={`px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all flex items-center gap-1.5 cursor-pointer ${
+                                activeToolPanel === "adhoc"
+                                    ? "bg-red-600 text-white border-red-500 shadow-sm"
+                                    : "bg-bg-surface text-red-400 hover:bg-red-500/10 border-red-500/30"
+                            }`}
+                        >
+                            <Plus className="w-3.5 h-3.5" />
+                            Ad-Hoc Feed Block
+                        </button>
+
+                        <div className="flex items-center gap-1.5 bg-bg-surface p-1 rounded-xl border border-border-color">
+                            {(["1h", "6h", "24h", "7d", "30d", "90d", "all"] as const).map((tf) => (
+                                <button
+                                    key={tf}
+                                    onClick={() => handleTimeframeChange(tf)}
+                                    className={`px-2.5 py-1 text-xs font-semibold rounded-lg transition-colors cursor-pointer ${
+                                        timeframe === tf
+                                            ? "bg-accent-primary text-white shadow-sm"
+                                            : "text-text-muted hover:text-text-primary hover:bg-bg-dark"
+                                    }`}
+                                >
+                                    {tf === "all" ? "All Time" : tf.toUpperCase()}
+                                </button>
+                            ))}
+                            <button
+                                onClick={() => { fetchFeedStats(); fetchReputation(); }}
+                                disabled={loadingMetrics || loadingReputation}
+                                className="p-1 text-text-muted hover:text-text-primary hover:bg-bg-dark rounded-lg transition-colors ml-1 cursor-pointer"
+                                title="Refresh Now"
+                            >
+                                <RefreshCw className={`w-3.5 h-3.5 ${(loadingMetrics || loadingReputation) ? "animate-spin" : ""}`} />
+                            </button>
+                        </div>
                     </div>
                 </div>
 
@@ -611,6 +653,390 @@ export function SecurityIntelligenceTab() {
                     </div>
                 )}
             </div>
+
+            {/* Collapsible Tool Drawer: IP & ASN Threat Investigator OR Ad-Hoc Feed Block */}
+            {activeToolPanel === "investigate" && (
+                <div className="bg-bg-card border border-accent-primary/40 rounded-xl p-5 shadow-md">
+                    <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-2.5">
+                            <Search className="w-5 h-5 text-accent-primary" />
+                            <h3 className="text-base font-bold text-text-primary">
+                                IP & ASN Threat Investigator
+                            </h3>
+                        </div>
+                        <button
+                            type="button"
+                            onClick={() => setActiveToolPanel("none")}
+                            className="px-2.5 py-1 rounded-lg text-xs font-semibold text-text-muted hover:text-text-primary hover:bg-bg-surface border border-border-color cursor-pointer"
+                        >
+                            Close ✕
+                        </button>
+                    </div>
+                    <p className="text-xs text-text-muted mb-4">
+                        Triage any IPv4 address or Autonomous System (ASN). Retrieve enriched threat posture, blacklists, active firewall shuns, residential strikes, and user VPN telemetry.
+                    </p>
+
+                    <form onSubmit={handleInvestigate} className="flex gap-2">
+                        <input
+                            type="text"
+                            placeholder="Enter IPv4 or ASN (e.g. 73.150.200.49 or AS16509)..."
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            className="flex-1 bg-bg-surface border border-border-color rounded-lg px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-accent-primary"
+                        />
+                        <button
+                            type="submit"
+                            disabled={investigating || !searchQuery.trim()}
+                            className="px-4 py-2 bg-accent-primary hover:bg-accent-hover disabled:opacity-50 text-white rounded-lg text-sm font-semibold flex items-center gap-2 transition-colors cursor-pointer"
+                        >
+                            {investigating ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
+                            Investigate
+                        </button>
+                    </form>
+
+                    {investigateError && (
+                        <div className="mt-4 p-3 bg-red-500/10 border border-red-500/20 text-red-400 rounded-lg text-xs flex items-center gap-2">
+                            <AlertTriangle className="w-4 h-4 shrink-0" />
+                            {investigateError}
+                        </div>
+                    )}
+
+                    {investigateResult && (
+                        <div className="mt-5 space-y-4 text-xs">
+                            <div className="p-3 bg-bg-surface border border-border-color rounded-lg space-y-2">
+                                <div className="flex items-center justify-between">
+                                    <span className="font-semibold text-text-primary flex items-center gap-1.5 font-mono">
+                                        {investigateResult.type === "ASN" && <Network className="w-3.5 h-3.5 text-accent-primary" />}
+                                        {investigateResult.target}
+                                    </span>
+                                    <span className={`px-2 py-0.5 rounded text-[11px] font-bold ${
+                                        investigateResult.inSecurityIntelligence || investigateResult.isBlacklisted
+                                            ? "bg-red-500/20 text-red-400 border border-red-500/30" 
+                                            : "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"
+                                    }`}>
+                                        {investigateResult.type === "ASN" 
+                                            ? (investigateResult.isBlacklisted ? "BLACKLISTED ASN" : "ACTIVE ASN")
+                                            : (investigateResult.inSecurityIntelligence ? "BLOCKED IN SI / SHUNS" : "CLEAN / NOT BLOCKED")}
+                                    </span>
+                                </div>
+                                {investigateResult.type === "ASN" ? (
+                                    <>
+                                        <div className="text-text-muted">
+                                            Provider: <span className="text-text-primary font-medium">{investigateResult.asnName}</span> ({investigateResult.country})
+                                        </div>
+                                        {investigateResult.isBlacklisted && investigateResult.blacklistReason && (
+                                            <div className="text-red-400 font-medium">
+                                                Guardian Blacklist Reason: <span className="text-text-primary font-normal">{investigateResult.blacklistReason}</span>
+                                            </div>
+                                        )}
+                                        <div className="text-text-muted">
+                                            VPN Telemetry: <span className="font-semibold text-emerald-400">{investigateResult.vpnHistory?.successfulLogins?.toLocaleString() || 0} successes</span> • <span className="text-orange-400">{investigateResult.vpnHistory?.failedLogins?.toLocaleString() || 0} failures</span>
+                                        </div>
+                                        <div className="text-text-muted">
+                                            Active Residential Strikes: <span className="font-semibold text-text-primary">{investigateResult.details?.residentialStrikesCount || 0} tracked IPs</span>
+                                        </div>
+                                    </>
+                                ) : (
+                                    <>
+                                        <div className="text-text-muted flex items-center justify-between gap-2 flex-wrap">
+                                            <div>
+                                                ISP / Org: <span className="text-text-primary font-medium">{investigateResult.ipInfo?.as_name || "Unknown"}</span> (
+                                                {investigateResult.ipInfo?.asn && investigateResult.ipInfo.asn !== "Unknown" && investigateResult.ipInfo.asn !== "Unenriched" ? (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => executeInvestigate(investigateResult.ipInfo.asn)}
+                                                        className="text-accent-primary hover:underline font-mono inline-flex items-center gap-0.5 cursor-pointer font-semibold"
+                                                        title={`Investigate ASN ${investigateResult.ipInfo.asn}`}
+                                                    >
+                                                        {investigateResult.ipInfo.asn} <ExternalLink className="w-3 h-3 inline" />
+                                                    </button>
+                                                ) : (
+                                                    <span className="text-amber-400 font-medium">{investigateResult.ipInfo?.asn || "N/A"}</span>
+                                                )}) • {investigateResult.ipInfo?.country || "US"}
+                                            </div>
+                                            {investigateResult.type === "IP" && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => executeInvestigate(investigateResult.target, true)}
+                                                    disabled={enriching || investigating}
+                                                    className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-semibold border transition-all cursor-pointer ${
+                                                        investigateResult.ipInfo?.as_name === "Unenriched" || investigateResult.ipInfo?.as_name === "Unknown" || !investigateResult.ipInfo?.asn || investigateResult.ipInfo?.asn === "Unenriched"
+                                                            ? "bg-amber-500/20 text-amber-300 border-amber-500/40 hover:bg-amber-500/30 animate-pulse shadow-sm"
+                                                            : "bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700"
+                                                    }`}
+                                                    title="Perform live IPLocate geo/ASN lookup (uses 1 API credit)"
+                                                >
+                                                    {enriching ? (
+                                                        <>
+                                                            <RefreshCw className="w-3 h-3 animate-spin text-amber-400" />
+                                                            <span>Enriching...</span>
+                                                        </>
+                                                    ) : (
+                                                        <>
+                                                            <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                                                            <span>{investigateResult.ipInfo?.as_name === "Unenriched" ? "Enrich on the Spot" : "Re-enrich IP"}</span>
+                                                        </>
+                                                    )}
+                                                </button>
+                                            )}
+                                        </div>
+                                        {investigateResult.details?.asnBlacklisted && (
+                                            <div className="p-2 rounded bg-red-500/10 border border-red-500/25 text-red-300 flex items-center justify-between gap-2">
+                                                <div className="flex items-center gap-1.5">
+                                                    <AlertTriangle className="w-4 h-4 text-red-400 shrink-0" />
+                                                    <span>
+                                                        Host ASN <strong className="font-mono text-white">{investigateResult.ipInfo?.asn}</strong> is in Guardian Blacklist ({investigateResult.details.asnBlacklistReason || "Hostile network"}).
+                                                    </span>
+                                                </div>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => executeInvestigate(investigateResult.ipInfo.asn)}
+                                                    className="px-2 py-0.5 rounded bg-red-500/20 hover:bg-red-500/30 text-white font-medium text-[11px] border border-red-500/40 transition-colors whitespace-nowrap cursor-pointer"
+                                                >
+                                                    Inspect ASN
+                                                </button>
+                                            </div>
+                                        )}
+                                        {investigateResult.details?.inBlacklist && (
+                                            <div className="text-text-muted flex items-center gap-1.5">
+                                                <Lock className="w-3.5 h-3.5 text-red-400" />
+                                                <span>Guardian IP Blacklist: <span className="font-semibold text-red-400">Locked (Permanent Do-Not-Unshun)</span> {investigateResult.details.blacklistReason && `• "${investigateResult.details.blacklistReason}"`}</span>
+                                            </div>
+                                        )}
+                                        {investigateResult.details?.residential && (
+                                            <div className="text-text-muted">
+                                                Residential Strike: <span className="font-semibold text-amber-400">Strike {investigateResult.details.residential.strikeCount} ({investigateResult.details.residential.status})</span> • Attempted: {investigateResult.details.residential.attemptedUsers?.join(", ") || "None"}
+                                            </div>
+                                        )}
+                                        <div className="text-text-muted">
+                                            Graylog FTD Drops (24h): <span className="font-mono font-bold text-red-400">{investigateResult.ftdDropCount24h} drops</span>
+                                        </div>
+                                        <div className="text-text-muted">
+                                            VPN History: <span className={`font-semibold ${investigateResult.vpnHistory?.hasRecentSuccess ? "text-emerald-400" : "text-text-primary"}`}>
+                                                {investigateResult.vpnHistory?.hasRecentSuccess ? `Yes (${investigateResult.vpnHistory.successfulLogins} successful logins)` : "No successful logins"}
+                                            </span>
+                                        </div>
+                                        {investigateResult.vpnHistory?.gateways && (
+                                            <div className="text-text-muted flex items-center gap-1.5 flex-wrap pt-0.5 text-[11px]">
+                                                <span className="font-medium text-text-secondary">VPN Streams:</span>
+                                                <span
+                                                    className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-300 border border-emerald-500/25 font-mono"
+                                                    title="Wilmington Data Center - WDC-FTD (connect.cooperhealth.edu)"
+                                                >
+                                                    Connect (Wilmington): {investigateResult.vpnHistory.gateways.connect.failures} fails
+                                                    {investigateResult.vpnHistory.gateways.connect.successes > 0 && ` / ${investigateResult.vpnHistory.gateways.connect.successes} ok`}
+                                                </span>
+                                                <span
+                                                    className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-rose-500/10 text-rose-300 border border-rose-500/25 font-mono"
+                                                    title="Keleman Data Center - Kel-3140 (reconnect.cooperhealth.edu)"
+                                                >
+                                                    Reconnect (Keleman): {investigateResult.vpnHistory.gateways.reconnect.failures} fails
+                                                    {investigateResult.vpnHistory.gateways.reconnect.successes > 0 && ` / ${investigateResult.vpnHistory.gateways.reconnect.successes} ok`}
+                                                </span>
+                                            </div>
+                                        )}
+                                    </>
+                                )}
+                            </div>
+
+                            {investigateResult.type === "IP" && investigateResult.strikeEvidence && (
+                                <StrikeEvidencePanel evidence={investigateResult.strikeEvidence} />
+                            )}
+
+                            <div className="p-3 rounded-lg border bg-accent-primary/5 border-accent-primary/20 space-y-1">
+                                <div className="font-bold text-accent-primary flex items-center gap-1.5">
+                                    <ShieldCheck className="w-4 h-4" /> Recommendation
+                                </div>
+                                <div className="text-text-secondary">
+                                    {investigateResult.verdict?.recommendation}
+                                </div>
+                            </div>
+
+                            {/* Action Buttons */}
+                            <div className="pt-2 flex flex-wrap gap-2">
+                                {investigateResult.type === "ASN" ? (
+                                    investigateResult.isBlacklisted ? (
+                                        <button
+                                            type="button"
+                                            onClick={() => handleToggleAsnBlacklist(false)}
+                                            disabled={blacklistActionLoading}
+                                            className="flex-1 py-2 px-3 bg-slate-700 hover:bg-slate-600 disabled:opacity-50 text-white rounded-lg font-semibold flex items-center justify-center gap-2 transition-colors cursor-pointer text-xs"
+                                        >
+                                            {blacklistActionLoading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Unlock className="w-4 h-4 text-emerald-400" />}
+                                            Remove {investigateResult.target} from Guardian Blacklist
+                                        </button>
+                                    ) : (
+                                        <button
+                                            type="button"
+                                            onClick={() => handleToggleAsnBlacklist(true)}
+                                            disabled={blacklistActionLoading}
+                                            className="flex-1 py-2 px-3 bg-red-600 hover:bg-red-500 disabled:opacity-50 text-white rounded-lg font-semibold flex items-center justify-center gap-2 transition-colors cursor-pointer text-xs"
+                                        >
+                                            {blacklistActionLoading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Ban className="w-4 h-4" />}
+                                            Blacklist Entire {investigateResult.target} ({investigateResult.asnName || "ASN"})
+                                        </button>
+                                    )
+                                ) : (
+                                    <>
+                                        {investigateResult.details?.inBlacklist ? (
+                                            <button
+                                                type="button"
+                                                onClick={() => handleToggleIpBlacklist(false)}
+                                                disabled={blacklistActionLoading}
+                                                className="flex-1 py-2 px-3 bg-slate-700 hover:bg-slate-600 disabled:opacity-50 text-white rounded-lg font-semibold flex items-center justify-center gap-2 transition-colors cursor-pointer text-xs"
+                                            >
+                                                {blacklistActionLoading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Unlock className="w-4 h-4 text-emerald-400" />}
+                                                Remove IP from Guardian Blacklist (Allow Auto-Unshun)
+                                            </button>
+                                        ) : (
+                                            <button
+                                                type="button"
+                                                onClick={() => handleToggleIpBlacklist(true)}
+                                                disabled={blacklistActionLoading}
+                                                className="flex-1 py-2 px-3 bg-red-700 hover:bg-red-600 disabled:opacity-50 text-white rounded-lg font-semibold flex items-center justify-center gap-2 transition-colors cursor-pointer text-xs"
+                                                title="Lock IP permanently into Guardian Blacklist so background cron jobs never automatically un-shun it"
+                                            >
+                                                {blacklistActionLoading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Lock className="w-4 h-4" />}
+                                                Lock IP into Guardian Blacklist (Permanent Do-Not-Unshun)
+                                            </button>
+                                        )}
+
+                                        {investigateResult.inSecurityIntelligence && (
+                                            <button
+                                                type="button"
+                                                onClick={handleAllowlistAndUnblock}
+                                                disabled={unblocking}
+                                                className="flex-1 py-2 px-3 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white rounded-lg font-semibold flex items-center justify-center gap-2 transition-colors cursor-pointer text-xs"
+                                            >
+                                                {unblocking ? <RefreshCw className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
+                                                Allowlist & Unblock from Perimeter Fleet
+                                            </button>
+                                        )}
+                                    </>
+                                )}
+                            </div>
+
+                            {blacklistActionMessage && (
+                                <div className={`p-2.5 rounded-lg text-xs flex items-center gap-2 border ${
+                                    blacklistActionMessage.type === "success" 
+                                        ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400" 
+                                        : "bg-red-500/10 border-red-500/20 text-red-400"
+                                }`}>
+                                    {blacklistActionMessage.type === "success" ? <CheckCircle2 className="w-4 h-4" /> : <AlertTriangle className="w-4 h-4" />}
+                                    {blacklistActionMessage.text}
+                                </div>
+                            )}
+
+                            {unblockMessage && (
+                                <div className={`p-2.5 rounded-lg text-xs flex items-center gap-2 border ${
+                                    unblockMessage.type === "success" 
+                                        ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400" 
+                                        : "bg-red-500/10 border-red-500/20 text-red-400"
+                                }`}>
+                                    {unblockMessage.type === "success" ? <CheckCircle2 className="w-4 h-4" /> : <AlertTriangle className="w-4 h-4" />}
+                                    {unblockMessage.text}
+                                </div>
+                            )}
+                        </div>
+                    )}
+                </div>
+            )}
+
+            {activeToolPanel === "adhoc" && (
+                <div className="bg-bg-card border border-red-500/40 rounded-xl p-5 shadow-md">
+                    <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-2.5">
+                            <Plus className="w-5 h-5 text-red-400" />
+                            <h3 className="text-base font-bold text-text-primary">
+                                Ad-Hoc Add to Security Intelligence
+                            </h3>
+                        </div>
+                        <button
+                            type="button"
+                            onClick={() => setActiveToolPanel("none")}
+                            className="px-2.5 py-1 rounded-lg text-xs font-semibold text-text-muted hover:text-text-primary hover:bg-bg-surface border border-border-color cursor-pointer"
+                        >
+                            Close ✕
+                        </button>
+                    </div>
+                    <p className="text-xs text-text-muted mb-4">
+                        Block an IP or CIDR block immediately. Supports ephemeral shun bridge to protect against active bursts while FMC polls.
+                    </p>
+
+                    <form onSubmit={handleAdhocAdd} className="grid grid-cols-1 md:grid-cols-2 gap-4 items-end">
+                        <div>
+                            <label className="text-xs font-semibold text-text-secondary">Target IP or CIDR</label>
+                            <input
+                                type="text"
+                                placeholder="e.g. 198.51.100.4 or 198.51.100.0/24"
+                                value={addTarget}
+                                onChange={(e) => setAddTarget(e.target.value)}
+                                className="w-full mt-1 bg-bg-surface border border-border-color rounded-lg px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-accent-primary"
+                            />
+                        </div>
+
+                        <div>
+                            <label className="text-xs font-semibold text-text-secondary">Reason / Ticket #</label>
+                            <input
+                                type="text"
+                                placeholder="e.g. Active Citrix credential spray wave"
+                                value={addReason}
+                                onChange={(e) => setAddReason(e.target.value)}
+                                className="w-full mt-1 bg-bg-surface border border-border-color rounded-lg px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-accent-primary"
+                            />
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                            <input
+                                type="checkbox"
+                                id="tempShunCheck"
+                                checked={applyTempShun}
+                                onChange={(e) => setApplyTempShun(e.target.checked)}
+                                className="rounded border-border-color text-accent-primary focus:ring-0 cursor-pointer"
+                            />
+                            <label htmlFor="tempShunCheck" className="text-xs text-text-secondary cursor-pointer">
+                                Apply Dynamic Ephemeral Shun Bridge (Instant drop on firewalls)
+                            </label>
+                        </div>
+
+                        <button
+                            type="submit"
+                            disabled={addLoading || !addTarget.trim() || !addReason.trim()}
+                            className="w-full px-4 py-2 bg-red-600 hover:bg-red-500 disabled:opacity-50 text-white rounded-lg text-sm font-semibold flex items-center justify-center gap-2 transition-colors cursor-pointer"
+                        >
+                            {addLoading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <ShieldAlert className="w-4 h-4" />}
+                            Add to Security Intelligence Feed
+                        </button>
+                    </form>
+
+                    {addMessage && (
+                        <div className={`mt-4 p-3 rounded-lg text-xs flex items-center gap-2 border ${
+                            addMessage.type === "success" 
+                                ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400" 
+                                : "bg-red-500/10 border-red-500/20 text-red-400"
+                        }`}>
+                            {addMessage.type === "success" ? <CheckCircle2 className="w-4 h-4" /> : <AlertTriangle className="w-4 h-4" />}
+                            {addMessage.text}
+                        </div>
+                    )}
+
+                    {/* Quick FMC Feed URL Box */}
+                    <div className="mt-4 pt-3 border-t border-border-color flex items-center justify-between gap-3">
+                        <span className="text-xs font-semibold text-text-secondary">Cisco FMC Live Feed Endpoint:</span>
+                        <div className="flex items-center gap-2 bg-bg-surface border border-border-color rounded px-2.5 py-1 text-xs flex-1 max-w-md">
+                            <span className="font-mono text-text-muted truncate flex-1">{feedUrl}</span>
+                            <button
+                                type="button"
+                                onClick={copyFeedUrl}
+                                className="p-1 hover:bg-bg-dark rounded text-text-secondary hover:text-text-primary transition-colors cursor-pointer"
+                                title="Copy Feed URL"
+                            >
+                                {copiedUrl ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* Reputation KPI Metric Cards */}
             <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
@@ -945,377 +1371,6 @@ export function SecurityIntelligenceTab() {
                         </div>
                     </div>
                 </div>
-            </div>
-
-            {/* Split Grid: False-Positive Investigator & Ad-Hoc Add */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-
-                {/* Left Card: False-Positive & Block Investigator */}
-                <div className="bg-bg-card border border-border-color rounded-xl p-5 shadow-sm flex flex-col justify-between">
-                    <div>
-                        <div className="flex items-center gap-2.5 mb-2">
-                            <Search className="w-5 h-5 text-accent-primary" />
-                            <h3 className="text-base font-bold text-text-primary">
-                                IP & ASN Threat Investigator
-                            </h3>
-                        </div>
-                        <p className="text-xs text-text-muted mb-4">
-                            Triage any IPv4 address or Autonomous System (ASN). Retrieve enriched threat posture, blacklists, active firewall shuns, residential strikes, and user VPN telemetry.
-                        </p>
-
-                        <form onSubmit={handleInvestigate} className="flex gap-2">
-                            <input
-                                type="text"
-                                placeholder="Enter IPv4 or ASN (e.g. 73.150.200.49 or AS16509)..."
-                                value={searchQuery}
-                                onChange={(e) => setSearchQuery(e.target.value)}
-                                className="flex-1 bg-bg-surface border border-border-color rounded-lg px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-accent-primary"
-                            />
-                            <button
-                                type="submit"
-                                disabled={investigating || !searchQuery.trim()}
-                                className="px-4 py-2 bg-accent-primary hover:bg-accent-hover disabled:opacity-50 text-white rounded-lg text-sm font-semibold flex items-center gap-2 transition-colors cursor-pointer"
-                            >
-                                {investigating ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
-                                Investigate
-                            </button>
-                        </form>
-
-                        {investigateError && (
-                            <div className="mt-4 p-3 bg-red-500/10 border border-red-500/20 text-red-400 rounded-lg text-xs flex items-center gap-2">
-                                <AlertTriangle className="w-4 h-4 shrink-0" />
-                                {investigateError}
-                            </div>
-                        )}
-
-                        {investigateResult && (
-                            <div className="mt-5 space-y-4 text-xs">
-                                <div className="p-3 bg-bg-surface border border-border-color rounded-lg space-y-2">
-                                    <div className="flex items-center justify-between">
-                                        <span className="font-semibold text-text-primary flex items-center gap-1.5 font-mono">
-                                            {investigateResult.type === "ASN" && <Network className="w-3.5 h-3.5 text-accent-primary" />}
-                                            {investigateResult.target}
-                                        </span>
-                                        <span className={`px-2 py-0.5 rounded text-[11px] font-bold ${
-                                            investigateResult.inSecurityIntelligence || investigateResult.isBlacklisted
-                                                ? "bg-red-500/20 text-red-400 border border-red-500/30" 
-                                                : "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"
-                                        }`}>
-                                            {investigateResult.type === "ASN" 
-                                                ? (investigateResult.isBlacklisted ? "BLACKLISTED ASN" : "ACTIVE ASN")
-                                                : (investigateResult.inSecurityIntelligence ? "BLOCKED IN SI / SHUNS" : "CLEAN / NOT BLOCKED")}
-                                        </span>
-                                    </div>
-                                    {investigateResult.type === "ASN" ? (
-                                        <>
-                                            <div className="text-text-muted">
-                                                Provider: <span className="text-text-primary font-medium">{investigateResult.asnName}</span> ({investigateResult.country})
-                                            </div>
-                                            {investigateResult.isBlacklisted && investigateResult.blacklistReason && (
-                                                <div className="text-red-400 font-medium">
-                                                    Guardian Blacklist Reason: <span className="text-text-primary font-normal">{investigateResult.blacklistReason}</span>
-                                                </div>
-                                            )}
-                                            <div className="text-text-muted">
-                                                VPN Telemetry: <span className="font-semibold text-emerald-400">{investigateResult.vpnHistory?.successfulLogins?.toLocaleString() || 0} successes</span> • <span className="text-orange-400">{investigateResult.vpnHistory?.failedLogins?.toLocaleString() || 0} failures</span>
-                                            </div>
-                                            <div className="text-text-muted">
-                                                Active Residential Strikes: <span className="font-semibold text-text-primary">{investigateResult.details?.residentialStrikesCount || 0} tracked IPs</span>
-                                            </div>
-                                        </>
-                                    ) : (
-                                        <>
-                                            <div className="text-text-muted flex items-center justify-between gap-2 flex-wrap">
-                                                <div>
-                                                    ISP / Org: <span className="text-text-primary font-medium">{investigateResult.ipInfo?.as_name || "Unknown"}</span> (
-                                                    {investigateResult.ipInfo?.asn && investigateResult.ipInfo.asn !== "Unknown" && investigateResult.ipInfo.asn !== "Unenriched" ? (
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => executeInvestigate(investigateResult.ipInfo.asn)}
-                                                            className="text-accent-primary hover:underline font-mono inline-flex items-center gap-0.5 cursor-pointer font-semibold"
-                                                            title={`Investigate ASN ${investigateResult.ipInfo.asn}`}
-                                                        >
-                                                            {investigateResult.ipInfo.asn} <ExternalLink className="w-3 h-3 inline" />
-                                                        </button>
-                                                    ) : (
-                                                        <span className="text-amber-400 font-medium">{investigateResult.ipInfo?.asn || "N/A"}</span>
-                                                    )}) • {investigateResult.ipInfo?.country || "US"}
-                                                </div>
-                                                {investigateResult.type === "IP" && (
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => executeInvestigate(investigateResult.target, true)}
-                                                        disabled={enriching || investigating}
-                                                        className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-semibold border transition-all cursor-pointer ${
-                                                            investigateResult.ipInfo?.as_name === "Unenriched" || investigateResult.ipInfo?.as_name === "Unknown" || !investigateResult.ipInfo?.asn || investigateResult.ipInfo?.asn === "Unenriched"
-                                                                ? "bg-amber-500/20 text-amber-300 border-amber-500/40 hover:bg-amber-500/30 animate-pulse shadow-sm"
-                                                                : "bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700"
-                                                        }`}
-                                                        title="Perform live IPLocate geo/ASN lookup (uses 1 API credit)"
-                                                    >
-                                                        {enriching ? (
-                                                            <>
-                                                                <RefreshCw className="w-3 h-3 animate-spin text-amber-400" />
-                                                                <span>Enriching...</span>
-                                                            </>
-                                                        ) : (
-                                                            <>
-                                                                <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-                                                                <span>{investigateResult.ipInfo?.as_name === "Unenriched" ? "Enrich on the Spot" : "Re-enrich IP"}</span>
-                                                            </>
-                                                        )}
-                                                    </button>
-                                                )}
-                                            </div>
-                                            {investigateResult.details?.asnBlacklisted && (
-                                                <div className="p-2 rounded bg-red-500/10 border border-red-500/25 text-red-300 flex items-center justify-between gap-2">
-                                                    <div className="flex items-center gap-1.5">
-                                                        <AlertTriangle className="w-4 h-4 text-red-400 shrink-0" />
-                                                        <span>
-                                                            Host ASN <strong className="font-mono text-white">{investigateResult.ipInfo?.asn}</strong> is in Guardian Blacklist ({investigateResult.details.asnBlacklistReason || "Hostile network"}).
-                                                        </span>
-                                                    </div>
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => executeInvestigate(investigateResult.ipInfo.asn)}
-                                                        className="px-2 py-0.5 rounded bg-red-500/20 hover:bg-red-500/30 text-white font-medium text-[11px] border border-red-500/40 transition-colors whitespace-nowrap cursor-pointer"
-                                                    >
-                                                        Inspect ASN
-                                                    </button>
-                                                </div>
-                                            )}
-                                            {investigateResult.details?.inBlacklist && (
-                                                <div className="text-text-muted flex items-center gap-1.5">
-                                                    <Lock className="w-3.5 h-3.5 text-red-400" />
-                                                    <span>Guardian IP Blacklist: <span className="font-semibold text-red-400">Locked (Permanent Do-Not-Unshun)</span> {investigateResult.details.blacklistReason && `• "${investigateResult.details.blacklistReason}"`}</span>
-                                                </div>
-                                            )}
-                                            {investigateResult.details?.residential && (
-                                                <div className="text-text-muted">
-                                                    Residential Strike: <span className="font-semibold text-amber-400">Strike {investigateResult.details.residential.strikeCount} ({investigateResult.details.residential.status})</span> • Attempted: {investigateResult.details.residential.attemptedUsers?.join(", ") || "None"}
-                                                </div>
-                                            )}
-                                            <div className="text-text-muted">
-                                                Graylog FTD Drops (24h): <span className="font-mono font-bold text-red-400">{investigateResult.ftdDropCount24h} drops</span>
-                                            </div>
-                                            <div className="text-text-muted">
-                                                VPN History: <span className={`font-semibold ${investigateResult.vpnHistory?.hasRecentSuccess ? "text-emerald-400" : "text-text-primary"}`}>
-                                                    {investigateResult.vpnHistory?.hasRecentSuccess ? `Yes (${investigateResult.vpnHistory.successfulLogins} successful logins)` : "No successful logins"}
-                                                </span>
-                                            </div>
-                                            {investigateResult.vpnHistory?.gateways && (
-                                                <div className="text-text-muted flex items-center gap-1.5 flex-wrap pt-0.5 text-[11px]">
-                                                    <span className="font-medium text-text-secondary">VPN Streams:</span>
-                                                    <span
-                                                        className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-300 border border-emerald-500/25 font-mono"
-                                                        title="Wilmington Data Center - WDC-FTD (connect.cooperhealth.edu)"
-                                                    >
-                                                        Connect (Wilmington): {investigateResult.vpnHistory.gateways.connect.failures} fails
-                                                        {investigateResult.vpnHistory.gateways.connect.successes > 0 && ` / ${investigateResult.vpnHistory.gateways.connect.successes} ok`}
-                                                    </span>
-                                                    <span
-                                                        className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-rose-500/10 text-rose-300 border border-rose-500/25 font-mono"
-                                                        title="Keleman Data Center - Kel-3140 (reconnect.cooperhealth.edu)"
-                                                    >
-                                                        Reconnect (Keleman): {investigateResult.vpnHistory.gateways.reconnect.failures} fails
-                                                        {investigateResult.vpnHistory.gateways.reconnect.successes > 0 && ` / ${investigateResult.vpnHistory.gateways.reconnect.successes} ok`}
-                                                    </span>
-                                                </div>
-                                            )}
-                                        </>
-                                    )}
-                                </div>
-
-                                {investigateResult.type === "IP" && investigateResult.strikeEvidence && (
-                                    <StrikeEvidencePanel evidence={investigateResult.strikeEvidence} />
-                                )}
-
-                                <div className="p-3 rounded-lg border bg-accent-primary/5 border-accent-primary/20 space-y-1">
-                                    <div className="font-bold text-accent-primary flex items-center gap-1.5">
-                                        <ShieldCheck className="w-4 h-4" /> Recommendation
-                                    </div>
-                                    <div className="text-text-secondary">
-                                        {investigateResult.verdict?.recommendation}
-                                    </div>
-                                </div>
-
-                                {/* Action Buttons */}
-                                <div className="pt-2 flex flex-col gap-2">
-                                    {investigateResult.type === "ASN" ? (
-                                        investigateResult.isBlacklisted ? (
-                                            <button
-                                                type="button"
-                                                onClick={() => handleToggleAsnBlacklist(false)}
-                                                disabled={blacklistActionLoading}
-                                                className="w-full py-2 px-3 bg-slate-700 hover:bg-slate-600 disabled:opacity-50 text-white rounded-lg font-semibold flex items-center justify-center gap-2 transition-colors cursor-pointer text-xs"
-                                            >
-                                                {blacklistActionLoading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Unlock className="w-4 h-4 text-emerald-400" />}
-                                                Remove {investigateResult.target} from Guardian Blacklist
-                                            </button>
-                                        ) : (
-                                            <button
-                                                type="button"
-                                                onClick={() => handleToggleAsnBlacklist(true)}
-                                                disabled={blacklistActionLoading}
-                                                className="w-full py-2 px-3 bg-red-600 hover:bg-red-500 disabled:opacity-50 text-white rounded-lg font-semibold flex items-center justify-center gap-2 transition-colors cursor-pointer text-xs"
-                                            >
-                                                {blacklistActionLoading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Ban className="w-4 h-4" />}
-                                                Blacklist Entire {investigateResult.target} ({investigateResult.asnName || "ASN"})
-                                            </button>
-                                        )
-                                    ) : (
-                                        <>
-                                            {investigateResult.details?.inBlacklist ? (
-                                                <button
-                                                    type="button"
-                                                    onClick={() => handleToggleIpBlacklist(false)}
-                                                    disabled={blacklistActionLoading}
-                                                    className="w-full py-2 px-3 bg-slate-700 hover:bg-slate-600 disabled:opacity-50 text-white rounded-lg font-semibold flex items-center justify-center gap-2 transition-colors cursor-pointer text-xs"
-                                                >
-                                                    {blacklistActionLoading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Unlock className="w-4 h-4 text-emerald-400" />}
-                                                    Remove IP from Guardian Blacklist (Allow Auto-Unshun)
-                                                </button>
-                                            ) : (
-                                                <button
-                                                    type="button"
-                                                    onClick={() => handleToggleIpBlacklist(true)}
-                                                    disabled={blacklistActionLoading}
-                                                    className="w-full py-2 px-3 bg-red-700 hover:bg-red-600 disabled:opacity-50 text-white rounded-lg font-semibold flex items-center justify-center gap-2 transition-colors cursor-pointer text-xs"
-                                                    title="Lock IP permanently into Guardian Blacklist so background cron jobs never automatically un-shun it"
-                                                >
-                                                    {blacklistActionLoading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Lock className="w-4 h-4" />}
-                                                    Lock IP into Guardian Blacklist (Permanent Do-Not-Unshun)
-                                                </button>
-                                            )}
-
-                                            {investigateResult.inSecurityIntelligence && (
-                                                <button
-                                                    type="button"
-                                                    onClick={handleAllowlistAndUnblock}
-                                                    disabled={unblocking}
-                                                    className="w-full py-2 px-3 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white rounded-lg font-semibold flex items-center justify-center gap-2 transition-colors cursor-pointer text-xs"
-                                                >
-                                                    {unblocking ? <RefreshCw className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
-                                                    Allowlist & Unblock from Perimeter Fleet
-                                                </button>
-                                            )}
-                                        </>
-                                    )}
-                                </div>
-
-                                {blacklistActionMessage && (
-                                    <div className={`p-2.5 rounded-lg text-xs flex items-center gap-2 border ${
-                                        blacklistActionMessage.type === "success" 
-                                            ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400" 
-                                            : "bg-red-500/10 border-red-500/20 text-red-400"
-                                    }`}>
-                                        {blacklistActionMessage.type === "success" ? <CheckCircle2 className="w-4 h-4" /> : <AlertTriangle className="w-4 h-4" />}
-                                        {blacklistActionMessage.text}
-                                    </div>
-                                )}
-
-                                {unblockMessage && (
-                                    <div className={`p-2.5 rounded-lg text-xs flex items-center gap-2 border ${
-                                        unblockMessage.type === "success" 
-                                            ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400" 
-                                            : "bg-red-500/10 border-red-500/20 text-red-400"
-                                    }`}>
-                                        {unblockMessage.type === "success" ? <CheckCircle2 className="w-4 h-4" /> : <AlertTriangle className="w-4 h-4" />}
-                                        {unblockMessage.text}
-                                    </div>
-                                )}
-                            </div>
-                        )}
-                    </div>
-                </div>
-
-                {/* Right Card: Ad-Hoc Add & FMC Feed Configuration */}
-                <div className="bg-bg-card border border-border-color rounded-xl p-5 shadow-sm flex flex-col justify-between">
-                    <div>
-                        <div className="flex items-center gap-2.5 mb-2">
-                            <Plus className="w-5 h-5 text-red-400" />
-                            <h3 className="text-base font-bold text-text-primary">
-                                Ad-Hoc Add to Security Intelligence
-                            </h3>
-                        </div>
-                        <p className="text-xs text-text-muted mb-4">
-                            Block an IP or CIDR block immediately. Supports ephemeral shun bridge to protect against active bursts while FMC polls.
-                        </p>
-
-                        <form onSubmit={handleAdhocAdd} className="space-y-3">
-                            <div>
-                                <label className="text-xs font-semibold text-text-secondary">Target IP or CIDR</label>
-                                <input
-                                    type="text"
-                                    placeholder="e.g. 198.51.100.4 or 198.51.100.0/24"
-                                    value={addTarget}
-                                    onChange={(e) => setAddTarget(e.target.value)}
-                                    className="w-full mt-1 bg-bg-surface border border-border-color rounded-lg px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-accent-primary"
-                                />
-                            </div>
-
-                            <div>
-                                <label className="text-xs font-semibold text-text-secondary">Reason / Ticket #</label>
-                                <input
-                                    type="text"
-                                    placeholder="e.g. Active Citrix credential spray wave"
-                                    value={addReason}
-                                    onChange={(e) => setAddReason(e.target.value)}
-                                    className="w-full mt-1 bg-bg-surface border border-border-color rounded-lg px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-accent-primary"
-                                />
-                            </div>
-
-                            <div className="flex items-center gap-2 pt-1">
-                                <input
-                                    type="checkbox"
-                                    id="tempShunCheck"
-                                    checked={applyTempShun}
-                                    onChange={(e) => setApplyTempShun(e.target.checked)}
-                                    className="rounded border-border-color text-accent-primary focus:ring-0 cursor-pointer"
-                                />
-                                <label htmlFor="tempShunCheck" className="text-xs text-text-secondary cursor-pointer">
-                                    Apply Dynamic Ephemeral Shun Bridge (Instant drop on firewalls)
-                                </label>
-                            </div>
-
-                            <button
-                                type="submit"
-                                disabled={addLoading || !addTarget.trim() || !addReason.trim()}
-                                className="w-full mt-2 px-4 py-2 bg-red-600 hover:bg-red-500 disabled:opacity-50 text-white rounded-lg text-sm font-semibold flex items-center justify-center gap-2 transition-colors cursor-pointer"
-                            >
-                                {addLoading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <ShieldAlert className="w-4 h-4" />}
-                                Add to Security Intelligence Feed
-                            </button>
-                        </form>
-
-                        {addMessage && (
-                            <div className={`mt-4 p-3 rounded-lg text-xs flex items-center gap-2 border ${
-                                addMessage.type === "success" 
-                                    ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400" 
-                                    : "bg-red-500/10 border-red-500/20 text-red-400"
-                            }`}>
-                                {addMessage.type === "success" ? <CheckCircle2 className="w-4 h-4" /> : <AlertTriangle className="w-4 h-4" />}
-                                {addMessage.text}
-                            </div>
-                        )}
-                    </div>
-
-                    {/* Quick FMC Feed URL Box */}
-                    <div className="mt-6 pt-4 border-t border-border-color">
-                        <div className="text-xs font-semibold text-text-secondary mb-1">Cisco FMC Live Feed Endpoint</div>
-                        <div className="flex items-center gap-2 bg-bg-surface border border-border-color rounded p-2 text-xs">
-                            <span className="font-mono text-text-muted truncate flex-1">{feedUrl}</span>
-                            <button
-                                onClick={copyFeedUrl}
-                                className="p-1.5 hover:bg-bg-dark rounded text-text-secondary hover:text-text-primary transition-colors cursor-pointer"
-                                title="Copy Feed URL"
-                            >
-                                {copiedUrl ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-                            </button>
-                        </div>
-                    </div>
-                </div>
-
             </div>
             </>
             )}
