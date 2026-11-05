@@ -2,7 +2,11 @@ import { prisma } from "@/lib/prisma";
 import { isPrivateIp, getIpEnrichment } from "@/lib/iplocate";
 import { enqueueFirewallCommand, getDynamicHoldExpiresAt } from "@/lib/firewall-queue";
 import { logAudit } from "@/lib/audit";
-import { isCorporateUsernameFormat } from "@/lib/netscaler-login-triage";
+import {
+    isCorporateUsernameFormat,
+    stripDomainSuffix,
+    isNearTypoOfAnchor
+} from "@/lib/netscaler-login-triage";
 
 const HONEYPOT_USERNAMES = new Set([
     "admin",
@@ -235,11 +239,27 @@ export async function recordAuthFailure(event: AuthFailureEvent) {
     const baseUsers = wasPardonedOrWhitelisted ? [] : (existing.attemptedUsers || []);
     const usersSet = new Set(baseUsers);
     usersSet.add(cleanUser);
-    const distinctCount = usersSet.size;
     const attemptedUsersArray = Array.from(usersSet);
 
-    // Pillar 1 Violation: IP tried multiple distinct usernames -> Guaranteed spray botnet
-    const isMultiUserSpray = distinctCount >= 2;
+    // Anchor check: Is this attempt on the same IP a typo/domain-variation of an existing corporate user?
+    const corporateAnchor = attemptedUsersArray.find(
+        (u) => isCorporateUsernameFormat(u) && !HONEYPOT_USERNAMES.has(u)
+    );
+    const isTypoOfAnchorAttempt = Boolean(
+        corporateAnchor && isNearTypoOfAnchor(cleanUser, corporateAnchor)
+    );
+    const effectiveNonCorporateAttempt = isNonCorporateAttempt && !isTypoOfAnchorAttempt;
+
+    // Cluster users into distinct human identities (excluding anchor typos and domain suffixes)
+    const canonicalIdentities = new Set(
+        attemptedUsersArray
+            .filter((u) => !corporateAnchor || u === corporateAnchor || !isNearTypoOfAnchor(u, corporateAnchor))
+            .map((u) => stripDomainSuffix(u).toLowerCase())
+    );
+    const distinctCount = canonicalIdentities.size;
+
+    // Pillar 1 Violation: IP tried multiple distinct human identities -> Spray botnet
+    const isMultiUserSpray = canonicalIdentities.size >= 2;
 
     const msSinceLastFailure = existing.lastSeen ? now.getTime() - new Date(existing.lastSeen).getTime() : Infinity;
     const succeededSinceLastFailure = Boolean(
@@ -256,7 +276,7 @@ export async function recordAuthFailure(event: AuthFailureEvent) {
     // or repeated failures occur within the active 15-minute window.
     if (
         !isMultiUserSpray &&
-        !isNonCorporateAttempt &&
+        !effectiveNonCorporateAttempt &&
         existing.strikeCount <= 1 &&
         (wasPardonedOrWhitelisted || isCompanionRetry || isIsolatedSingleFailureWithPriorSuccess)
     ) {
@@ -400,12 +420,15 @@ export async function recordAuthSuccess(event: AuthSuccessEvent) {
     }
 
     // 4-Pillar Validation for Auto-Pardon:
-    // Pillar 1: IP only ever attempted 1 username
+    // Pillar 1: IP only ever attempted 1 human identity (allowing domain variants and typos)
     // Pillar 2: Not a confirmed spray suspect
     // Pillar 3: Attempted username matches the successful authenticated user
     const attemptedUsers = existing.attemptedUsers || [];
-    const isSingleUser = attemptedUsers.length <= 1;
-    const isUserMatch = attemptedUsers.length === 0 || attemptedUsers[0].toLowerCase() === cleanUser;
+    const hasDifferentHumanUser = attemptedUsers.some(
+        (u) => !isNearTypoOfAnchor(u, cleanUser)
+    );
+    const isSingleUser = !hasDifferentHumanUser;
+    const isUserMatch = true;
 
     if (isSingleUser && isUserMatch && !existing.isSpraySuspect) {
         const wasEnforcedOrQuarantined = existing.status === "ENFORCED" || existing.status === "QUARANTINED";

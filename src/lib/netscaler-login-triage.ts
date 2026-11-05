@@ -135,6 +135,8 @@ export interface CitrixIpEvaluation {
         adDepartment?: string;
         failures: number;
         succeededLater: boolean;
+        isTypoOfAnchor?: boolean;
+        anchorUsername?: string;
     }[];
     firstSeen: string;
     lastSeen: string;
@@ -279,9 +281,73 @@ export interface CitrixLoginTriageResponse {
 
 const CORPORATE_USERNAME_REGEX = /^[a-zA-Z0-9]+-[a-zA-Z0-9]+(?:-[a-zA-Z0-9]+)?$/;
 
+export function stripDomainSuffix(username: string): string {
+    if (!username) return "";
+    return username
+        .toLowerCase()
+        .replace(/^(?:chsmail|cooperhealth)[\\\/]/i, "")
+        .replace(/@(?:chsmail\.root\.)?cooperhealth\.edu$/i, "")
+        .replace(/@.*$/, "")
+        .trim();
+}
+
+export function levenshteinDistance(a: string, b: string): number {
+    if (a === b) return 0;
+    if (!a.length) return b.length;
+    if (!b.length) return a.length;
+
+    const matrix: number[] = [];
+    for (let i = 0; i <= b.length; i++) {
+        matrix[i] = i;
+    }
+
+    for (let i = 1; i <= a.length; i++) {
+        let prev = i;
+        for (let j = 1; j <= b.length; j++) {
+            const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+            const val = Math.min(
+                matrix[j] + 1,        // deletion
+                prev + 1,             // insertion
+                matrix[j - 1] + cost  // substitution
+            );
+            matrix[j - 1] = prev;
+            prev = val;
+        }
+        matrix[b.length] = prev;
+    }
+
+    return matrix[b.length];
+}
+
+/**
+ * Checks whether an unverified or not-in-AD username attempt is a close delimiter
+ * typo or character mistake (edit distance <= 2) of a verified anchor account
+ * attempted on the same IP.
+ */
+export function isNearTypoOfAnchor(candidate: string, anchor: string): boolean {
+    if (!candidate || !anchor) return false;
+    const cClean = stripDomainSuffix(candidate);
+    const aClean = stripDomainSuffix(anchor);
+    if (!cClean || !aClean) return false;
+    if (cClean === aClean) return true;
+
+    // 1. Delimiter swap check (e.g. haviland_elizabeth or haviland.elizabeth vs haviland-elizabeth)
+    const cDelimNorm = cClean.replace(/[_\.\s]+/g, "-");
+    const aDelimNorm = aClean.replace(/[_\.\s]+/g, "-");
+    if (cDelimNorm === aDelimNorm) return true;
+
+    // 2. Levenshtein edit distance check (<= 2 edits, e.g. 1 missing/extra/swapped character)
+    const dist = levenshteinDistance(cDelimNorm, aDelimNorm);
+    const minLen = Math.min(cDelimNorm.length, aDelimNorm.length);
+    if (minLen >= 8 && dist <= 2) return true;
+    if (minLen < 8 && dist <= 1) return true;
+
+    return false;
+}
+
 export function isCorporateUsernameFormat(username: string): boolean {
     if (!username) return false;
-    const clean = username.toLowerCase().replace(/@.*$/, "").trim();
+    const clean = stripDomainSuffix(username);
     if (clean === "anonymous" || clean === "nsroot" || clean === "admin" || clean === "administrator") {
         return false;
     }
@@ -663,7 +729,16 @@ export async function analyzeCitrixLoginTriage(
     for (const f of rawFailures) {
         const u = NetscalerGraylogClient.extractUsername(f.message);
         if (u && u !== "anonymous" && u !== "nsroot") {
-            allUsernamesSet.add(u.toLowerCase());
+            const uClean = u.toLowerCase();
+            allUsernamesSet.add(uClean);
+            const uStripped = stripDomainSuffix(uClean);
+            if (uStripped && uStripped !== uClean) {
+                allUsernamesSet.add(uStripped);
+            }
+            const uHyphenated = uStripped.replace(/[_\.\s]+/g, "-");
+            if (uHyphenated && isCorporateUsernameFormat(uHyphenated)) {
+                allUsernamesSet.add(uHyphenated);
+            }
         }
     }
 
@@ -736,12 +811,14 @@ export async function analyzeCitrixLoginTriage(
         const classified = classifyFailureMessage(msg);
         const uNoDomain = usernameClean.replace(/^[a-zA-Z0-9_\-\.]+[\\\/]/, "");
         const uNoEmail = uNoDomain.split("@")[0];
+        const uStripped = stripDomainSuffix(usernameClean);
         const adInfo =
             adStatusMap[usernameClean] ||
             adStatusMap[usernameRaw] ||
             adStatusMap[uNoDomain] ||
-            adStatusMap[uNoEmail];
-        const isCorp = isCorporateUsernameFormat(usernameClean) || isCorporateUsernameFormat(uNoEmail);
+            adStatusMap[uNoEmail] ||
+            adStatusMap[uStripped];
+        const isCorp = isCorporateUsernameFormat(usernameClean) || isCorporateUsernameFormat(uNoEmail) || isCorporateUsernameFormat(uStripped);
 
         // Correlate with Imprivata RADIUS session if available
         let imprivataVerdict: string | undefined;
@@ -1012,6 +1089,8 @@ export async function analyzeCitrixLoginTriage(
             adDepartment?: string;
             failures: number;
             succeededLater: boolean;
+            isTypoOfAnchor?: boolean;
+            anchorUsername?: string;
         }>();
 
         for (const ev of ipEvents) {
@@ -1050,6 +1129,35 @@ export async function analyzeCitrixLoginTriage(
 
         const targetedUsers = Array.from(userMap.values());
         const nonAnonUsers = targetedUsers.filter((u) => u.username.toLowerCase() !== "anonymous");
+
+        // Anchor Account Typo Resolution:
+        // 1. Identify verified active corporate AD users on this exact IP (Anchors)
+        const anchorUsers = nonAnonUsers.filter(
+            (u) =>
+                (u.adStatus === "ACTIVE" || u.adStatus === "ENABLED" || u.adStatus === "LOCKED") &&
+                u.isCorporateFormat
+        );
+
+        // 2. Identify if any unverified / NOT_FOUND user on this IP is a close typo/delimiter variant of an Anchor
+        for (const u of nonAnonUsers) {
+            if (u.adStatus === "NOT_FOUND" || !u.isCorporateFormat) {
+                for (const anchor of anchorUsers) {
+                    if (isNearTypoOfAnchor(u.username, anchor.username)) {
+                        u.isTypoOfAnchor = true;
+                        u.anchorUsername = anchor.username;
+                        break;
+                    }
+                }
+            }
+        }
+
+        // 3. Cluster distinct human user identities (excluding anchor typos and domain suffixes)
+        const genuineDistinctAccounts = nonAnonUsers.filter((u) => !u.isTypoOfAnchor);
+        const canonicalIdentitySet = new Set(
+            genuineDistinctAccounts.map((u) => stripDomainSuffix(u.username).toLowerCase())
+        );
+        const distinctHumanUserCount = canonicalIdentitySet.size;
+
         const windowCitrixSucc = citrixSuccessByIp.get(ip)?.count || 0;
         const sevenDayCitrixSucc = sevenDayCitrixSuccessMap.get(ip) || 0;
         const citrixSucc = Math.max(windowCitrixSucc, sevenDayCitrixSucc, ledgerEntry?.hasCitrixSuccess ? 1 : 0);
@@ -1097,23 +1205,23 @@ export async function analyzeCitrixLoginTriage(
             riskScore += 50;
         }
 
-        // 2. Password Spraying Check (multiple distinct usernames)
-        if (nonAnonUsers.length >= config.minSprayUsers) {
+        // 2. Password Spraying Check (multiple distinct human identities)
+        if (distinctHumanUserCount >= config.minSprayUsers) {
             triggeredRules.push({
                 code: "PASSWORD_SPRAY",
-                label: `Password Spray (${nonAnonUsers.length} Users)`,
+                label: `Password Spray (${distinctHumanUserCount} Users)`,
                 severity: "CRITICAL",
                 points: 55,
-                detail: `Single IP targeted ${nonAnonUsers.length} distinct usernames (${nonAnonUsers.map((u) => u.username).slice(0, 4).join(", ")}).`,
+                detail: `Single IP targeted ${distinctHumanUserCount} distinct usernames (${Array.from(canonicalIdentitySet).slice(0, 4).join(", ")}).`,
             });
             riskScore += 55;
         }
 
-        // 3. Non-Corporate or Non-Existent AD Usernames
+        // 3. Non-Corporate or Non-Existent AD Usernames (excluding mistyped variants of valid anchor accounts)
         if (config.flagNonExistentAdUsers && nonAnonUsers.length > 0) {
-            const invalidFormatUsers = nonAnonUsers.filter((u) => !u.isCorporateFormat);
-            const notFoundAdUsers = nonAnonUsers.filter((u) => u.isCorporateFormat && u.adStatus === "NOT_FOUND");
-            const disabledLockedUsers = nonAnonUsers.filter((u) => u.adStatus === "DISABLED" || u.adStatus === "LOCKED" || u.adStatus === "EXPIRED");
+            const invalidFormatUsers = nonAnonUsers.filter((u) => !u.isCorporateFormat && !u.isTypoOfAnchor);
+            const notFoundAdUsers = nonAnonUsers.filter((u) => u.isCorporateFormat && u.adStatus === "NOT_FOUND" && !u.isTypoOfAnchor);
+            const disabledLockedUsers = nonAnonUsers.filter((u) => (u.adStatus === "DISABLED" || u.adStatus === "LOCKED" || u.adStatus === "EXPIRED") && !u.isTypoOfAnchor);
 
             if (invalidFormatUsers.length > 0) {
                 triggeredRules.push({
@@ -1207,12 +1315,12 @@ export async function analyzeCitrixLoginTriage(
         }
 
         // Guardian Safety Shield & Residential Threat Lens Evaluation
+        const notFoundAdUsers = nonAnonUsers.filter((u) => u.adStatus === "NOT_FOUND" && !u.isTypoOfAnchor);
+        const invalidFormatUsers = nonAnonUsers.filter((u) => !u.isCorporateFormat && !u.isTypoOfAnchor);
         const allUsersValidAd =
-            nonAnonUsers.length > 0 &&
-            nonAnonUsers.every((u) => u.adStatus === "ACTIVE" || u.adStatus === "ENABLED" || u.adStatus === "LOCKED");
-        const isSingleUser = nonAnonUsers.length === 1;
-        const notFoundAdUsers = nonAnonUsers.filter((u) => u.adStatus === "NOT_FOUND");
-        const invalidFormatUsers = nonAnonUsers.filter((u) => !u.isCorporateFormat);
+            genuineDistinctAccounts.length > 0 &&
+            genuineDistinctAccounts.every((u) => u.adStatus === "ACTIVE" || u.adStatus === "ENABLED" || u.adStatus === "LOCKED");
+        const isSingleUser = distinctHumanUserCount === 1;
         const isOnWatchlist = watchSet.has(ip);
         const isOnGuardianBlacklist = blacklistMap.has(ip);
 
@@ -1224,8 +1332,8 @@ export async function analyzeCitrixLoginTriage(
         if (meta.isResidentialIsp) {
             if (
                 countryCode === "US" &&
-                nonAnonUsers.length >= 1 &&
-                nonAnonUsers.length <= 2 &&
+                distinctHumanUserCount >= 1 &&
+                distinctHumanUserCount <= 2 &&
                 allUsersValidAd &&
                 notFoundAdUsers.length === 0 &&
                 invalidFormatUsers.length === 0 &&
@@ -1233,18 +1341,18 @@ export async function analyzeCitrixLoginTriage(
                     (ipImpMfaTimeoutCount > 0 && ipImpBadPwdCount === 0) ||
                     maxAuthFailuresIn10m < config.minFailuresForBlock)
             ) {
-                isProtectedHousehold = nonAnonUsers.length === 2;
+                isProtectedHousehold = distinctHumanUserCount === 2;
             } else {
                 // Threat Lens: Residential IP with credential spray, dictionary probe, or high-velocity brute force
-                if (nonAnonUsers.length >= 3) {
+                if (distinctHumanUserCount >= 3) {
                     isResidentialAbusive = true;
                     residentialBlockReason = "Credential Spray (≥3 Accounts)";
                     triggeredRules.push({
                         code: "RESIDENTIAL_SPRAY_ATTACK",
-                        label: `Residential Spray (${nonAnonUsers.length} Users)`,
+                        label: `Residential Spray (${distinctHumanUserCount} Users)`,
                         severity: "CRITICAL",
                         points: 70,
-                        detail: `Residential IP targeted ${nonAnonUsers.length} distinct usernames (${nonAnonUsers.map((u) => u.username).slice(0, 4).join(", ")}). Revoked residential safety shield.`,
+                        detail: `Residential IP targeted ${distinctHumanUserCount} distinct usernames (${Array.from(canonicalIdentitySet).slice(0, 4).join(", ")}). Revoked residential safety shield.`,
                     });
                     riskScore += 70;
                 } else if (notFoundAdUsers.length > 0 || invalidFormatUsers.length > 0) {
@@ -2070,17 +2178,18 @@ export async function runCitrixLoginAutoShunCycle(options?: {
         // Continuous Real-Time Integration into 3-Strike Reputation Ledger
         const existingLedger = existingLedgerMap.get(ipEval.ip);
         const nonAnonUsers = ipEval.targetedUsers.filter((u) => u.username.toLowerCase() !== "anonymous");
+        const genuineUsers = nonAnonUsers.filter((u) => !u.isTypoOfAnchor);
+        const canonicalUsers = Array.from(new Set(genuineUsers.map((u) => stripDomainSuffix(u.username).toLowerCase())));
         const uList = nonAnonUsers.length > 0 ? nonAnonUsers.map((u) => u.username) : ipEval.targetedUsers.map((u) => u.username);
-        const isMultiUser = nonAnonUsers.length >= 2;
-        const hasInvalidOrNotFoundUser = nonAnonUsers.some(
+        const isMultiUser = canonicalUsers.length >= 2;
+        const hasInvalidOrNotFoundUser = genuineUsers.some(
             (u) => !u.isCorporateFormat || u.adStatus === "NOT_FOUND"
         );
         const allUsersValidAd =
-            nonAnonUsers.length > 0 &&
-            nonAnonUsers.every((u) => u.adStatus === "ACTIVE" || u.adStatus === "ENABLED" || u.adStatus === "LOCKED");
+            genuineUsers.length > 0 &&
+            genuineUsers.every((u) => u.adStatus === "ACTIVE" || u.adStatus === "ENABLED" || u.adStatus === "LOCKED");
         const isSingleCorp =
-            nonAnonUsers.length === 1 &&
-            isCorporateUsernameFormat(nonAnonUsers[0].username) &&
+            canonicalUsers.length === 1 &&
             !hasInvalidOrNotFoundUser;
 
         const hasPriorAuthSuccessOrPardon = Boolean(
@@ -2630,7 +2739,12 @@ export async function reevaluateSingleCitrixIp(
     for (const f of rawFailures) {
         const u = NetscalerGraylogClient.extractUsername(f.message);
         if (u && u !== "anonymous" && u !== "nsroot") {
-            allUsersSet.add(u);
+            const uClean = u.toLowerCase();
+            allUsersSet.add(uClean);
+            const uStripped = stripDomainSuffix(uClean);
+            if (uStripped && uStripped !== uClean) allUsersSet.add(uStripped);
+            const uHyphenated = uStripped.replace(/[_\.\s]+/g, "-");
+            if (uHyphenated && isCorporateUsernameFormat(uHyphenated)) allUsersSet.add(uHyphenated);
         }
     }
 
@@ -2692,12 +2806,14 @@ export async function reevaluateSingleCitrixIp(
 
         const uNoDomain = usernameClean.replace(/^[a-zA-Z0-9_\-\.]+[\\\/]/, "");
         const uNoEmail = uNoDomain.split("@")[0];
+        const uStripped = stripDomainSuffix(usernameClean);
         const adInfo =
             adStatusMap[usernameClean] ||
             adStatusMap[usernameRaw] ||
             adStatusMap[uNoDomain] ||
-            adStatusMap[uNoEmail];
-        const isCorp = isCorporateUsernameFormat(usernameClean) || isCorporateUsernameFormat(uNoEmail);
+            adStatusMap[uNoEmail] ||
+            adStatusMap[uStripped];
+        const isCorp = isCorporateUsernameFormat(usernameClean) || isCorporateUsernameFormat(uNoEmail) || isCorporateUsernameFormat(uStripped);
 
         // Imprivata correlation
         let imprivataVerdict: string | undefined;
@@ -2808,6 +2924,32 @@ export async function reevaluateSingleCitrixIp(
 
     const targetedUsers = Array.from(userMap.values());
     const nonAnonUsers = targetedUsers.filter((u) => u.username.toLowerCase() !== "anonymous");
+
+    // Anchor Account Typo Resolution:
+    const anchorUsers = nonAnonUsers.filter(
+        (u) =>
+            (u.adStatus === "ACTIVE" || u.adStatus === "ENABLED" || u.adStatus === "LOCKED") &&
+            u.isCorporateFormat
+    );
+
+    for (const u of nonAnonUsers) {
+        if (u.adStatus === "NOT_FOUND" || !u.isCorporateFormat) {
+            for (const anchor of anchorUsers) {
+                if (isNearTypoOfAnchor(u.username, anchor.username)) {
+                    u.isTypoOfAnchor = true;
+                    u.anchorUsername = anchor.username;
+                    break;
+                }
+            }
+        }
+    }
+
+    const genuineDistinctAccounts = nonAnonUsers.filter((u) => !u.isTypoOfAnchor);
+    const canonicalIdentitySet = new Set(
+        genuineDistinctAccounts.map((u) => stripDomainSuffix(u.username).toLowerCase())
+    );
+    const distinctHumanUserCount = canonicalIdentitySet.size;
+
     const totalFailures = events.length;
     const isPardonedOrWhitelisted = ledgerEntry?.status === "PARDONED" || ledgerEntry?.status === "WHITELISTED";
     if (ledgerEntry?.hasCitrixSuccess && citrixSucc === 0) {
@@ -2834,22 +2976,22 @@ export async function reevaluateSingleCitrixIp(
     }
 
     // 2. Password Spray
-    if (nonAnonUsers.length >= config.minSprayUsers) {
+    if (distinctHumanUserCount >= config.minSprayUsers) {
         triggeredRules.push({
             code: "PASSWORD_SPRAY",
-            label: `Password Spray (${nonAnonUsers.length} Users)`,
+            label: `Password Spray (${distinctHumanUserCount} Users)`,
             severity: "CRITICAL",
             points: 55,
-            detail: `Targeted ${nonAnonUsers.length} distinct usernames (${nonAnonUsers.map((u) => u.username).slice(0, 4).join(", ")}).`,
+            detail: `Targeted ${distinctHumanUserCount} distinct usernames (${Array.from(canonicalIdentitySet).slice(0, 4).join(", ")}).`,
         });
         riskScore += 55;
     }
 
     // 3. AD User Evaluation
     if (config.flagNonExistentAdUsers && nonAnonUsers.length > 0) {
-        const invalidFormatUsers = nonAnonUsers.filter((u) => !u.isCorporateFormat);
-        const notFoundAdUsers = nonAnonUsers.filter((u) => u.isCorporateFormat && u.adStatus === "NOT_FOUND");
-        const disabledLockedUsers = nonAnonUsers.filter((u) => u.adStatus === "DISABLED" || u.adStatus === "LOCKED" || u.adStatus === "EXPIRED");
+        const invalidFormatUsers = nonAnonUsers.filter((u) => !u.isCorporateFormat && !u.isTypoOfAnchor);
+        const notFoundAdUsers = nonAnonUsers.filter((u) => u.isCorporateFormat && u.adStatus === "NOT_FOUND" && !u.isTypoOfAnchor);
+        const disabledLockedUsers = nonAnonUsers.filter((u) => (u.adStatus === "DISABLED" || u.adStatus === "LOCKED" || u.adStatus === "EXPIRED") && !u.isTypoOfAnchor);
 
         if (invalidFormatUsers.length > 0) {
             triggeredRules.push({
@@ -2946,12 +3088,13 @@ export async function reevaluateSingleCitrixIp(
 
     // Safety Shield
     const baseScore = riskScore;
+    const notFoundAdUsers = nonAnonUsers.filter((u) => u.adStatus === "NOT_FOUND" && !u.isTypoOfAnchor);
+    const invalidFormatUsers = nonAnonUsers.filter((u) => !u.isCorporateFormat && !u.isTypoOfAnchor);
     const allUsersValidAd =
-        nonAnonUsers.length > 0 &&
-        nonAnonUsers.every((u) => u.adStatus === "ACTIVE" || u.adStatus === "ENABLED" || u.adStatus === "LOCKED");
-    const isSingleUser = nonAnonUsers.length === 1;
-    const notFoundAdUsers = nonAnonUsers.filter((u) => u.adStatus === "NOT_FOUND");
-    const invalidFormatUsers = nonAnonUsers.filter((u) => !u.isCorporateFormat);
+        genuineDistinctAccounts.length > 0 &&
+        genuineDistinctAccounts.every((u) => u.adStatus === "ACTIVE" || u.adStatus === "ENABLED" || u.adStatus === "LOCKED");
+    const isSingleUser = distinctHumanUserCount === 1;
+    const isProtectedHousehold = distinctHumanUserCount === 2;
     const isOnWatchlist = Boolean(watchEntry);
     const isOnGuardianBlacklist = Boolean(blEntry);
 
@@ -2978,11 +3121,11 @@ export async function reevaluateSingleCitrixIp(
         verdictReason = `Blacklisted ASN ${ipMeta.asn} (${ipMeta.companyName}) with ${totalFailures} attempt(s).`;
     } else if (
         ipMeta.isResidentialIsp &&
-        (nonAnonUsers.length >= 3 || notFoundAdUsers.length > 0 || invalidFormatUsers.length > 0 || (maxAuthFailuresIn10m >= config.minFailuresForBlock && !hasAnySuccessHistory))
+        (distinctHumanUserCount >= 3 || notFoundAdUsers.length > 0 || invalidFormatUsers.length > 0 || (maxAuthFailuresIn10m >= config.minFailuresForBlock && !hasAnySuccessHistory))
     ) {
         verdict = "ABUSIVE_BLOCK";
         riskScore = Math.max(riskScore, 85);
-        const reason = nonAnonUsers.length >= 3
+        const reason = distinctHumanUserCount >= 3
             ? "Credential Spray (≥3 Accounts)"
             : notFoundAdUsers.length > 0 || invalidFormatUsers.length > 0
             ? "Probing Non-Existent AD Accounts"

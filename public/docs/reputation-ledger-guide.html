@@ -366,8 +366,16 @@
 
   <h3>Rule 1: Username Format &amp; Active Directory Verification</h3>
   <ul>
-    <li><strong>Corporate Format Requirement:</strong> Cooper usernames strictly follow the hyphenated format <code>firstname-lastname</code> (or <code>name-name-name</code>). Attempts using non-corporate formats (e.g., <code>jsmith</code>, <code>john.smith</code>, email addresses) or honeypot names (<code>admin</code>, <code>root</code>, <code>backup</code>, <code>helpdesk</code>, <code>vpn</code>) are treated as reconnaissance probes and <strong>skip Strike 1 directly to Strike 2 (<code>ENFORCED</code>)</strong>.</li>
-    <li><strong>Active Directory Lookup:</strong> Every username attempted on Citrix is verified against Active Directory. If a corporate-formatted username does not exist in AD (<code>NOT_FOUND</code>), it is flagged as a dictionary probe and blocked immediately.</li>
+    <li><strong>Corporate Format Requirement:</strong> Cooper usernames strictly follow the hyphenated format <code>firstname-lastname</code> (or <code>name-name-name</code>). Attempts using non-corporate formats (e.g., <code>jsmith</code>, <code>john.smith</code>, dictionary lists) or honeypot names (<code>admin</code>, <code>root</code>, <code>backup</code>, <code>helpdesk</code>, <code>vpn</code>) are treated as reconnaissance probes and <strong>skip Strike 1 directly to Strike 2 (<code>ENFORCED</code>)</strong>.</li>
+    <li><strong>Active Directory Lookup:</strong> Every username attempted on Citrix is verified against Active Directory. If an unverified username does not exist in AD (<code>NOT_FOUND</code>), it is flagged as a dictionary probe.</li>
+    <li><strong>Internal UPN &amp; Domain Normalization:</strong> For identity evaluation, domain suffixes (e.g. <code>@cooperhealth.edu</code>) and prefixes (<code>cooperhealth\</code>) are stripped so that <code>fuller-peggy</code> and <code>fuller-peggy@cooperhealth.edu</code> cluster into <strong>1 single human identity</strong>, rather than triggering a false password spray alarm. Raw strings are always preserved in audit logs and forensic tables for complete SOC visibility.</li>
+    <li><strong>Anchor-Account Typo Matching (Levenshtein Distance &le; 2):</strong> If an IP attempts an account that is <code>NOT IN AD</code> (or has a delimiter typo like <code>haviland_elizabeth</code> with an underscore instead of a hyphen), the engine checks whether that same IP has also attempted (or has prior login history for) a verified active corporate AD account (the <em>Anchor Account</em>).
+      <ul style="margin-top: 4px; margin-bottom: 4px;">
+        <li>If the non-AD attempt is within 1–2 edits or a delimiter swap (<code>_</code> or <code>.</code> for <code>-</code>) of the anchor account on that <strong>same IP</strong>, it is classified as a <code>TYPO_OF_VALID_USER</code>. It does <strong>not</strong> trigger <code>NON_EXISTENT_AD_USER</code>, does <strong>not</strong> trigger <code>RESIDENTIAL_DICTIONARY_PROBE</code>, and does <strong>not</strong> increment the distinct user spray count.</li>
+        <li><strong>Dual-AD Account Safety Boundary:</strong> Typo matching is <em>strictly forbidden</em> from merging two accounts that both independently exist in Active Directory (e.g., <code>smith-john</code> and <code>smith-john1</code>). Distinct AD accounts are always evaluated as distinct users.</li>
+        <li><strong>Attacker Isolation:</strong> An external IP attempting <code>first.last</code> or <code>first_last</code> without a matching verified anchor on that IP receives <strong>zero leniency</strong> and is immediately blocked.</li>
+      </ul>
+    </li>
   </ul>
 
   <h3>Rule 2: 5-Second Companion Syslog Coalescing</h3>
@@ -486,7 +494,7 @@
 
   <div class="footer">
     <span>Pane-O-Glass Security Operations Platform • Cooper University Health Care</span>
-    <span>Updated: October 2026</span>
+    <span>Updated: November 2026 (180-Day Audit Retention &amp; Typo-Resilient Anchor Correlation)</span>
   </div>
 </div>
 

@@ -1,5 +1,9 @@
 import { prisma } from "@/lib/prisma";
-import { isCorporateUsernameFormat } from "@/lib/netscaler-login-triage";
+import {
+    isCorporateUsernameFormat,
+    stripDomainSuffix,
+    isNearTypoOfAnchor
+} from "@/lib/netscaler-login-triage";
 
 /**
  * Strike Evidence Engine
@@ -238,11 +242,30 @@ export async function getStrikeEvidence(ip: string): Promise<StrikeEvidence> {
             u.adDepartment = snap.adDepartment;
         }
     }
+    // Identify anchor users on this IP (active in AD or verified login success)
+    const anchorUsers = Array.from(userMap.values()).filter(
+        (u) => (u.adStatus === "ACTIVE" || u.adStatus === "ENABLED" || u.vpnSuccesses > 0) && u.isCorporateFormat
+    );
+
     for (const u of userMap.values()) {
-        if (u.isHoneypot) u.flags.push("Honeypot / generic account");
-        else if (!u.isCorporateFormat) u.flags.push("Non-corporate username format");
-        if (u.adStatus === "NOT_FOUND") u.flags.push("Account does not exist in AD");
-        if (u.adStatus === "DISABLED") u.flags.push("Disabled AD account");
+        let matchedAnchor = "";
+        if (u.adStatus === "NOT_FOUND" || !u.isCorporateFormat) {
+            for (const a of anchorUsers) {
+                if (isNearTypoOfAnchor(u.username, a.username)) {
+                    matchedAnchor = a.username;
+                    break;
+                }
+            }
+        }
+
+        if (matchedAnchor) {
+            u.flags.push(`Typo of ${matchedAnchor}`);
+        } else {
+            if (u.isHoneypot) u.flags.push("Honeypot / generic account");
+            else if (!u.isCorporateFormat) u.flags.push("Non-corporate username format");
+            if (u.adStatus === "NOT_FOUND") u.flags.push("Account does not exist in AD");
+            if (u.adStatus === "DISABLED") u.flags.push("Disabled AD account");
+        }
         if (u.vpnSuccesses > 0) u.flags.push("Has successful logins");
     }
     const attemptedUsers = Array.from(userMap.values()).sort(
@@ -294,17 +317,34 @@ export async function getStrikeEvidence(ip: string): Promise<StrikeEvidence> {
     }
 
     const honeypots = attemptedUsers.filter(u => u.isHoneypot);
-    const nonCorp = attemptedUsers.filter(u => !u.isHoneypot && !u.isCorporateFormat && u.username !== "unknown");
-    const notInAd = attemptedUsers.filter(u => u.adStatus === "NOT_FOUND");
+    const nonCorp = attemptedUsers.filter(u => !u.isHoneypot && !u.isCorporateFormat && u.username !== "unknown" && !u.flags.some(f => f.startsWith("Typo of")));
+    const notInAd = attemptedUsers.filter(u => u.adStatus === "NOT_FOUND" && !u.flags.some(f => f.startsWith("Typo of")));
     const disabledAd = attemptedUsers.filter(u => u.adStatus === "DISABLED");
-    const distinctUsers = Math.max(ledger?.distinctUserCount || 0, attemptedUsers.filter(u => u.vpnFailures > 0 || (ledger?.attemptedUsers || []).includes(u.username)).length);
+    const typoUsers = attemptedUsers.filter(u => u.flags.some(f => f.startsWith("Typo of")));
+
+    // Cluster genuine distinct identities (strip domains and exclude anchor typos)
+    const genuineIdentities = new Set(
+        attemptedUsers
+            .filter(u => !u.flags.some(f => f.startsWith("Typo of")))
+            .map(u => stripDomainSuffix(u.username).toLowerCase())
+    );
+    const distinctUsers = genuineIdentities.size;
+
+    if (typoUsers.length > 0) {
+        drivers.push({
+            code: "USER_TYPO_OF_ANCHOR",
+            label: "Username typo of verified corporate account",
+            severity: "mitigating",
+            detail: `Attempt(s) ${typoUsers.map(u => `${u.username} (${u.flags.find(f => f.startsWith("Typo of"))})`).join(", ")} matched an active corporate account on this IP. Not counted as a multi-user spray.`
+        });
+    }
 
     if (ledger?.isSpraySuspect && distinctUsers >= 2) {
         drivers.push({
             code: "MULTI_USER_SPRAY",
             label: `Password spray: ${distinctUsers} distinct usernames`,
             severity: "high",
-            detail: `A single source IP attempted multiple accounts (${attemptedUsers.slice(0, 6).map(u => u.username).join(", ")}${attemptedUsers.length > 6 ? ", …" : ""}). Multi-user attempts disqualify auto-pardon.`
+            detail: `A single source IP attempted multiple accounts (${Array.from(genuineIdentities).slice(0, 6).join(", ")}${distinctUsers > 6 ? ", …" : ""}). Multi-user attempts disqualify auto-pardon.`
         });
     } else if (distinctUsers >= 2) {
         drivers.push({
