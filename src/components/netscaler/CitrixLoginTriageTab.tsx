@@ -6,12 +6,13 @@ import {
     ShieldAlert, ShieldCheck, AlertTriangle, Lock, Unlock, UserCheck, UserX,
     Globe, Server, RefreshCw, Search, CheckCircle2, Flame, Eye, ExternalLink,
     Sliders, Terminal, Laptop, FileSpreadsheet, Ban, Shield, ChevronRight, X,
-    Download, ClipboardCheck, FileText, Sparkles, Home, Building2, CheckSquare, Square, AlertCircle
+    Download, ClipboardCheck, FileText, Sparkles, Home, Building2, CheckSquare, Square, AlertCircle, Network
 } from "lucide-react";
 import { ToolHelp } from "@/components/ToolHelp";
 import Link from "next/link";
 import { ShunDatabaseTab } from "@/components/firewall/ShunDatabaseTab";
 import { CitrixAnomalyQueueTab } from "./CitrixAnomalyQueueTab";
+import { SuggestedAsnsCard } from "@/components/firewall/SuggestedAsnsCard";
 import type {
     CitrixLoginTriageResponse,
     CitrixAsnMetric,
@@ -787,6 +788,19 @@ export default function CitrixLoginTriageTab({
                                             <div>
                                                 <div className="font-semibold text-white">Search Shunned IPs</div>
                                                 <div className="text-[10px] text-slate-400">Inspect &amp; un-shun across firewalls</div>
+                                            </div>
+                                        </button>
+                                        <button
+                                            onClick={() => {
+                                                setShowToolsMenu(false);
+                                                setSubView("asns");
+                                            }}
+                                            className="w-full px-3.5 py-2 text-left text-xs text-slate-200 hover:bg-slate-800 flex items-center gap-2.5"
+                                        >
+                                            <Network className="w-4 h-4 text-purple-400 shrink-0" />
+                                            <div>
+                                                <div className="font-semibold text-white">Suggested Problematic ASNs</div>
+                                                <div className="text-[10px] text-slate-400">1-click zero-tolerance ASN blacklist</div>
                                             </div>
                                         </button>
                                     </div>
@@ -1656,7 +1670,9 @@ export default function CitrixLoginTriageTab({
 
             {/* VIEW 4: ORIGIN ASN INTELLIGENCE & ZERO-TOLERANCE BLACKLISTING */}
             {subView === "asns" && (
-                <div className="bg-slate-900/60 border border-slate-800 rounded-xl overflow-hidden flex flex-col shadow-sm max-h-[640px]">
+                <div className="flex flex-col gap-3">
+                    <SuggestedAsnsCard onBlacklisted={() => fetchTriage()} />
+                    <div className="bg-slate-900/60 border border-slate-800 rounded-xl overflow-hidden flex flex-col shadow-sm max-h-[640px]">
                     {filteredAsns.length === 0 ? (
                         <div className="p-12 text-center text-sm text-slate-400">
                             No origin Autonomous System Numbers (ASNs) match the current filters.
@@ -1760,6 +1776,7 @@ export default function CitrixLoginTriageTab({
                             <PaginationControls totalRecords={filteredAsns.length} page={asnPage} limit={asnLimit} onPageChange={setAsnPage} onLimitChange={(l) => { setAsnLimit(l); setAsnPage(1); }} limitOptions={[25, 50, 100, 200]} showLimitSelector={true} />
                         </div>
                     )}
+                </div>
                 </div>
             )}
 

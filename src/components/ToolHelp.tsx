@@ -221,6 +221,11 @@ export const helpData: Record<string, TooltipDetails> = {
                 tag: "Unified Fleet Shuns"
             },
             {
+                title: "Suggested Problematic ASNs & 1-Click Blacklist",
+                detail: "Proactively correlates 16,675 perimeter firewall shuns and 300,000+ VPN brute-force attack logs to surface high-density candidate attack ASNs (e.g. Clouvider, IT Hostline, Datacamp, foreign networks). Excludes legitimate residential telcos (Comcast, Verizon, Charter) and verified employee origins, providing 1-click zero-tolerance ASN blacklisting.",
+                tag: "Suggested ASNs"
+            },
+            {
                 title: "Cross-Perimeter SOC Access Alignment",
                 detail: "Enables unified cross-gateway correlation across firewalls, Citrix NetScaler, and Cisco AnyConnect VPNs. Read and triage endpoints (reputation ledger, shun database, audit logs) accept firewall, netscaler, or vpn permissions, while destructive raw SSH commands remain strictly restricted to firewall administrators.",
                 tag: "Perimeter RBAC"
