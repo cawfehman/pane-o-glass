@@ -91,7 +91,40 @@ export async function POST(req: NextRequest) {
         }
 
         const body = await req.json().catch(() => ({}));
-        const { type, target, reason, asnName, shunOnFirewalls = false, targetHost = "all" } = body;
+        const { type, target, reason, asnName, shunOnFirewalls = false, targetHost = "all", asns } = body;
+
+        // Support Bulk ASN Blacklist (Blacklist All Suggested ASNs)
+        if (asns && Array.isArray(asns) && asns.length > 0) {
+            const authorName = (session.user as any).username || session.user.name || session.user.email || session.user.id || "Admin";
+            const forwardedFor = req.headers.get("x-forwarded-for");
+            const clientIp = forwardedFor ? forwardedFor.split(',')[0] : 'internal';
+
+            const created = [];
+            for (const item of asns) {
+                const cleanTarget = String(item.asn || item.target || "").trim();
+                if (!cleanTarget) continue;
+                const rawAsnNumber = cleanTarget.toUpperCase().replace(/^AS/, "");
+                const asnKey = `AS${rawAsnNumber}`;
+                const cleanReason = String(item.reason || "Bulk added from High-Threat Suggested ASNs").trim();
+                const cleanName = item.asnName || item.org || null;
+
+                const entry = await prisma.guardianAsnBlacklist.upsert({
+                    where: { asn: asnKey },
+                    update: { reason: cleanReason, asnName: cleanName, createdBy: authorName },
+                    create: { asn: asnKey, asnName: cleanName, reason: cleanReason, createdBy: authorName }
+                });
+                created.push(entry);
+            }
+
+            await logAudit(
+                "GUARDIAN_ASN_BLACKLIST_BULK_ADD",
+                `Bulk blacklisted ${created.length} ASNs: ${created.map(c => c.asn).join(", ")}`,
+                session.user.id,
+                clientIp
+            ).catch(() => {});
+
+            return NextResponse.json({ success: true, type: "BULK_ASN", count: created.length, entries: created });
+        }
 
         if (!target || !reason) {
             return NextResponse.json({ error: "Target (IP or ASN) and reason are required." }, { status: 400 });

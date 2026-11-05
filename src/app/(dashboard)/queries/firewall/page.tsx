@@ -168,8 +168,8 @@ export default function CiscoFirewallPage() {
         document.body.removeChild(link);
     };
 
-    const fetchBlacklist = async () => {
-        setLoadingBlacklist(true);
+    const fetchBlacklist = async (silent = false) => {
+        if (!silent) setLoadingBlacklist(true);
         try {
             const res = await fetch("/api/firewall/guardian/blacklist");
             if (res.ok) {
@@ -185,7 +185,7 @@ export default function CiscoFirewallPage() {
         } catch (e) {
             console.error("Failed to load Guardian blacklist");
         } finally {
-            setLoadingBlacklist(false);
+            if (!silent) setLoadingBlacklist(false);
         }
     };
 
@@ -1160,7 +1160,7 @@ export default function CiscoFirewallPage() {
                     ) : (
                         <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
                             <div className="p-3 border-b border-border-color bg-bg-surface/30 shrink-0">
-                                <SuggestedAsnsCard onBlacklisted={() => fetchBlacklist()} />
+                                <SuggestedAsnsCard onBlacklisted={() => fetchBlacklist(true)} />
                             </div>
 
                             {filteredBlacklistAsns.length === 0 ? (
