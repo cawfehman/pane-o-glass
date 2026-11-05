@@ -7,9 +7,12 @@ import {
     blockCitrixAbusiveIps,
     updateCitrixAutoShunConfig,
     runCitrixLoginAutoShunCycle,
+    scanTypoPardonCandidates,
     DEFAULT_CITRIX_TRIAGE_CONFIG,
     CitrixTriageConfig,
 } from "@/lib/netscaler-login-triage";
+import { execute360BulkPardon } from "@/lib/reputation-pardon";
+import { invalidateFeedCache } from "@/app/api/feeds/security-intelligence/route";
 import { prisma } from "@/lib/prisma";
 import { logAudit } from "@/lib/audit";
 
@@ -172,6 +175,37 @@ export async function POST(req: NextRequest) {
             ).catch(() => {});
 
             return NextResponse.json({ success: true, removedAsn: asnKey });
+        }
+
+        // ==============================================================
+        // SCAN TYPO CANDIDATES (Mandatory Dry Run over Lookback Window)
+        // ==============================================================
+        if (action === "scan_typo_candidates") {
+            const rangeSec = typeof body.rangeSeconds === "number" ? Math.max(3600, body.rangeSeconds) : 7 * 86400;
+            const scanResult = await scanTypoPardonCandidates(rangeSec);
+            return NextResponse.json({
+                success: true,
+                mode: "DRY_RUN",
+                ...scanResult
+            });
+        }
+
+        // ==============================================================
+        // EXECUTE TYPO PARDON (Batch 360° Pardon for Selected Candidates)
+        // ==============================================================
+        if (action === "execute_typo_pardon") {
+            const rawIps = Array.isArray(ips) && ips.length > 0 ? ips : ip ? [ip] : [];
+            const cleanIps = Array.from(new Set(rawIps.map((i: any) => String(i).trim()))).filter(Boolean);
+            if (cleanIps.length === 0) {
+                return NextResponse.json({ error: "No candidate IPs selected for pardon." }, { status: 400 });
+            }
+
+            const pardonReason = reason || `SOC Typo Candidate Pardon by ${username}`;
+            const bulkResult = await execute360BulkPardon(cleanIps, pardonReason, username, invalidateFeedCache);
+
+            return NextResponse.json({
+                ...bulkResult
+            });
         }
 
         const targetIps: string[] = Array.isArray(ips) && ips.length > 0 ? ips : ip ? [ip] : [];

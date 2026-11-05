@@ -6,7 +6,7 @@ import {
     ShieldAlert, ShieldCheck, AlertTriangle, Lock, Unlock, UserCheck, UserX,
     Globe, Server, RefreshCw, Search, CheckCircle2, Flame, Eye, ExternalLink,
     Sliders, Terminal, Laptop, FileSpreadsheet, Ban, Shield, ChevronRight, X,
-    Download, ClipboardCheck, FileText, Sparkles, Home, Building2
+    Download, ClipboardCheck, FileText, Sparkles, Home, Building2, CheckSquare, Square, AlertCircle
 } from "lucide-react";
 import { ToolHelp } from "@/components/ToolHelp";
 import Link from "next/link";
@@ -20,6 +20,7 @@ import type {
     GuardianAbuseVerdict,
     CitrixIssueCategory,
     SingleIpReevaluationResult,
+    TypoPardonCandidate,
 } from "@/lib/netscaler-login-triage";
 
 interface CitrixLoginTriageTabProps {
@@ -105,6 +106,17 @@ export default function CitrixLoginTriageTab({
         success: boolean;
     } | null>(null);
     const [asnActionLoadingKey, setAsnActionLoadingKey] = useState<string | null>(null);
+
+    // Typo & False-Positive Candidate Scanner (Mandatory Dry Run Modal)
+    const [showTypoModal, setShowTypoModal] = useState<boolean>(false);
+    const [typoScannerLoading, setTypoScannerLoading] = useState<boolean>(false);
+    const [typoCandidates, setTypoCandidates] = useState<TypoPardonCandidate[]>([]);
+    const [selectedTypoIps, setSelectedTypoIps] = useState<Set<string>>(new Set());
+    const [pardonReasonInput, setPardonReasonInput] = useState<string>("SOC Bulk Pardon: Confirmed Anchor Account Typo / Delimiter Variation");
+    const [pardonExecuting, setPardonExecuting] = useState<boolean>(false);
+    const [pardonSuccessResult, setPardonSuccessResult] = useState<any | null>(null);
+    const [pardonError, setPardonError] = useState<string | null>(null);
+    const [typoSearchFilter, setTypoSearchFilter] = useState<string>("");
 
     const handleToggleAsnBlacklist = async (
         asn: string,
@@ -353,6 +365,113 @@ export default function CitrixLoginTriageTab({
         }
     };
 
+    const handleOpenTypoScanner = async () => {
+        setShowTypoModal(true);
+        setTypoScannerLoading(true);
+        setPardonSuccessResult(null);
+        setPardonError(null);
+        try {
+            const res = await fetch("/api/netscaler/login-triage", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    action: "scan_typo_candidates",
+                    rangeSeconds: 7 * 86400,
+                }),
+            });
+            const data = await res.json();
+            if (res.ok && data.success) {
+                setTypoCandidates(data.candidates || []);
+                const ipsToSelect = new Set<string>();
+                for (const c of (data.candidates || [])) {
+                    if (c.currentStatus !== "CLEAN") {
+                        ipsToSelect.add(c.ip);
+                    }
+                }
+                if (ipsToSelect.size === 0) {
+                    for (const c of (data.candidates || [])) ipsToSelect.add(c.ip);
+                }
+                setSelectedTypoIps(ipsToSelect);
+            } else {
+                setPardonError(data.error || "Failed to scan typo candidates");
+            }
+        } catch (e: any) {
+            setPardonError(e.message || "Failed to scan typo candidates");
+        } finally {
+            setTypoScannerLoading(false);
+        }
+    };
+
+    const handleExecuteTypoPardon = async () => {
+        if (selectedTypoIps.size === 0) return;
+        const targetList = Array.from(selectedTypoIps);
+        if (!confirm(`Execute 360° Pardon on all ${targetList.length} selected IPs across perimeter ASAs, FMC SI feed, and Reputation Ledger?`)) {
+            return;
+        }
+
+        setPardonExecuting(true);
+        setPardonError(null);
+        try {
+            const res = await fetch("/api/netscaler/login-triage", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    action: "execute_typo_pardon",
+                    ips: targetList,
+                    reason: pardonReasonInput || "SOC Bulk Pardon: Confirmed Anchor Account Typo",
+                }),
+            });
+            const data = await res.json();
+            if (res.ok && data.success) {
+                setPardonSuccessResult(data);
+                fetchTriage();
+                setTypoCandidates((prev) =>
+                    prev.map((c) =>
+                        selectedTypoIps.has(c.ip)
+                            ? { ...c, currentStatus: "CLEAN", strikeCount: 0, isOnBlacklist: false, isCurrentlyShunned: false }
+                            : c
+                    )
+                );
+                setSelectedTypoIps(new Set());
+            } else {
+                setPardonError(data.error || "Failed to execute bulk pardon");
+            }
+        } catch (e: any) {
+            setPardonError(e.message || "Execution error during bulk pardon");
+        } finally {
+            setPardonExecuting(false);
+        }
+    };
+
+    const toggleSelectTypoIp = (ip: string) => {
+        setSelectedTypoIps((prev) => {
+            const next = new Set(prev);
+            if (next.has(ip)) next.delete(ip);
+            else next.add(ip);
+            return next;
+        });
+    };
+
+    const filteredTypoCandidates = useMemo(() => {
+        if (!typoSearchFilter.trim()) return typoCandidates;
+        const q = typoSearchFilter.toLowerCase().trim();
+        return typoCandidates.filter((c) =>
+            c.ip.toLowerCase().includes(q) ||
+            c.anchorUser.toLowerCase().includes(q) ||
+            Boolean(c.anchorDisplayName && c.anchorDisplayName.toLowerCase().includes(q)) ||
+            c.ispOrg.toLowerCase().includes(q) ||
+            c.allAttemptedUsers.some((u) => u.toLowerCase().includes(q))
+        );
+    }, [typoCandidates, typoSearchFilter]);
+
+    const toggleSelectAllTypos = () => {
+        if (selectedTypoIps.size === filteredTypoCandidates.length) {
+            setSelectedTypoIps(new Set());
+        } else {
+            setSelectedTypoIps(new Set(filteredTypoCandidates.map((c) => c.ip)));
+        }
+    };
+
     const exportEvaluationsCsv = () => {
         if (!data?.ipEvaluations.length) return;
         const headers = "IP,Verdict,RiskScore,Country,City,ASN,ISP_Company,CompanyType,Failures,CitrixSuccesses,TargetedUsers,TriggeredRules,Shunned,GuardianBlacklisted\n";
@@ -592,6 +711,16 @@ export default function CitrixLoginTriageTab({
                             Enforce All in Security Intelligence Feed ({unshunnedAbusiveIps.length})
                         </button>
                     )}
+
+                    <button
+                        onClick={handleOpenTypoScanner}
+                        disabled={typoScannerLoading}
+                        title="Scan 7D for active corporate employees blocked by typos (Mandatory Dry Run)"
+                        className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-semibold bg-emerald-600/90 hover:bg-emerald-500 text-white shadow-lg shadow-emerald-600/20 transition-all border border-emerald-400/30"
+                    >
+                        <Sparkles className={`w-3.5 h-3.5 ${typoScannerLoading ? "animate-spin text-white" : "text-amber-300"}`} />
+                        {typoScannerLoading ? "Scanning 7D..." : "Scan Typo Candidates (7D)"}
+                    </button>
 
                     <button
                         onClick={() => setShowRulesPanel(!showRulesPanel)}
@@ -2536,6 +2665,281 @@ export default function CitrixLoginTriageTab({
                                 )}
                             </div>
                         </div>
+                    </div>
+                </div>
+            )}
+
+            {/* TYPO & ANCHOR CANDIDATE REVIEW (MANDATORY DRY RUN) MODAL */}
+            {showTypoModal && (
+                <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-3 sm:p-5 animate-in fade-in duration-200">
+                    <div className="bg-slate-900 border border-slate-700/80 rounded-2xl max-w-6xl w-full max-h-[92vh] flex flex-col shadow-2xl overflow-hidden">
+                        {/* Header */}
+                        <div className="p-4 sm:p-5 border-b border-slate-800 bg-slate-950/80 flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                                <div className="p-2.5 rounded-xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 shadow-inner">
+                                    <Sparkles className="w-5 h-5 text-emerald-400" />
+                                </div>
+                                <div>
+                                    <div className="flex items-center gap-2">
+                                        <h3 className="text-base font-bold text-white tracking-tight">
+                                            Typo & Anchor Candidate Review
+                                        </h3>
+                                        <span className="px-2 py-0.5 rounded text-[11px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30 uppercase tracking-wider">
+                                            Mandatory Dry Run
+                                        </span>
+                                    </div>
+                                    <p className="text-xs text-slate-400 mt-0.5">
+                                        Scanned 7-day Citrix login telemetry for active corporate employees penalized by typos, delimiter mistakes, or badge number entry.
+                                    </p>
+                                </div>
+                            </div>
+                            <button
+                                onClick={() => setShowTypoModal(false)}
+                                className="p-1.5 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white transition-colors"
+                            >
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
+
+                        {/* Dry Run Notice & Safety Banner */}
+                        <div className="bg-gradient-to-r from-amber-950/40 via-amber-900/20 to-slate-950 border-b border-amber-500/20 px-5 py-2.5 flex items-center justify-between text-xs">
+                            <div className="flex items-center gap-2 text-amber-200">
+                                <ShieldAlert className="w-4 h-4 text-amber-400 shrink-0" />
+                                <span>
+                                    <strong>Safety Assurance:</strong> This is a non-destructive dry-run preview. No firewall shuns, blacklist entries, or FMC SI feed records have been modified yet.
+                                </span>
+                            </div>
+                            <div className="flex items-center gap-2 text-slate-400 text-[11px]">
+                                <span>Lookback: <strong>7 Days (Graylog & Ledger)</strong></span>
+                            </div>
+                        </div>
+
+                        {/* Results or Loading State */}
+                        {typoScannerLoading ? (
+                            <div className="p-16 flex flex-col items-center justify-center text-center space-y-4">
+                                <RefreshCw className="w-8 h-8 text-emerald-400 animate-spin" />
+                                <div>
+                                    <div className="text-sm font-semibold text-white">Querying 7-Day NetScaler Telemetry & AD Correlations...</div>
+                                    <div className="text-xs text-slate-400 mt-1">Evaluating candidate usernames, Levenshtein distances, and active corporate anchors</div>
+                                </div>
+                            </div>
+                        ) : pardonSuccessResult ? (
+                            /* Success View after Execution */
+                            <div className="p-10 flex flex-col items-center justify-center text-center space-y-4">
+                                <div className="p-3 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                                    <CheckCircle2 className="w-10 h-10" />
+                                </div>
+                                <div className="max-w-md">
+                                    <h4 className="text-lg font-bold text-white">360° Bulk Pardon Successfully Executed</h4>
+                                    <p className="text-xs text-slate-300 mt-2">
+                                        Pardoned <strong>{pardonSuccessResult.count} IP(s)</strong> across perimeter ASAs, FMC Security Intelligence feed, and Reputation Ledger.
+                                        Firewall queue drained: <strong>{pardonSuccessResult.drained?.executed || 0} command(s) executed</strong>.
+                                    </p>
+                                </div>
+                                <button
+                                    onClick={() => {
+                                        setShowTypoModal(false);
+                                        setPardonSuccessResult(null);
+                                    }}
+                                    className="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs transition-all shadow-lg shadow-emerald-600/20"
+                                >
+                                    Return to Citrix Triage
+                                </button>
+                            </div>
+                        ) : (
+                            <>
+                                {/* Toolbar: Stats & Filter */}
+                                <div className="px-5 py-3 bg-slate-950/60 border-b border-slate-800 flex flex-wrap items-center justify-between gap-3 text-xs">
+                                    <div className="flex items-center gap-3">
+                                        <span className="text-slate-300">
+                                            Candidates: <strong className="text-emerald-400">{filteredTypoCandidates.length}</strong>
+                                        </span>
+                                        <span className="text-slate-500">•</span>
+                                        <span className="text-slate-300">
+                                            Selected: <strong className="text-indigo-400">{selectedTypoIps.size}</strong>
+                                        </span>
+                                        <div className="flex items-center gap-1.5 ml-2">
+                                            <button
+                                                onClick={toggleSelectAllTypos}
+                                                className="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 text-[11px] font-medium"
+                                            >
+                                                {selectedTypoIps.size === filteredTypoCandidates.length ? "Deselect All" : "Select All"}
+                                            </button>
+                                            <button
+                                                onClick={() => {
+                                                    const blocked = new Set<string>();
+                                                    for (const c of filteredTypoCandidates) {
+                                                        if (c.currentStatus !== "CLEAN") blocked.add(c.ip);
+                                                    }
+                                                    setSelectedTypoIps(blocked);
+                                                }}
+                                                className="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-amber-300 border border-slate-700 text-[11px] font-medium"
+                                            >
+                                                Select Only Blocked ({filteredTypoCandidates.filter(c => c.currentStatus !== "CLEAN").length})
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    {/* Search Input */}
+                                    <div className="relative w-64">
+                                        <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+                                        <input
+                                            type="text"
+                                            placeholder="Filter IP, user, department..."
+                                            value={typoSearchFilter}
+                                            onChange={(e) => setTypoSearchFilter(e.target.value)}
+                                            className="w-full pl-8 pr-3 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500"
+                                        />
+                                    </div>
+                                </div>
+
+                                {/* Table of Candidates */}
+                                <div className="flex-1 overflow-y-auto p-4 space-y-2.5 max-h-[50vh]">
+                                    {filteredTypoCandidates.length === 0 ? (
+                                        <div className="p-8 text-center text-slate-400 text-xs">
+                                            No typo or false-positive candidates found matching criteria.
+                                        </div>
+                                    ) : (
+                                        filteredTypoCandidates.map((c) => {
+                                            const isSelected = selectedTypoIps.has(c.ip);
+                                            return (
+                                                <div
+                                                    key={c.ip}
+                                                    onClick={() => toggleSelectTypoIp(c.ip)}
+                                                    className={`p-3.5 rounded-xl border transition-all cursor-pointer flex flex-col md:flex-row md:items-center justify-between gap-3 ${
+                                                        isSelected
+                                                            ? "bg-emerald-950/20 border-emerald-500/50 shadow-sm"
+                                                            : "bg-slate-950/50 border-slate-800 hover:border-slate-700"
+                                                    }`}
+                                                >
+                                                    {/* Left: Checkbox + IP + Anchor Info */}
+                                                    <div className="flex items-start gap-3 min-w-[280px]">
+                                                        <div className="mt-1">
+                                                            {isSelected ? (
+                                                                <CheckSquare className="w-4 h-4 text-emerald-400" />
+                                                            ) : (
+                                                                <Square className="w-4 h-4 text-slate-500" />
+                                                            )}
+                                                        </div>
+                                                        <div>
+                                                            <div className="flex items-center gap-2">
+                                                                <span className="font-mono font-bold text-sm text-white">{c.ip}</span>
+                                                                <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-slate-800 text-slate-300 border border-slate-700">
+                                                                    {c.asn}
+                                                                </span>
+                                                                <span className="text-xs text-slate-400 truncate max-w-[200px]" title={c.ispOrg}>
+                                                                    {c.ispOrg} ({c.city})
+                                                                </span>
+                                                            </div>
+
+                                                            {/* Active Corporate Anchor */}
+                                                            <div className="flex items-center gap-1.5 mt-1 text-xs">
+                                                                <UserCheck className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                                                                <span className="text-slate-300 font-semibold">{c.anchorUser}</span>
+                                                                {c.anchorDisplayName && (
+                                                                    <span className="text-slate-400 text-[11px] truncate max-w-[220px]" title={c.anchorDepartment}>
+                                                                        • {c.anchorDisplayName} {c.anchorDepartment ? `(${c.anchorDepartment})` : ""}
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Middle: Typo / Delimiter Evidence */}
+                                                    <div className="flex-1 min-w-[240px] px-2">
+                                                        <div className="text-[11px] font-semibold text-slate-300">
+                                                            Detected Mistypes / Variants:
+                                                        </div>
+                                                        <div className="flex flex-wrap gap-1 mt-1">
+                                                            {c.variantUsers.map((v) => (
+                                                                <span
+                                                                    key={v}
+                                                                    className="px-2 py-0.5 rounded text-[11px] font-mono bg-red-950/60 border border-red-500/40 text-red-300 flex items-center gap-1"
+                                                                >
+                                                                    {/^\d+$/.test(v) ? `Badge ID: ${v}` : v}
+                                                                </span>
+                                                            ))}
+                                                        </div>
+                                                        <div className="text-[10px] text-slate-400 mt-1 truncate" title={c.reasons.join("; ")}>
+                                                            {c.reasons.join(" • ")}
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Right: Status Diff (Original vs New) */}
+                                                    <div className="flex flex-col md:items-end justify-center min-w-[190px] shrink-0 text-xs">
+                                                        <div className="flex items-center gap-1.5">
+                                                            <span className="text-slate-400 text-[11px]">Current:</span>
+                                                            <span
+                                                                className={`px-2 py-0.5 rounded font-bold text-[10px] uppercase ${
+                                                                    c.currentStatus === "BLACKLISTED"
+                                                                        ? "bg-red-900/80 text-red-200 border border-red-500"
+                                                                        : c.currentStatus === "ENFORCED"
+                                                                        ? "bg-amber-900/80 text-amber-200 border border-amber-500"
+                                                                        : c.currentStatus === "QUARANTINED"
+                                                                        ? "bg-red-950 text-red-300 border border-red-800"
+                                                                        : c.currentStatus === "WATCHING"
+                                                                        ? "bg-yellow-950 text-yellow-300 border border-yellow-800"
+                                                                        : "bg-slate-800 text-slate-300"
+                                                                }`}
+                                                            >
+                                                                {c.currentStatus}
+                                                            </span>
+                                                        </div>
+
+                                                        <div className="flex items-center gap-1 mt-1 text-[11px] text-emerald-400 font-semibold">
+                                                            <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+                                                            <span>Pardon Eligible (Typo Shield)</span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })
+                                    )}
+                                </div>
+
+                                {/* Footer / Execution Bar */}
+                                <div className="p-4 sm:p-5 bg-slate-950/90 border-t border-slate-800 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+                                    {/* Reason Input */}
+                                    <div className="flex-1 max-w-xl flex items-center gap-2">
+                                        <span className="text-xs text-slate-400 shrink-0 font-medium">SOC Reason:</span>
+                                        <input
+                                            type="text"
+                                            value={pardonReasonInput}
+                                            onChange={(e) => setPardonReasonInput(e.target.value)}
+                                            placeholder="Audit reason for bulk pardon..."
+                                            className="w-full px-3 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500"
+                                        />
+                                    </div>
+
+                                    {/* Action Buttons */}
+                                    <div className="flex items-center justify-end gap-2 shrink-0">
+                                        <button
+                                            onClick={() => setShowTypoModal(false)}
+                                            className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium text-xs transition-colors"
+                                        >
+                                            Cancel
+                                        </button>
+                                        <button
+                                            onClick={handleExecuteTypoPardon}
+                                            disabled={selectedTypoIps.size === 0 || pardonExecuting}
+                                            className="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 disabled:hover:bg-emerald-600 text-white font-bold text-xs shadow-lg shadow-emerald-600/30 flex items-center gap-2 transition-all"
+                                        >
+                                            {pardonExecuting ? (
+                                                <>
+                                                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                                                    <span>Executing 360° Pardon...</span>
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <Unlock className="w-3.5 h-3.5" />
+                                                    <span>Execute 360° Pardon ({selectedTypoIps.size})</span>
+                                                </>
+                                            )}
+                                        </button>
+                                    </div>
+                                </div>
+                            </>
+                        )}
                     </div>
                 </div>
             )}

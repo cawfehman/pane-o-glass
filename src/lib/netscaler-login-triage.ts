@@ -1147,6 +1147,12 @@ export async function analyzeCitrixLoginTriage(
                         u.anchorUsername = anchor.username;
                         break;
                     }
+                    // Also check for employee numeric badge ID confusion (4-8 digits, e.g. 159652) alongside active anchor
+                    if (/^\d{4,8}$/.test(stripDomainSuffix(u.username))) {
+                        u.isTypoOfAnchor = true;
+                        u.anchorUsername = anchor.username;
+                        break;
+                    }
                 }
             }
         }
@@ -2940,6 +2946,12 @@ export async function reevaluateSingleCitrixIp(
                     u.anchorUsername = anchor.username;
                     break;
                 }
+                // Also check for employee numeric badge ID confusion (4-8 digits, e.g. 159652) alongside active anchor
+                if (/^\d{4,8}$/.test(stripDomainSuffix(u.username))) {
+                    u.isTypoOfAnchor = true;
+                    u.anchorUsername = anchor.username;
+                    break;
+                }
             }
         }
     }
@@ -3276,4 +3288,156 @@ export async function reevaluateSingleCitrixIp(
         refreshedAt: new Date().toISOString(),
     };
 }
+
+export interface TypoPardonCandidate {
+    ip: string;
+    ispOrg: string;
+    asn: string;
+    city: string;
+    country: string;
+    currentStatus: "ENFORCED" | "QUARANTINED" | "WATCHING" | "BLACKLISTED" | "SHUNNED" | "CLEAN";
+    strikeCount: number;
+    isOnBlacklist: boolean;
+    isCurrentlyShunned: boolean;
+    hasCitrixSuccess: boolean;
+    citrixSuccessCount: number;
+    anchorUser: string;
+    anchorDisplayName?: string;
+    anchorDepartment?: string;
+    variantUsers: string[];
+    allAttemptedUsers: string[];
+    totalFailures: number;
+    lastSeen: string;
+    originalVerdict: string;
+    newCalculatedVerdict: string;
+    reasons: string[];
+    recommendedAction: "PARDON" | "WATCH";
+}
+
+/**
+ * Scans historical NetScaler login triage telemetry over the lookback window
+ * (default: 7 days) to identify IPs where verified corporate employees were
+ * penalized or blocked due to character typos, delimiter swaps (_ or . for -),
+ * domain variations (@cooperhealth.edu), or employee badge number entry.
+ */
+export async function scanTypoPardonCandidates(
+    rangeSeconds: number = 7 * 86400
+): Promise<{
+    candidates: TypoPardonCandidate[];
+    totalEvaluated: number;
+    lookbackSeconds: number;
+    scannedAt: string;
+}> {
+    const triage = await analyzeCitrixLoginTriage(rangeSeconds);
+    const candidateIps = triage.ipEvaluations.map((e) => e.ip);
+    const ledgerRecords = await prisma.residentialStrikeLedger.findMany({
+        where: { ip: { in: candidateIps } },
+    });
+    const ledgerMap = new Map(ledgerRecords.map((l) => [l.ip, l]));
+    const candidateMap = new Map<string, TypoPardonCandidate>();
+
+    for (const ev of triage.ipEvaluations) {
+        const users = ev.targetedUsers || [];
+        if (users.length === 0) continue;
+
+        // 1. Check for anchor accounts (active AD users)
+        const anchorUsers = users.filter(
+            (u) =>
+                (u.adStatus === "ACTIVE" || u.adStatus === "ENABLED" || u.adStatus === "LOCKED") &&
+                u.isCorporateFormat
+        );
+        if (anchorUsers.length === 0) continue;
+
+        // 2. Identify typos, delimiter swaps, badge numbers, or domain variations
+        const typoUsers = users.filter((u) => u.isTypoOfAnchor);
+        const userStrings = users.map((u) => u.username.toLowerCase());
+        const canonicalSet = new Set(userStrings.map(stripDomainSuffix));
+        const hasDomainDuplicate = canonicalSet.size < userStrings.length;
+
+        // Has badge number?
+        const hasBadgeNumber = users.some((u) => /^\d{4,8}$/.test(stripDomainSuffix(u.username)));
+
+        const isTypoScenario = typoUsers.length > 0 || hasDomainDuplicate || hasBadgeNumber;
+        if (!isTypoScenario) continue;
+
+        const ledger = ledgerMap.get(ev.ip);
+        // Determine if IP was or is currently penalized/blocked or has strikes
+        const isPenalized =
+            ev.isOnGuardianBlacklist ||
+            ev.isCurrentlyShunned ||
+            Boolean(ledger && ledger.strikeCount >= 1 && ledger.status !== "PARDONED") ||
+            ev.verdict === "ABUSIVE_BLOCK" ||
+            ev.verdict === "SUSPICIOUS_WATCH";
+
+        if (!isPenalized) continue;
+
+        const primaryAnchor = anchorUsers[0];
+        const reasons: string[] = [];
+
+        if (typoUsers.length > 0) {
+            for (const tu of typoUsers) {
+                if (/^\d{4,8}$/.test(stripDomainSuffix(tu.username))) {
+                    reasons.push(`Employee Badge Number '${tu.username}' entered alongside active anchor '${tu.anchorUsername || primaryAnchor.username}'`);
+                } else if (tu.username.includes("_") || tu.username.includes(".")) {
+                    reasons.push(`Delimiter error in '${tu.username}' (expected '-' matching anchor '${tu.anchorUsername || primaryAnchor.username}')`);
+                } else {
+                    reasons.push(`Typo in '${tu.username}' (matches active anchor '${tu.anchorUsername || primaryAnchor.username}')`);
+                }
+            }
+        }
+
+        if (hasDomainDuplicate) {
+            reasons.push(`Domain suffix variations entered (e.g. username vs username@cooperhealth.edu)`);
+        }
+
+        let currentStatus: TypoPardonCandidate["currentStatus"] = "CLEAN";
+        if (ev.isOnGuardianBlacklist) currentStatus = "BLACKLISTED";
+        else if (ledger?.status === "QUARANTINED" || ledger?.strikeCount === 3) currentStatus = "QUARANTINED";
+        else if (ledger?.status === "ENFORCED" || ledger?.strikeCount === 2) currentStatus = "ENFORCED";
+        else if (ledger?.status === "WATCHING" || ledger?.strikeCount === 1) currentStatus = "WATCHING";
+        else if (ev.isCurrentlyShunned) currentStatus = "SHUNNED";
+
+        const variantUsersList = typoUsers.map((u) => u.username);
+        if (hasDomainDuplicate) {
+            for (const u of users) {
+                if (u.username.includes("@") && !variantUsersList.includes(u.username)) {
+                    variantUsersList.push(u.username);
+                }
+            }
+        }
+
+        candidateMap.set(ev.ip, {
+            ip: ev.ip,
+            ispOrg: ev.companyName || "Unknown ISP",
+            asn: ev.asn || "N/A",
+            city: ev.cityName || "US",
+            country: ev.countryCode || "US",
+            currentStatus,
+            strikeCount: ledger?.strikeCount || (ev.isOnGuardianBlacklist ? 3 : ev.isCurrentlyShunned ? 2 : 1),
+            isOnBlacklist: ev.isOnGuardianBlacklist,
+            isCurrentlyShunned: ev.isCurrentlyShunned,
+            hasCitrixSuccess: ev.citrixSuccessCount > 0 || Boolean(ledger?.hasCitrixSuccess) || ev.hasVpnSuccessHistory,
+            citrixSuccessCount: ev.citrixSuccessCount,
+            anchorUser: primaryAnchor.username,
+            anchorDisplayName: primaryAnchor.adDisplayName,
+            anchorDepartment: primaryAnchor.adDepartment,
+            variantUsers: variantUsersList,
+            allAttemptedUsers: userStrings,
+            totalFailures: ev.totalFailures,
+            lastSeen: ev.lastSeen,
+            originalVerdict: ev.verdictReason || "Abusive Block / Triggered Rules",
+            newCalculatedVerdict: ev.verdict === "LEGIT_USER_ISSUE" ? "Legitimate User Typo (Shield Protected)" : ev.verdict,
+            reasons,
+            recommendedAction: "PARDON"
+        });
+    }
+
+    return {
+        candidates: Array.from(candidateMap.values()),
+        totalEvaluated: triage.ipEvaluations.length,
+        lookbackSeconds: rangeSeconds,
+        scannedAt: new Date().toISOString()
+    };
+}
+
 
