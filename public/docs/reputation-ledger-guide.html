@@ -504,9 +504,36 @@
     <li><strong>Notification Center Integration &amp; 1-Click Advisory:</strong> If user outreach is warranted, analysts can stage the notification in the Notification Center or dispatch a 1-Click Advisory using the pre-approved <em>Citrix Gateway Remote Access Guidance</em> template. All communications provide sanitized, generic login assistance (username format, badge number tips, Imprivata push guidance) without exposing sensitive internal syslog details.</li>
   </ul>
 
+  <h2>8. Streamlined Perimeter Navigation &amp; Session Timeout Recovery</h2>
+  <p>
+    To eliminate visual clutter while expanding defense capabilities, both the <strong>Cisco Firewall</strong> and <strong>Citrix NetScaler</strong> command centers have been reorganized into task-driven workflows:
+  </p>
+  <ul>
+    <li><strong>4-Task Cisco Firewall Architecture:</strong>
+      <ul>
+        <li><code>Perimeter Telemetry</code>: Real-time traffic throughput, edge drop trends, and appliance health.</li>
+        <li><code>3-Strike &amp; SI Defense</code>: Dynamic Cisco FMC 15-minute synchronization, 3-strike residential reputation ledger, and collapsible header drawers for <em>IP &amp; ASN Threat Investigator</em> (with on-the-spot IPLocate enrichment) and <em>Ad-Hoc Feed Block</em>.</li>
+        <li><code>Guardian Blacklist</code>: Permanent Do-Not-Unshun /32 IP locks and untrusted cloud/hosting ASNs.</li>
+        <li><code>ASA Shuns &amp; CLI</code>: Unified fleet management housing the live <em>Shun Database</em> (with Universalize Fleet failover hardening), <em>Guardian Auto-Unshun Logs</em> (with CSV export), and the interactive <em>Manual Shun CLI</em> under a segmented sub-bar.</li>
+      </ul>
+    </li>
+    <li><strong>6-Tab Citrix NetScaler Architecture:</strong>
+      <ul>
+        <li><code>Gateway Session Overview</code>: Normalized ICA/HDX launches, real session authentications, and volume graphs.</li>
+        <li><code>Login &amp; Abuse Triage</code>: Focuses on active external IP and user triage, with secondary utilities consolidated into the <em>Triage Utilities ▾</em> dropdown (Typo Scanner, Shun Search, Audit Log, Verdict CSV).</li>
+        <li><code>Anomaly Review</code>: Dedicated top-level tracker with live pending badge count, decision badges, and 1-Click Advisory outreach.</li>
+        <li><code>User &amp; IP Investigator</code>: Deep chronological multi-hop timeline search with boolean filters.</li>
+        <li><code>Foreign Geo-Access</code>: International connection monitoring and aggressive origin clustering.</li>
+        <li><code>Exploit &amp; CVE Defense</code>: Combines the CISA KEV CVE-2026-88771/72 Auto-Shun Tracker and Zero-Day &amp; Threat Hunting under a unified tab with an internal segmented switcher.</li>
+      </ul>
+    </li>
+    <li><strong>Cross-Perimeter RBAC Permissions:</strong> Read and triage endpoints (reputation metrics, shun lookup, and audit logs) allow cross-gateway inspection by analysts with <code>firewall</code>, <code>netscaler</code>, or <code>vpn</code> access, while destructive raw SSH commands remain strictly locked to firewall administrators.</li>
+    <li><strong>Session Timeout Return-to-Screen:</strong> All active tabs (<code>?tab=</code>), sub-views (<code>?subtab=</code> / <code>?subview=</code>), and lookback ranges (<code>?tf=</code> / <code>?range=</code>) sync directly to URL query parameters. Inactivity logouts capture the exact URL and restore analysts back to their specific tab upon re-login.</li>
+  </ul>
+
   <div class="footer">
     <span>Pane-O-Glass Security Operations Platform • Cooper University Health Care</span>
-    <span>Updated: November 2026 (Anomaly Login Tracker &amp; Typo-Resilient Triage Integration)</span>
+    <span>Updated: November 2026 (Perimeter UX Consolidation, Anomaly Tracker &amp; Session State Recovery)</span>
   </div>
 </div>
 

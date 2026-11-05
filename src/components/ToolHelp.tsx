@@ -33,14 +33,19 @@ export interface TooltipDetails {
 export const helpData: Record<string, TooltipDetails> = {
     "citrix-triage": {
         title: "Citrix NetScaler Login & Abuse Triage (Guardian)",
-        version: "2.1.0",
-        category: "Perimeter Threat Detection & Autoshun",
-        description: "Real-time correlation of Citrix NetScaler AAA authentication failures, Imprivata RADIUS push timeouts/password errors, and origin network intelligence to protect corporate accounts and block credential attacks.",
+        version: "3.0.0",
+        category: "Perimeter Threat Detection, Abuse Triage & Anomaly Review",
+        description: "Real-time correlation of Citrix NetScaler AAA authentication failures, Imprivata RADIUS push timeouts/password errors, origin network intelligence, and verified employee login anomalies to protect corporate accounts and block credential attacks.",
         docsLink: {
             label: "SOC Guide: Reputation Ledger & 3-Strike System",
             href: "/docs/reputation-ledger-guide.html"
         },
         capabilities: [
+            {
+                title: "Citrix Anomaly Login Review Tracker & Operational Outreach",
+                detail: "Surfaces suspicious login events on verified corporate employee accounts across 5 objective patterns: Foreign Origin, Untrusted/Blacklisted ASN, Failure Bursts Before Success, Multi-User Residential Sprays without anchor history, and Mitigated Blocks. Features 1-click SOC actions (Pardon & Allow, Confirm Block, Whitelist with mandatory justification, Acknowledge & Close) and integrates with Notification Center for 1-Click Sanitized Employee Advisories.",
+                tag: "Anomaly Tracker"
+            },
             {
                 title: "Residential Threat Lens & Multi-Employee Household Exemption",
                 detail: "Applies enhanced scrutiny to residential & business ISPs (Comcast, Comcast Business, Verizon, Verizon Business, Charter, etc.) to detect compromised routers and proxyware. Protects legitimate corporate users and multi-employee households (up to 2 active corporate AD accounts with prior authentication history) while strictly blocking IPs targeting ≥3 accounts or probing non-existent users.",
@@ -50,6 +55,11 @@ export const helpData: Record<string, TooltipDetails> = {
                 title: "Individual IP vs. ASN Blacklisting",
                 detail: "Guarantees that residential & business broadband ASNs (e.g. AS7922 Comcast / Comcast Business, AS701 Verizon Business / Fios) are never blacklisted to prevent collateral damage to remote employees. Abusive attackers have their specific /32 IP shunned and locked on the Guardian Do-Not-Unshun Blacklist.",
                 tag: "Precision Enforcement"
+            },
+            {
+                title: "Triage Utilities ▾ Action Bar",
+                detail: "Consolidates secondary analyst utilities into a clean dropdown menu: 'Scan Typo Candidates (7D)' (detects accidental typos on valid AD anchors), 'Search Shunned IPs' (queries active firewalls), 'Shun Confirmation Audit Log' (tracks operator blocks), and 'Export Verdict Matrix CSV' (exports all triage verdicts).",
+                tag: "Triage Utilities"
             },
             {
                 title: "Credential Stuffing & Password Spray Detection",
@@ -65,6 +75,11 @@ export const helpData: Record<string, TooltipDetails> = {
                 title: "Automated 5-Minute Auto-Shun Cycle",
                 detail: "Runs a background cycle to inspect recent failures, evaluate Guardian rules, execute SSH perimeter shuns across all 4 Cisco ASA/FTD firewalls in a single batch, and register positive audit log entries.",
                 tag: "Automated Defense"
+            },
+            {
+                title: "Session Timeout & Query Parameter Synchronization",
+                detail: "All active views, sub-views, and timeframes sync to URL query parameters (?tab=...&range=...&subview=...). When idle session timeouts occur, logging back in seamlessly restores your exact triage workspace.",
+                tag: "Session State"
             }
         ],
         colors: [
@@ -87,12 +102,19 @@ export const helpData: Record<string, TooltipDetails> = {
                 name: "Blacklisted ASN",
                 rgb: "168, 85, 247",
                 meaning: "Zero-tolerance cloud/hosting ASN where a single failure triggers immediate autoshun."
+            },
+            {
+                name: "Anomaly: Verified Corporate Block",
+                rgb: "239, 68, 68",
+                meaning: "Automated block active on connection with a verified corporate employee (requires review in Anomaly Tracker)."
             }
         ],
         shortcuts: [
-            "Click any KPI card to quick-filter the external IP matrix",
-            "Click 'Re-Evaluate & Reasoning' to view live step-by-step scoring rules",
-            "Click 'Citrix Timeline' on a user to trace full session forensics"
+            "Switch between 'Source IP Evaluation', 'Impacted Users & Diagnosis', and 'Raw Auth Failure Stream' using the subview toggle.",
+            "Click 'Triage Utilities ▾' to access Typo Candidate Scanner, Shun Search, Audit Logs, and CSV Export.",
+            "Click 'Anomaly Review' tab to triage corporate employee login anomalies and dispatch 1-Click Advisories.",
+            "Click 'Re-Evaluate & Reasoning' to view live step-by-step scoring rules.",
+            "Click 'Citrix Timeline' on a user to trace full session forensics."
         ]
     },
     crawler: {
@@ -175,57 +197,37 @@ export const helpData: Record<string, TooltipDetails> = {
     },
     firewall: {
         title: "Cisco Firewall & Guardian",
-        version: "2.2.0",
-        category: "Perimeter Defense & ASA Shun Management",
-        description: "Real-time perimeter ASA firewall shun management, on-demand live firewall shun table synchronization, automated threat detection, and Active Directory LDAP auto-unshun intelligence.",
+        version: "3.0.0",
+        category: "Perimeter Defense, 3-Strike SI Engine & Fleet Shun Operations",
+        description: "Unified perimeter security suite orchestrating real-time edge telemetry, Cisco FMC 15-minute dynamic Security Intelligence synchronization, 3-strike progressive residential reputation ledger, Guardian permanent blacklisting, and 4-node ASA fleet shun operations.",
         docsLink: {
             label: "SOC Guide: Reputation Ledger & 3-Strike System",
             href: "/docs/reputation-ledger-guide.html"
         },
         capabilities: [
             {
-                title: "Universal Fleet Shun Synchronizer (Failover Hardening)",
-                detail: "Cross-replicates active shuns across all 4 Cisco ASA/FTD perimeter firewalls (Wilmington Primary/Secondary & Keleman Primary/Secondary). Cisco hardware does not sync in-memory shuns across stateful HA failover links; Universal Sync eliminates this critical gap so standby units and secondary DCs never drop perimeter blocks.",
-                tag: "Failover Defense"
+                title: "Streamlined 4-Task Command Center Layout",
+                detail: "Consolidates perimeter operations into 4 focused tabs: (1) 'Perimeter Telemetry' for live traffic and edge drop telemetry, (2) '3-Strike & SI Defense' for reputation triage and dynamic FMC feeds, (3) 'Guardian Blacklist' for permanent Do-Not-Unshun /32 IPs and hostile ASNs, and (4) 'ASA Shuns & CLI' unifying live fleet shun database, auto-unshun logs, and terminal CLI.",
+                tag: "Task-Driven UX"
             },
             {
-                title: "Perimeter ASA Shun Lookup",
-                detail: "Query active IP shuns across all 4 perimeter firewalls simultaneously (Wilmington Primary/Secondary & Keleman Primary/Secondary). Verifies live connection state and blocking policies.",
-                tag: "Live Query"
+                title: "Collapsible Threat Investigator & Ad-Hoc Feed Drawers",
+                detail: "Removes visual clutter via clean header drawers: 'Investigate IP / ASN' (deep-dives threat posture, ISP/ASN intelligence, FTD drops, VPN telemetry, and IPLocate on-the-spot enrichment) and 'Ad-Hoc Feed Block' (adds /32 IPs or CIDRs with optional instant ephemeral bridge shun). Clicking any IP in the ledger automatically opens the investigator drawer.",
+                tag: "Collapsible Drawers"
             },
             {
-                title: "1-Click Manual Unshun Workflow",
-                detail: "Manually remove perimeter shuns to restore false-positive connections. Includes mandatory administrative audit logging with caller username and ticket reference.",
-                tag: "Actionable"
+                title: "Unified ASA Shuns & CLI Operations Hub",
+                detail: "Combines the 4-firewall Shun Database (with Universalize Fleet failover hardening), Guardian Auto-Unshun Logs (with CSV export and AD resolution details), and interactive Manual Shun CLI under a unified tab with an internal segmented navigation bar.",
+                tag: "Unified Fleet Shuns"
             },
             {
-                title: "On-Demand Shun Database Sync ('Sync Live Firewalls Now')",
-                detail: "Trigger an immediate SSH 'show shun' sweep across all 4 perimeter firewalls at any time between daily cron runs. Reconciles active vs. historical shun counts, enriches up to 75 new IPs inline via IPLocate, and records a full sync summary banner.",
-                tag: "Manual Sync"
-            },
-            {
-                title: "Historical Shun Database & Geolocation",
-                detail: "Search persistent historic shun records enriched with IP ASN, Autonomous System Organization, and Geolocation metadata to identify persistent attacker subnets.",
-                tag: "Enriched Metadata"
-            },
-            {
-                title: "Guardian Automated Defense Engine",
-                detail: "Monitors brute-force attack attempts across edge firewalls. Automatically issues perimeter shuns for high-frequency connection floods and credential attacks.",
-                tag: "Auto-Scanner"
-            },
-            {
-                title: "Intelligent LDAP Auto-Unshun",
-                detail: "Cross-references failed usernames against Active Directory LDAP. Automatically unshuns valid corporate employees who mistyped their password while keeping malicious external probes blacklisted.",
-                tag: "AD Intelligence"
-            },
-            {
-                title: "Blacklist & Catch-Up Operations",
-                detail: "Maintain a persistent blacklist of IP addresses and ASNs barred from auto-unshunning. Execute manual catch-up recovery scans with customizable minute ranges (--range <minutes>).",
-                tag: "Admin Controls"
+                title: "Cross-Perimeter SOC Access Alignment",
+                detail: "Enables unified cross-gateway correlation across firewalls, Citrix NetScaler, and Cisco AnyConnect VPNs. Read and triage endpoints (reputation ledger, shun database, audit logs) accept firewall, netscaler, or vpn permissions, while destructive raw SSH commands remain strictly restricted to firewall administrators.",
+                tag: "Perimeter RBAC"
             },
             {
                 title: "Cisco FMC Security Intelligence (SI) Dynamic Feed",
-                detail: "Serves an automated, high-speed flat-text dynamic feed consumed hourly by Cisco Firepower Management Center (FMC). Offloads perimeter blocking to FTD hardware TCAM / Snort 3 data-plane pre-filters with zero Lina connection state memory overhead.",
+                detail: "Serves an automated, high-speed flat-text dynamic feed consumed every 15 minutes by Cisco Firepower Management Center (FMC). Offloads perimeter blocking to FTD hardware TCAM / Snort 3 data-plane pre-filters with zero Lina connection state memory overhead.",
                 tag: "Security Intelligence"
             },
             {
@@ -239,32 +241,39 @@ export const helpData: Record<string, TooltipDetails> = {
                 tag: "Auto-Pardon"
             },
             {
+                title: "Universal Fleet Shun Synchronizer (Failover Hardening)",
+                detail: "Cross-replicates active shuns across all 4 Cisco ASA/FTD perimeter firewalls (Wilmington Primary/Secondary & Keleman Primary/Secondary). Eliminates HA failover security gaps so standby units and secondary DCs never drop perimeter blocks.",
+                tag: "Failover Defense"
+            },
+            {
                 title: "Firewall Command Queue & Ephemeral Shun Bridge",
-                detail: "Batches all CLI shun and unshun operations into a single SSH session per firewall node to eliminate Cisco VTY line exhaustion. Applies an instant 15–40m dynamic hold bridge during active attack bursts until FMC hourly ingestion completes.",
+                detail: "Batches all CLI shun and unshun operations into a single SSH session per firewall node to eliminate Cisco VTY line exhaustion. Applies an instant 10–20m dynamic hold bridge during active attack bursts until FMC 15m polling completes.",
                 tag: "Queue & Bridge"
             },
             {
-                title: "Protected Legacy Shun Drain Utility",
-                detail: "Safely drains legacy shuns in throttled batches while permanently locking all AnyConnect VPN attack IPs (2,192 IPs) and Cloud VPS/Hosting/Tor ASNs (13,345 IPs) on the firewalls.",
-                tag: "Drain Utility"
+                title: "Session Timeout & Query Parameter Synchronization",
+                detail: "All top-level tabs (?tab=), sub-tabs (?subtab=), and timeframe ranges (?tf=) mirror directly into the browser URL. When inactivity session timeouts occur, re-authenticating automatically restores the analyst to their exact workspace.",
+                tag: "Session State"
             }
         ],
         colors: [
-            { name: "Emerald (Full 4/4 Protection)", meaning: "IP address is actively shunned across all 4 perimeter firewalls. Immune to HA failover vulnerabilities.", rgb: "#10b981" },
-            { name: "Amber (At Risk on Failover)", meaning: "IP is shunned on only 1–3 firewalls. Will bypass security if active firewall fails over or traffic routes to secondary DC.", rgb: "#f59e0b" },
-            { name: "Red (Active Perimeter Shun)", meaning: "IP address is actively shunned on Cisco ASA perimeter firewalls.", rgb: "#ef4444" },
-            { name: "Purple (Enriched Metadata)", meaning: "Shun record has been enriched with ASN, Geolocation, and Organization details.", rgb: "#a855f7" }
+            { name: "Strike 1 (Watchlist)", meaning: "Single-account password failure on home residential ISP (Comcast, Verizon). 14-day observation hold; NOT blocked in SI feed to protect corporate employees.", rgb: "#f59e0b" },
+            { name: "Strike 2 (7d Enforced Block)", meaning: "Active 7-day rolling perimeter block in Cisco FMC SI feed + dynamic firewall bridge shun for repeated password failures or multi-user sprays.", rgb: "#f97316" },
+            { name: "Strike 3 (90d Quarantine)", meaning: "Extended 90-day quarantine for repeat multi-user credential sprays, botnets, and distributed brute-force origins.", rgb: "#ef4444" },
+            { name: "Pardoned (MFA OK)", meaning: "IP successfully expunged and unblocked following verified Active Directory + Duo/Imprivata MFA login or manual SOC pardon.", rgb: "#10b981" },
+            { name: "Guardian Blacklist (Permanent Lock)", meaning: "Locked on the Guardian Do-Not-Unshun Blacklist (/32 IP or entire ASN). Barred from auto-unshun cron jobs.", rgb: "#a855f7" }
         ],
         shortcuts: [
-            "Click [⚡ Universalize Fleet] in the Shun Database tab to reconcile partially shunned IPs across all 4 firewalls in safe batches.",
-            "Click [Sync All 4] on any partially-shunned IP table row to instantly protect against appliance failover.",
-            "Click [Update Shun DB Now] to SSH into all firewalls and refresh the live active shun count.",
-            "Click [Unshun] to remove an active perimeter block with mandatory audit logging.",
-            "Press Esc or click backdrop to close the Help modal."
+            "Use the top tabs to toggle between 'Perimeter Telemetry', '3-Strike & SI Defense', 'Guardian Blacklist', and 'ASA Shuns & CLI'.",
+            "In 3-Strike & SI Defense, click 'Investigate IP / ASN' or 'Ad-Hoc Feed Block' to open collapsible tools without losing your place in the ledger.",
+            "Click any IP address in the Reputation Ledger table to open the Threat Investigator drawer with full multi-platform history.",
+            "In ASA Shuns & CLI, switch between 'Shun Database', 'Guardian Auto-Unshun Logs', and 'Manual Shun CLI' using the segmented sub-nav.",
+            "Click '3-Strike & Ledger Guide' to open the SOC Analyst Guide in a new window."
         ],
         backgroundJobs: [
-            "Guardian Automated Scanner: Cron checks host connection statuses and manages threat lists every minute.",
-            "Shun Snapshot Sync: Daily scheduled job + on-demand manual trigger snapshots active shuns across all firewall pairs into PostgreSQL."
+            "Cisco FMC Dynamic Feed: Synchronizes perimeter SI blocklists every 15 minutes across all FTD edge firewalls.",
+            "Guardian Automated Scanner: Monitors connection status, processes the queue, and manages threat lists continuously.",
+            "Daily Fleet Shun Snapshot: Reconciles active vs. historical shuns across all 4 ASA nodes every 24 hours into PostgreSQL."
         ]
     },
     ise: {
@@ -312,14 +321,23 @@ export const helpData: Record<string, TooltipDetails> = {
     },
     vpn: {
         title: "VPN Troubleshooting Dashboard",
-        version: "2.6.0",
-        category: "Remote Access & Session Telemetry",
-        description: "Real-time AnyConnect / Secure Client VPN session tracking, Imprivata Confirm ID RADIUS failure correlation, interactive global mapping, bandwidth consumer profiling, and Active Directory LDAP hover cards.",
+        version: "3.0.0",
+        category: "Remote Access, Session Telemetry & Perimeter Defense",
+        description: "Real-time AnyConnect / Secure Client VPN session tracking, Imprivata Confirm ID RADIUS failure correlation, interactive global mapping, bandwidth consumer profiling, and cross-perimeter 3-strike reputation ledger integration.",
+        docsLink: {
+            label: "SOC Guide: Reputation Ledger & 3-Strike System",
+            href: "/docs/reputation-ledger-guide.html"
+        },
         capabilities: [
             {
                 title: "Imprivata Confirm ID RADIUS Failure Correlation",
                 detail: "Automatically correlates generic Cisco FTD authentication failures ('Rejected: reason = Unspecified' or 'Invalid password') against OG Graylog Imprivata RADIUS logs (Stream 5cb4d070b2090233f76b8852) to distinguish Bad AD Password / Policy Denials from MFA Push Timeouts (where the user's AD password was valid) and Invalid Usernames.",
                 tag: "Imprivata RADIUS"
+            },
+            {
+                title: "Cross-Perimeter 3-Strike Reputation & Auto-Pardon Correlation",
+                detail: "Seamlessly correlates VPN authentication streams (Wilmington Connect & Keleman Reconnect) with the Cisco FMC 3-strike residential reputation ledger and Citrix NetScaler triage. Verified remote employee logins automatically trigger multi-factor strike pardons, while persistent password sprays trigger edge shuns.",
+                tag: "Reputation Engine"
             },
             {
                 title: "Natural Language Log Search",
@@ -765,10 +783,34 @@ export const helpData: Record<string, TooltipDetails> = {
     },
     netscaler: {
         title: "NetScaler Gateway & ADC Telemetry",
-        version: "2.6.0",
-        category: "Citrix Gateway Auth, Imprivata RADIUS Correlation, Smart Guardian Abuse Triage & Zero-Day Threat Hunting",
-        description: "Comprehensive Citrix NetScaler Gateway command center featuring 3rd-party Citrix syslog feed normalization, Imprivata Confirm ID RADIUS correlation, Smart Guardian Login & Abuse Triage with Active Directory & IPLocate ASN intelligence, Foreign Geo-Access monitoring, CISA KEV Zero-Day IOC hunting (CVE-2026-88771/88772), and 1-click All-Firewalls Perimeter Shun & Guardian Blacklist enforcement.",
+        version: "3.0.0",
+        category: "Citrix Gateway Auth, Imprivata RADIUS Correlation, Anomaly Review & Exploit Defense",
+        description: "Comprehensive Citrix NetScaler Gateway command center featuring 3rd-party Citrix syslog feed normalization, Imprivata Confirm ID RADIUS correlation, Smart Guardian Login & Abuse Triage, Anomaly Login Review Tracker, Foreign Geo-Access monitoring, unified Exploit & CVE Defense, and 1-click All-Firewalls Perimeter Shun enforcement.",
+        docsLink: {
+            label: "SOC Guide: Reputation Ledger & 3-Strike System",
+            href: "/docs/reputation-ledger-guide.html"
+        },
         capabilities: [
+            {
+                title: "Streamlined 6-Tab Operational Command Center",
+                detail: "Organizes Citrix perimeter telemetry into 6 dedicated task-driven tabs: (1) 'Gateway Session Overview', (2) 'Login & Abuse Triage' with Triage Utilities dropdown, (3) 'Anomaly Review' with live pending badge count, (4) 'User & IP Investigator', (5) 'Foreign Geo-Access', and (6) 'Exploit & CVE Defense'.",
+                tag: "Task-Driven UX"
+            },
+            {
+                title: "Citrix Anomaly Login Review Tracker & Notification Center Integration",
+                detail: "Evaluates verified corporate employee accounts against suspicious connection factors across 5 objective patterns (Foreign Origin, Blacklisted/Untrusted ASN, Failure Bursts Before Success, Multi-User Residential Sprays without anchor history, and Mitigated Blocks). Integrates with Notification Center for 1-Click Sanitized Employee Advisories without exposing raw forensic payloads to users.",
+                tag: "Anomaly Tracker"
+            },
+            {
+                title: "Unified Exploit & CVE Defense Hub",
+                detail: "Consolidates the CISA KEV CVE-2026-88771/72 Auto-Shun Tracker and Zero-Day & Threat Hunting (Pitboss supervisor crashes, shell command injection, memory overflows, WHIPSHOT/SLAPSHOT post-exploitation implants, Citrix Bleed, and NITRO API abuse) under a single top-level tab with an internal segmented switcher.",
+                tag: "Exploit Defense"
+            },
+            {
+                title: "Triage Utilities ▾ Action Bar",
+                detail: "Consolidates secondary tools into a clean dropdown menu: 'Scan Typo Candidates (7D)' (identifies valid AD usernames mistyped on remote gateways), 'Search Shunned IPs' (queries active firewalls), 'Shun Confirmation Audit Log' (tracks operator blocks), and 'Export Verdict Matrix CSV' (exports all triage verdicts).",
+                tag: "Triage Utilities"
+            },
             {
                 title: "Imprivata Confirm ID RADIUS Correlation & MFA Timeout Shield",
                 detail: "Enriches generic NetScaler 'External authentication server denied access' and 'Failed policy = Imprivata-prod' events with the exact Imprivata RADIUS verdict from OG Graylog (5cb4d070b2090233f76b8852). Smart Guardian automatically protects US IPs where Imprivata verified the user's AD password succeeded and only the Confirm ID smartphone push timed out.",
@@ -778,11 +820,6 @@ export const helpData: Record<string, TooltipDetails> = {
                 title: "Cleaned Gateway Session & ICA/HDX Overview Telemetry",
                 detail: "Filters out internal NetScaler PPE session-cache polling noise ('SSLVPN Message' 12s SSID timeout checks) to surface true Gateway Session Logins, Logouts, Auth Failures, and actual ICA/HDX Application Launches (ICASTART / ICAEND_CONNSTAT).",
                 tag: "Overview Telemetry"
-            },
-            {
-                title: "Citrix Login & Abuse Triage (Smart Guardian Rules)",
-                detail: "Categorizes Citrix Gateway auth failures (AAA Login Failures, Imprivata-prod Policy Rejections, STA Ticket Failures, SAML/IdP Cookie Errors) and evaluates every external IP using configurable Smart Guardian protection rules.",
-                tag: "Login & Abuse Triage"
             },
             {
                 title: "Active Directory & Residential ISP False-Positive Protection",
@@ -795,24 +832,14 @@ export const helpData: Record<string, TooltipDetails> = {
                 tag: "Perimeter Block"
             },
             {
-                title: "Foreign Geo-Access & Location Intelligence",
-                detail: "Flags incoming gateway connection attempts originating outside the United States or across domestic US cities, providing country/city geolocation, source IP, targeted vserver, and aggressive IP failure rates.",
-                tag: "Geo Intelligence"
-            },
-            {
                 title: "Deep User & IP Chronological Investigator",
                 detail: "Search by Active Directory username or external IP address (with boolean query support) to reconstruct a chronological timeline of authentication attempts, extracted AD groups, ICA app launches, HTTP requests, and session disconnects.",
                 tag: "Investigator"
             },
             {
-                title: "Zero-Day & IOC Threat Hunting (CVE-2026-88771 / CVE-2026-88772)",
-                detail: "Built-in CISA Sigma & KEV signatures hunting for Pitboss supervisor crashes, shell command injection (${IFS}, b64decode), DTLS memory overflows, WHIPSHOT/SLAPSHOT post-exploitation implants, Citrix Bleed (CVE-2023-4966), and NITRO API abuse.",
-                tag: "Zero-Day Hunt"
-            },
-            {
-                title: "CVE-2026 Auto-Shun Tracker & Graylog Bulk Export",
-                detail: "Dedicated tracker for CVE-2026-88771/72 exploit IPs with toggleable automated perimeter shunning (default paused/manual) and 1-click handoff to the Graylog Bulk Results Exporter.",
-                tag: "CVE Tracker"
+                title: "Cross-Perimeter Permission Alignment & Session Timeout Recovery",
+                detail: "Syncs active tab (?tab=), lookback range (?range=), and sub-views (?subview=) to browser URL parameters. Shared correlation endpoints work across netscaler, firewall, and vpn permissions. Inactivity timeouts seamlessly redirect the analyst right back to their active screen upon re-authenticating.",
+                tag: "Session State"
             }
         ],
         colors: [
@@ -820,17 +847,19 @@ export const helpData: Record<string, TooltipDetails> = {
             { name: "amber SUSPICIOUS — WATCH / REVIEW", meaning: "Repeated failures warranting analyst review before shunning.", rgb: "#f59e0b" },
             { name: "🟢 LEGIT USER ISSUE — PROTECTED", meaning: "Valid Active Directory employee on a US residential/mobile ISP or IP with verified Citrix/VPN login success. Protected from shunning.", rgb: "#10b981" },
             { name: "🟣 GUARDIAN BLACKLISTED", meaning: "IP is registered on the Guardian Do-Not-Unshun Blacklist so auto-unshun will never remove its firewall block.", rgb: "#a855f7" },
-            { name: "🔵 CITRIX ICA / HDX LAUNCH", meaning: "Active Citrix Virtual Apps and Desktops HDX session launch (ICASTART).", rgb: "#06b6d4" }
+            { name: "🔵 CITRIX ICA / HDX LAUNCH", meaning: "Active Citrix Virtual Apps and Desktops HDX session launch (ICASTART).", rgb: "#06b6d4" },
+            { name: "⚡ ANOMALY: CORPORATE BLOCK", meaning: "Automated perimeter block active on an IP with a verified corporate employee login (flagged in Anomaly Review).", rgb: "#ef4444" }
         ],
         shortcuts: [
-            "Use the time range pills (1h, 6h, 12h, 24h, 3d, 7d) to adjust the lookback window across all tabs.",
-            "In Citrix Login & Abuse Triage, switch between [Source IP Evaluation], [Impacted Users & Diagnosis], and [Raw Auth Failure Stream].",
-            "Click [Guardian Rules] in Citrix Login & Abuse Triage to tune failure thresholds, spray counts, and residential ISP protection in real time.",
-            "Click [Shun & Blacklist] on any abusive IP to block it across All Perimeter Firewalls and lock it into the Guardian Do-Not-Unshun Blacklist.",
-            "Click any username or IP to pivot directly into the User & IP Investigator timeline."
+            "Use top tabs to navigate between Overview, Triage, Anomaly Review, Investigator, Geo-Access, and Exploit Defense.",
+            "In Citrix Login & Abuse Triage, open 'Triage Utilities ▾' for Typo Scanning, Shun Query, Audit Logs, and CSV Export.",
+            "In Anomaly Review, click '1-Click Send Advisory' or 'Pivot to Notification Center' to contact impacted corporate users safely.",
+            "Use the lookback window selector (1h, 6h, 12h, 24h, 3d, 7d) to adjust timeframes across all tabs.",
+            "Click any username or IP in tables to pivot directly into the User & IP Investigator timeline."
         ],
         backgroundJobs: [
             "OG Graylog Stream 5c055e3ab20902046cedcfcd: Ingests and extracts 3rd-party Citrix NetScaler syslog feeds (source 172.18.221.60, ns_module, ns_action, client_ip, username).",
+            "Citrix Login Auto-Shun Engine: Evaluates Guardian protection rules and synchronizes pending login anomalies asynchronously.",
             "CVE-2026 Auto-Shun Engine: Optional toggleable background scanner for critical CVE-2026-88771/72 exploit signatures (manual/paused by default)."
         ]
     },
