@@ -84,36 +84,62 @@ export async function GET(req: NextRequest) {
         };
 
         // 2. Fetch Active Ledger Strikes and pardons relevant to this window or elevated
-        const vpnIps = Array.from(new Set(vpnEvents.map((v) => v.sourceIp).filter((ip): ip is string => Boolean(ip))));
-        const ledgerEntries = await prisma.residentialStrikeLedger.findMany({
-            where: {
-                OR: [
-                    { ip: { in: vpnIps } },
-                    { lastSeen: { gte: sinceDate } },
-                    {
-                        strikeCount: { gte: 2 },
-                        lastSeen: { gte: new Date(now - 7 * 86400 * 1000) },
-                    },
-                ],
-            },
-            select: {
-                ip: true,
-                strikeCount: true,
-                status: true,
-                ispOrg: true,
-                asn: true,
-                country: true,
-                city: true,
-                targetPlatform: true,
-                attemptedUsers: true,
-                distinctUserCount: true,
-                lastSeen: true,
-                firstSeen: true,
-            },
-            orderBy: { lastSeen: "desc" },
-            take: 2000,
-        });
-        const ledgerMap = new Map(ledgerEntries.map((l) => [l.ip, l]));
+        // Note: Do NOT bind unbounded vpnIps array directly in SQL to prevent PostgreSQL's 32,767 bind variable limit violation
+        const [timeBoundedLedger, pardonedLedger] = await Promise.all([
+            prisma.residentialStrikeLedger.findMany({
+                where: {
+                    OR: [
+                        { lastSeen: { gte: sinceDate } },
+                        {
+                            strikeCount: { gte: 2 },
+                            lastSeen: { gte: new Date(now - 7 * 86400 * 1000) },
+                        },
+                    ],
+                },
+                select: {
+                    ip: true,
+                    strikeCount: true,
+                    status: true,
+                    ispOrg: true,
+                    asn: true,
+                    country: true,
+                    city: true,
+                    targetPlatform: true,
+                    attemptedUsers: true,
+                    distinctUserCount: true,
+                    lastSeen: true,
+                    firstSeen: true,
+                },
+                orderBy: { lastSeen: "desc" },
+                take: 5000,
+            }),
+            prisma.residentialStrikeLedger.findMany({
+                where: { status: "PARDONED" },
+                select: {
+                    ip: true,
+                    strikeCount: true,
+                    status: true,
+                    ispOrg: true,
+                    asn: true,
+                    country: true,
+                    city: true,
+                    targetPlatform: true,
+                    attemptedUsers: true,
+                    distinctUserCount: true,
+                    lastSeen: true,
+                    firstSeen: true,
+                },
+            }).catch(() => []),
+        ]);
+
+        const ledgerMap = new Map<string, any>();
+        for (const entry of pardonedLedger) {
+            ledgerMap.set(entry.ip, entry);
+        }
+        for (const entry of timeBoundedLedger) {
+            ledgerMap.set(entry.ip, entry);
+        }
+        const ledgerEntries = Array.from(ledgerMap.values());
 
         // 3. Optional Graylog query for deduplicated Citrix numbers
         let graylogDeduplicatedFailures = 0;
@@ -319,6 +345,44 @@ export async function GET(req: NextRequest) {
                     city: ledger?.city || "Unknown",
                     lastSeen: d.lastSeen,
                 });
+            }
+        }
+
+        // 1b. Targeted enrichment for live hostile candidates not captured in time-bounded ledger
+        const hostileIpsNeedingEnrichment = Array.from(allHostileCandidates.keys())
+            .filter((ip) => !ledgerMap.has(ip))
+            .slice(0, 1000); // Strict safety cap: at most 1,000 bind variables
+
+        if (hostileIpsNeedingEnrichment.length > 0) {
+            const extraLedger = await prisma.residentialStrikeLedger.findMany({
+                where: { ip: { in: hostileIpsNeedingEnrichment } },
+                select: {
+                    ip: true,
+                    strikeCount: true,
+                    status: true,
+                    ispOrg: true,
+                    asn: true,
+                    country: true,
+                    city: true,
+                    targetPlatform: true,
+                    attemptedUsers: true,
+                    distinctUserCount: true,
+                    lastSeen: true,
+                    firstSeen: true,
+                },
+            }).catch(() => []);
+
+            for (const l of extraLedger) {
+                ledgerMap.set(l.ip, l);
+                const existing = allHostileCandidates.get(l.ip);
+                if (existing) {
+                    existing.strikeCount = Math.max(existing.strikeCount, l.strikeCount);
+                    if (l.status) existing.status = l.status;
+                    if (l.ispOrg) existing.ispOrg = l.ispOrg;
+                    if (l.asn) existing.asn = l.asn;
+                    if (l.country) existing.country = l.country;
+                    if (l.city) existing.city = l.city;
+                }
             }
         }
 
