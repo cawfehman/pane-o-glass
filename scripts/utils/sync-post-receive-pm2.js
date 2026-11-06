@@ -30,12 +30,12 @@ function main() {
     try {
         console.log('[Deploy Post-Build] Ensuring citrix-guardian is active in PM2...');
         try {
-            execSync('pm2 restart citrix-guardian', { stdio: 'inherit' });
+            execSync('pm2 restart citrix-guardian --silent', { stdio: 'ignore' });
             console.log('[Deploy Post-Build] Successfully restarted citrix-guardian in PM2.');
         } catch {
             console.log('[Deploy Post-Build] Starting citrix-guardian for the first time in PM2...');
-            execSync('pm2 start dist-scripts/cron/citrix-guardian.js --name citrix-guardian', { stdio: 'inherit' });
-            execSync('pm2 save', { stdio: 'inherit' });
+            execSync('pm2 start dist-scripts/cron/citrix-guardian.js --name citrix-guardian --silent', { stdio: 'ignore' });
+            execSync('pm2 save --silent', { stdio: 'ignore' });
             console.log('[Deploy Post-Build] Started and saved citrix-guardian in PM2.');
         }
     } catch (e) {
@@ -46,25 +46,25 @@ function main() {
     try {
         console.log('[Deploy Post-Build] Ensuring anyconnect-prewarm is active in PM2...');
         try {
-            execSync('pm2 restart anyconnect-prewarm', { stdio: 'inherit' });
+            execSync('pm2 restart anyconnect-prewarm --silent', { stdio: 'ignore' });
             console.log('[Deploy Post-Build] Successfully restarted anyconnect-prewarm in PM2.');
         } catch {
             console.log('[Deploy Post-Build] Starting anyconnect-prewarm for the first time in PM2...');
-            execSync('pm2 start dist-scripts/cron/prewarm-anyconnect.js --name anyconnect-prewarm -- --daemon', { stdio: 'inherit' });
-            execSync('pm2 save', { stdio: 'inherit' });
+            execSync('pm2 start dist-scripts/cron/prewarm-anyconnect.js --name anyconnect-prewarm --silent -- --daemon', { stdio: 'ignore' });
+            execSync('pm2 save --silent', { stdio: 'ignore' });
             console.log('[Deploy Post-Build] Started and saved anyconnect-prewarm in PM2.');
         }
     } catch (e) {
-        console.warn('[Deploy Post-Build] Warning reloading anyconnect-prewarm in PM2:', e.message);
+        console.warn('[Deploy Post-Build] Warning reloading anyconnect-prewarm:', e.message);
     }
 
-    // 2. Automatically update post-receive hook so Step [4/4] always reloads citrix-guardian on every future deploy
-    const potentialHookPaths = [
+    // 2. Automatically update post-receive hook so Step [4/4] always reloads citrix-guardian and anyconnect-prewarm on every future deploy
+    const potentialHookPaths = Array.from(new Set([
         '/home/rivera/git-server/linux-dash.git/hooks/post-receive',
         '/home/rivera/git-server/pane-o-glass.git/hooks/post-receive',
         path.resolve(process.env.HOME || '/home/rivera', 'git-server/linux-dash.git/hooks/post-receive'),
         path.resolve(process.env.HOME || '/home/rivera', 'git-server/pane-o-glass.git/hooks/post-receive')
-    ];
+    ]));
 
     for (const hookPath of potentialHookPaths) {
         try {
@@ -97,9 +97,9 @@ function main() {
                 if (modified) {
                     fs.writeFileSync(hookPath, hookContent, 'utf8');
                     fs.chmodSync(hookPath, '755');
-                    console.log(`[Deploy Post-Build] Updated ${hookPath} to automatically reload citrix-guardian on every deploy!`);
+                    console.log(`[Deploy Post-Build] Updated ${hookPath} to automatically reload daemons on every deploy!`);
                 } else {
-                    console.log(`[Deploy Post-Build] Hook ${hookPath} already contains citrix-guardian.`);
+                    console.log(`[Deploy Post-Build] Hook ${hookPath} already contains daemon reload commands.`);
                 }
             }
         } catch (err) {
