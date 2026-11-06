@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { 
     Eye, Plus, Search, Trash2, RefreshCw, Copy, Check, 
     ShieldCheck, AlertTriangle, ShieldAlert, Server, SearchX,
@@ -19,7 +19,21 @@ interface MonitoredWatchlistTabProps {
     onCountChange?: (count: number) => void;
 }
 
-const IPV4_REGEX = /^(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/;
+const IPV4_OR_CIDR_REGEX = /^(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)(\/(3[0-2]|[12]?[0-9]))?$/;
+
+function parseIpList(raw: string) {
+    const tokens = raw.split(/[\s,;]+/).map(t => t.trim()).filter(Boolean);
+    const valid: string[] = [];
+    const invalid: string[] = [];
+    for (const t of tokens) {
+        if (IPV4_OR_CIDR_REGEX.test(t)) {
+            if (!valid.includes(t)) valid.push(t);
+        } else {
+            if (!invalid.includes(t)) invalid.push(t);
+        }
+    }
+    return { tokens, valid, invalid };
+}
 
 export function MonitoredWatchlistTab({ onCountChange }: MonitoredWatchlistTabProps) {
     const [items, setItems] = useState<MonitoredItem[]>([]);
@@ -33,10 +47,17 @@ export function MonitoredWatchlistTab({ onCountChange }: MonitoredWatchlistTabPr
     const [newDesc, setNewDesc] = useState("");
     const [adding, setAdding] = useState(false);
     const [message, setMessage] = useState<{ text: string; isError?: boolean } | null>(null);
+    const ipInputRef = useRef<HTMLInputElement>(null);
 
     // Copy & Delete feedback
     const [copiedIp, setCopiedIp] = useState<string | null>(null);
     const [deletingIp, setDeletingIp] = useState<string | null>(null);
+
+    // Real-time IP/CIDR preview
+    const parsedPreview = useMemo(() => {
+        if (!newIp.trim()) return null;
+        return parseIpList(newIp);
+    }, [newIp]);
 
     // Fetch monitored IPs
     const fetchMonitoredIps = useCallback(async () => {
@@ -65,16 +86,23 @@ export function MonitoredWatchlistTab({ onCountChange }: MonitoredWatchlistTabPr
         fetchMonitoredIps();
     }, [fetchMonitoredIps]);
 
-    // Handle Add IP
-    const handleAddMonitored = async (e: React.FormEvent) => {
-        e.preventDefault();
-        const trimmedIp = newIp.trim();
+    // Handle Add IP / Bulk IPs
+    const handleAddMonitored = async (e?: React.FormEvent, keepDesc = false) => {
+        if (e) e.preventDefault();
+        const { tokens, valid, invalid } = parseIpList(newIp);
         const trimmedDesc = newDesc.trim();
 
-        if (!trimmedIp) return;
+        if (tokens.length === 0) {
+            setMessage({ text: "Please enter at least one IPv4 address or CIDR subnet.", isError: true });
+            ipInputRef.current?.focus();
+            return;
+        }
 
-        if (!IPV4_REGEX.test(trimmedIp)) {
-            setMessage({ text: "Please enter a valid IPv4 address (e.g. 198.51.100.25)", isError: true });
+        if (invalid.length > 0) {
+            setMessage({
+                text: `Invalid IPv4 or CIDR format: ${invalid.join(", ")}. Please correct before adding.`,
+                isError: true
+            });
             return;
         }
 
@@ -84,19 +112,30 @@ export function MonitoredWatchlistTab({ onCountChange }: MonitoredWatchlistTabPr
             const res = await fetch("/api/firewall/guardian/monitored", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ ip: trimmedIp, description: trimmedDesc })
+                body: JSON.stringify({ ip: valid.join(", "), description: trimmedDesc })
             });
             const data = await res.json();
             if (res.ok && data.success) {
-                setMessage({ text: `Successfully added ${trimmedIp} to Guardian monitored watchlist.` });
+                const count = data.count || valid.length;
+                const summaryText = count === 1
+                    ? `Successfully added ${valid[0]} to Guardian monitored watchlist.`
+                    : `Successfully added ${count} entries to Guardian monitored watchlist (${valid.slice(0, 3).join(", ")}${count > 3 ? "..." : ""}).`;
+                
+                setMessage({ text: summaryText, isError: false });
                 setNewIp("");
-                setNewDesc("");
+                if (!keepDesc) {
+                    setNewDesc("");
+                }
                 fetchMonitoredIps();
+
+                if (keepDesc) {
+                    setTimeout(() => ipInputRef.current?.focus(), 50);
+                }
             } else {
-                setMessage({ text: data.error || "Failed to add monitored IP", isError: true });
+                setMessage({ text: data.error || "Failed to add monitored entry", isError: true });
             }
         } catch (err: any) {
-            setMessage({ text: err.message || "Failed to add monitored IP", isError: true });
+            setMessage({ text: err.message || "Failed to add monitored entry", isError: true });
         } finally {
             setAdding(false);
         }
@@ -243,45 +282,79 @@ export function MonitoredWatchlistTab({ onCountChange }: MonitoredWatchlistTabPr
                 <div className="flex items-center gap-2">
                     <Plus className="w-4 h-4 text-accent-primary" />
                     <h3 className="text-xs font-bold text-text-primary uppercase tracking-wider">
-                        Add IP to Guardian Monitored Watchlist
+                        Add IP(s) or CIDRs to Guardian Monitored Watchlist
                     </h3>
                 </div>
                 <p className="text-xs text-text-muted">
-                    Specify an IPv4 address and justification. The Guardian daemon will immediately flag this host as monitored and protected from automated perimeter isolation.
+                    Specify one or more IPv4 addresses or CIDR subnets (separated by commas, spaces, or lines) and a justification. The Guardian daemon will immediately flag these entries as monitored and protected from automated perimeter isolation.
                 </p>
 
-                <form onSubmit={handleAddMonitored} className="flex flex-col sm:flex-row gap-3 items-center">
-                    <input
-                        type="text"
-                        value={newIp}
-                        onChange={(e) => setNewIp(e.target.value)}
-                        placeholder="IPv4 address (e.g. 198.51.100.25)..."
-                        className="w-full sm:w-64 bg-bg-surface border border-border-color rounded-xl px-3 py-2 text-xs font-mono text-text-primary placeholder:text-text-muted focus:outline-none focus:border-accent-primary shadow-inner"
-                    />
-                    <input
-                        type="text"
-                        value={newDesc}
-                        onChange={(e) => setNewDesc(e.target.value)}
-                        placeholder="Purpose / Justification (e.g. Critical Partner Gateway, Telehealth Provider)..."
-                        className="w-full sm:flex-1 bg-bg-surface border border-border-color rounded-xl px-3 py-2 text-xs text-text-primary placeholder:text-text-muted focus:outline-none focus:border-accent-primary shadow-inner"
-                    />
-                    <button
-                        type="submit"
-                        disabled={adding || !newIp.trim()}
-                        className="w-full sm:w-auto px-4 py-2 bg-accent-primary hover:bg-accent-primary-hover disabled:opacity-50 text-white font-bold text-xs rounded-xl shadow transition cursor-pointer whitespace-nowrap flex items-center justify-center gap-2"
-                    >
-                        {adding ? (
-                            <>
-                                <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                                Adding...
-                            </>
-                        ) : (
-                            <>
-                                <Plus className="w-3.5 h-3.5" />
-                                Add to Watchlist
-                            </>
-                        )}
-                    </button>
+                <form onSubmit={(e) => handleAddMonitored(e, false)} className="space-y-2.5">
+                    <div className="flex flex-col lg:flex-row gap-3 items-stretch lg:items-center">
+                        <input
+                            ref={ipInputRef}
+                            type="text"
+                            value={newIp}
+                            onChange={(e) => setNewIp(e.target.value)}
+                            placeholder="IPv4 or CIDR (e.g. 4.152.4.155, 4.236.240.199, 10.0.0.0/24)..."
+                            className="w-full lg:w-96 bg-bg-surface border border-border-color rounded-xl px-3 py-2 text-xs font-mono text-text-primary placeholder:text-text-muted focus:outline-none focus:border-accent-primary shadow-inner"
+                        />
+                        <input
+                            type="text"
+                            value={newDesc}
+                            onChange={(e) => setNewDesc(e.target.value)}
+                            placeholder="Purpose / Justification (applied to each entry above)..."
+                            className="w-full lg:flex-1 bg-bg-surface border border-border-color rounded-xl px-3 py-2 text-xs text-text-primary placeholder:text-text-muted focus:outline-none focus:border-accent-primary shadow-inner"
+                        />
+                        <div className="flex items-center gap-2">
+                            <button
+                                type="submit"
+                                disabled={adding || !newIp.trim()}
+                                className="w-full sm:w-auto px-4 py-2 bg-accent-primary hover:bg-accent-primary-hover disabled:opacity-50 text-white font-bold text-xs rounded-xl shadow transition cursor-pointer whitespace-nowrap flex items-center justify-center gap-1.5"
+                            >
+                                {adding ? (
+                                    <>
+                                        <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                                        Adding...
+                                    </>
+                                ) : (
+                                    <>
+                                        <Plus className="w-3.5 h-3.5" />
+                                        {parsedPreview && parsedPreview.valid.length > 1
+                                            ? `Add ${parsedPreview.valid.length} to Watchlist`
+                                            : "Add to Watchlist"}
+                                    </>
+                                )}
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => handleAddMonitored(undefined, true)}
+                                disabled={adding || !newIp.trim()}
+                                title="Add entries and retain description to immediately add another batch"
+                                className="w-full sm:w-auto px-3.5 py-2 bg-bg-surface hover:bg-white/10 border border-border-color hover:border-accent-primary/60 text-text-primary hover:text-white font-semibold text-xs rounded-xl shadow-sm transition cursor-pointer whitespace-nowrap flex items-center justify-center gap-1.5"
+                            >
+                                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                                Save & Add Another
+                            </button>
+                        </div>
+                    </div>
+
+                    {parsedPreview && (
+                        <div className="flex flex-wrap items-center gap-2 pt-0.5 text-xs">
+                            {parsedPreview.valid.length > 0 && (
+                                <span className="text-[11px] font-mono font-semibold text-emerald-400 bg-emerald-950/40 border border-emerald-800/60 px-2.5 py-0.5 rounded-lg flex items-center gap-1.5">
+                                    <Check className="w-3 h-3 text-emerald-400" />
+                                    {parsedPreview.valid.length} {parsedPreview.valid.length === 1 ? "entry" : "entries"} ready: {parsedPreview.valid.slice(0, 4).join(", ")}{parsedPreview.valid.length > 4 ? ` +${parsedPreview.valid.length - 4} more` : ""}
+                                </span>
+                            )}
+                            {parsedPreview.invalid.length > 0 && (
+                                <span className="text-[11px] font-mono font-semibold text-amber-300 bg-amber-950/40 border border-amber-800/60 px-2.5 py-0.5 rounded-lg flex items-center gap-1.5">
+                                    <AlertTriangle className="w-3 h-3 text-amber-400" />
+                                    Incomplete/invalid: {parsedPreview.invalid.join(", ")}
+                                </span>
+                            )}
+                        </div>
+                    )}
                 </form>
 
                 {message && (
@@ -382,7 +455,7 @@ export function MonitoredWatchlistTab({ onCountChange }: MonitoredWatchlistTabPr
                     <thead className="bg-bg-surface text-text-muted uppercase text-[10px] sticky top-0 z-10 shadow-sm border-b border-border-color tracking-wider">
                         <tr>
                             <th className="py-3 px-3 w-12 text-center select-none font-semibold">#</th>
-                            <th className="py-3 px-4 font-semibold">Monitored IP</th>
+                            <th className="py-3 px-4 font-semibold">Monitored IP / CIDR</th>
                             <th className="py-3 px-4 font-semibold">Description / Purpose</th>
                             <th className="py-3 px-4 font-semibold">Configured By</th>
                             <th className="py-3 px-4 font-semibold">Date Added</th>
@@ -421,6 +494,11 @@ export function MonitoredWatchlistTab({ onCountChange }: MonitoredWatchlistTabPr
                                     <td className="py-3 px-4 font-bold text-cyan-400 whitespace-nowrap">
                                         <div className="flex items-center gap-2">
                                             <span>{item.ip}</span>
+                                            {item.ip.includes("/") && (
+                                                <span className="text-[9px] px-1.5 py-0.2 rounded bg-cyan-500/15 text-cyan-300 border border-cyan-500/30 font-mono font-semibold">
+                                                    CIDR
+                                                </span>
+                                            )}
                                             <button
                                                 type="button"
                                                 onClick={() => handleCopy(item.ip)}

@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { hasPermission } from "@/app/actions/permissions";
 import { logAudit } from "@/lib/audit";
+import { invalidateFeedCache } from "@/app/api/feeds/security-intelligence/route";
 import fs from "fs";
 import path from "path";
 import dotenv from "dotenv";
@@ -11,7 +12,7 @@ export const dynamic = "force-dynamic";
 
 let lastMonitoredEnvMtimeMs = 0;
 
-const IPV4_REGEX = /^(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/;
+const IPV4_OR_CIDR_REGEX = /^(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)(\/(3[0-2]|[12]?[0-9]))?$/;
 
 // GET /api/firewall/guardian/monitored
 // Returns all monitored watch IPs. Automatically synchronizes any newly added IPs from .env into PostgreSQL.
@@ -45,7 +46,7 @@ export async function GET() {
                         rawWatchList
                             .split(",")
                             .map(ip => ip.trim())
-                            .filter(ip => IPV4_REGEX.test(ip))
+                            .filter(ip => IPV4_OR_CIDR_REGEX.test(ip))
                     ));
 
                     if (envIps.length > 0) {
@@ -99,7 +100,7 @@ export async function GET() {
 }
 
 // POST /api/firewall/guardian/monitored
-// Adds or updates a monitored IP on the Guardian Watchlist
+// Adds or updates one or multiple monitored IPs/CIDRs on the Guardian Watchlist
 export async function POST(req: NextRequest) {
     try {
         const session = await auth();
@@ -111,53 +112,106 @@ export async function POST(req: NextRequest) {
         }
 
         const body = await req.json().catch(() => ({}));
-        const { ip, description } = body;
+        const rawTarget = body.ip ?? body.target ?? body.ips;
+        const cleanDesc = String(body.description || "").trim();
 
-        const cleanIp = String(ip || "").trim();
-        const cleanDesc = String(description || "").trim();
+        let rawCandidates: string[] = [];
+        if (Array.isArray(rawTarget)) {
+            rawCandidates = rawTarget.flatMap(item => String(item || "").split(/[\s,;]+/));
+        } else if (typeof rawTarget === "string") {
+            rawCandidates = rawTarget.split(/[\s,;]+/);
+        }
 
-        if (!cleanIp || !IPV4_REGEX.test(cleanIp)) {
-            return NextResponse.json({ error: "A valid IPv4 address is required." }, { status: 400 });
+        const candidates = rawCandidates.map(s => s.trim()).filter(Boolean);
+
+        if (candidates.length === 0) {
+            return NextResponse.json({ error: "At least one valid IPv4 address or CIDR subnet is required." }, { status: 400 });
+        }
+
+        const validEntries: string[] = [];
+        const invalidEntries: string[] = [];
+
+        for (const token of candidates) {
+            if (IPV4_OR_CIDR_REGEX.test(token)) {
+                if (!validEntries.includes(token)) {
+                    validEntries.push(token);
+                }
+            } else {
+                if (!invalidEntries.includes(token)) {
+                    invalidEntries.push(token);
+                }
+            }
+        }
+
+        if (validEntries.length === 0) {
+            return NextResponse.json({
+                error: `No valid IPv4 address or CIDR subnet found. Invalid format: ${invalidEntries.join(", ")}`,
+                invalid: invalidEntries
+            }, { status: 400 });
+        }
+
+        if (invalidEntries.length > 0) {
+            return NextResponse.json({
+                error: `Please correct invalid entries before submitting: ${invalidEntries.join(", ")}`,
+                invalid: invalidEntries,
+                validCount: validEntries.length
+            }, { status: 400 });
         }
 
         const authorName = (session.user as any).username || session.user.name || session.user.email || "Admin";
         const forwardedFor = req.headers.get("x-forwarded-for");
         const clientIp = forwardedFor ? forwardedFor.split(',')[0] : 'internal';
 
-        const entry = await prisma.guardianWatchIp.upsert({
-            where: { ip: cleanIp },
-            update: {
-                description: cleanDesc || "Monitored watch IP",
-                createdBy: authorName
-            },
-            create: {
-                ip: cleanIp,
-                description: cleanDesc || "Monitored watch IP",
-                createdBy: authorName
-            }
-        });
+        const createdOrUpdated = [];
+        for (const cleanIp of validEntries) {
+            const entry = await prisma.guardianWatchIp.upsert({
+                where: { ip: cleanIp },
+                update: {
+                    description: cleanDesc || "Monitored watch IP",
+                    createdBy: authorName
+                },
+                create: {
+                    ip: cleanIp,
+                    description: cleanDesc || "Monitored watch IP",
+                    createdBy: authorName
+                }
+            });
+            createdOrUpdated.push(entry);
+
+            await prisma.firewallQueryHistory.create({
+                data: {
+                    userId: session.user.id,
+                    command: "Add Monitored IP (Guardian)",
+                    targetIp: cleanIp,
+                    targetName: "Guardian Watchlist"
+                }
+            }).catch(() => {});
+        }
+
+        // Immediately invalidate SI whitelist feed cache so changes propagate to FMC
+        invalidateFeedCache();
 
         // Dual-audit: System AuditLog + Operations History
+        const auditSummary = validEntries.length === 1
+            ? `Added ${validEntries[0]} to Guardian monitored watchlist - Reason: "${cleanDesc || 'No description provided'}"`
+            : `Bulk added ${validEntries.length} entries to Guardian monitored watchlist (${validEntries.join(", ")}) - Reason: "${cleanDesc || 'No description provided'}"`;
+
         await logAudit(
             "GUARDIAN_MONITORED_IP_ADD",
-            `Added ${cleanIp} to Guardian monitored watchlist - Reason: "${cleanDesc || 'No description provided'}"`,
+            auditSummary,
             session.user.id,
             clientIp
         ).catch(() => {});
 
-        await prisma.firewallQueryHistory.create({
-            data: {
-                userId: session.user.id,
-                command: "Add Monitored IP (Guardian)",
-                targetIp: cleanIp,
-                targetName: "Guardian Watchlist"
-            }
-        }).catch(() => {});
-
-        return NextResponse.json({ success: true, entry });
+        return NextResponse.json({
+            success: true,
+            count: createdOrUpdated.length,
+            entries: createdOrUpdated,
+            entry: createdOrUpdated[0]
+        });
     } catch (err: any) {
-        console.error("Failed to add monitored IP:", err);
-        return NextResponse.json({ error: err.message || "Failed to add monitored IP" }, { status: 500 });
+        console.error("Failed to add monitored IP(s):", err);
+        return NextResponse.json({ error: err.message || "Failed to add monitored IP(s)" }, { status: 500 });
     }
 }
 
@@ -186,6 +240,9 @@ export async function DELETE(req: NextRequest) {
         await prisma.guardianWatchIp.delete({
             where: { ip }
         }).catch(() => {});
+
+        // Immediately invalidate SI whitelist feed cache
+        invalidateFeedCache();
 
         // Dual-audit: System AuditLog + Operations History
         await logAudit(

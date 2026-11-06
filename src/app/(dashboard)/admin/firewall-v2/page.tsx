@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import {
     Shield,
     ShieldAlert,
@@ -304,23 +304,36 @@ export default function FtdOperationsPage() {
         }
     }, []);
 
-    const handleAddMonitored = async (e: React.FormEvent) => {
-        e.preventDefault();
-        if (!newMonitoredIp.trim()) return;
+    const monitoredIpRef = useRef<HTMLInputElement>(null);
+
+    const handleAddMonitored = async (e?: React.FormEvent, keepDesc = false) => {
+        if (e) e.preventDefault();
+        const raw = newMonitoredIp.trim();
+        if (!raw) return;
         setAddingMonitored(true);
         setMonitoredMsg(null);
         try {
             const res = await fetch("/api/firewall/guardian/monitored", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ ip: newMonitoredIp, description: newMonitoredDesc })
+                body: JSON.stringify({ ip: raw, description: newMonitoredDesc.trim() })
             });
             const data = await res.json();
             if (res.ok && data.success) {
-                setMonitoredMsg({ text: `Successfully added ${newMonitoredIp} to Guardian monitored watchlist.` });
+                const count = data.count || 1;
+                setMonitoredMsg({
+                    text: count === 1
+                        ? `Successfully added ${data.entry?.ip || raw} to Guardian monitored watchlist.`
+                        : `Successfully added ${count} entries to Guardian monitored watchlist.`
+                });
                 setNewMonitoredIp("");
-                setNewMonitoredDesc("");
+                if (!keepDesc) {
+                    setNewMonitoredDesc("");
+                }
                 fetchMonitoredIps();
+                if (keepDesc) {
+                    setTimeout(() => monitoredIpRef.current?.focus(), 50);
+                }
             } else {
                 setMonitoredMsg({ text: data.error || "Failed to add monitored IP", isError: true });
             }
@@ -1249,35 +1262,47 @@ export default function FtdOperationsPage() {
                                     <div className="flex items-center gap-2">
                                         <Plus className="w-4 h-4 text-[var(--accent-primary)]" />
                                         <h4 className="text-xs font-bold text-[var(--text-primary)] uppercase tracking-wider">
-                                            Add IP to Guardian Monitored Watchlist
+                                            Add IP(s) or CIDRs to Guardian Monitored Watchlist
                                         </h4>
                                     </div>
                                     <p className="text-xs text-[var(--text-secondary)]">
-                                        Monitored IPs are actively inspected by the Guardian daemon on every pass across all 4 FTD firewalls to ensure authorized connectivity is safely maintained.
+                                        Specify one or more IPv4 addresses or CIDR subnets (separated by commas, spaces, or lines) and a justification. The Guardian daemon will immediately flag these entries as monitored and protected from automated perimeter isolation.
                                     </p>
 
-                                    <form onSubmit={handleAddMonitored} className="flex flex-col sm:flex-row gap-3 items-center">
+                                    <form onSubmit={(e) => handleAddMonitored(e, false)} className="flex flex-col sm:flex-row gap-3 items-center">
                                         <input
+                                            ref={monitoredIpRef}
                                             type="text"
                                             value={newMonitoredIp}
                                             onChange={(e) => setNewMonitoredIp(e.target.value)}
-                                            placeholder="IPv4 address (e.g. 198.51.100.25)..."
-                                            className="w-full sm:w-64 bg-[var(--bg-dark)] border border-[var(--border-color)] rounded-xl px-3 py-2 text-xs text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none focus:border-[var(--accent-primary)]"
+                                            placeholder="IPv4 or CIDR (e.g. 4.152.4.155, 4.236.240.199, 10.0.0.0/24)..."
+                                            className="w-full sm:w-80 bg-[var(--bg-dark)] border border-[var(--border-color)] rounded-xl px-3 py-2 text-xs text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none focus:border-[var(--accent-primary)] font-mono"
                                         />
                                         <input
                                             type="text"
                                             value={newMonitoredDesc}
                                             onChange={(e) => setNewMonitoredDesc(e.target.value)}
-                                            placeholder="Purpose / Justification (e.g. Critical Partner Gateway)..."
+                                            placeholder="Purpose / Justification (applied to each entry above)..."
                                             className="w-full sm:flex-1 bg-[var(--bg-dark)] border border-[var(--border-color)] rounded-xl px-3 py-2 text-xs text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none focus:border-[var(--accent-primary)]"
                                         />
-                                        <button
-                                            type="submit"
-                                            disabled={addingMonitored || !newMonitoredIp.trim()}
-                                            className="w-full sm:w-auto px-4 py-2 bg-[var(--accent-primary)] hover:bg-[var(--accent-primary-hover)] disabled:opacity-50 text-white font-bold text-xs rounded-xl shadow transition cursor-pointer whitespace-nowrap"
-                                        >
-                                            {addingMonitored ? "Adding..." : "Add to Watchlist"}
-                                        </button>
+                                        <div className="flex items-center gap-2">
+                                            <button
+                                                type="submit"
+                                                disabled={addingMonitored || !newMonitoredIp.trim()}
+                                                className="w-full sm:w-auto px-4 py-2 bg-[var(--accent-primary)] hover:bg-[var(--accent-primary-hover)] disabled:opacity-50 text-white font-bold text-xs rounded-xl shadow transition cursor-pointer whitespace-nowrap"
+                                            >
+                                                {addingMonitored ? "Adding..." : "Add to Watchlist"}
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => handleAddMonitored(undefined, true)}
+                                                disabled={addingMonitored || !newMonitoredIp.trim()}
+                                                title="Add entries and retain description to immediately add another batch"
+                                                className="w-full sm:w-auto px-3.5 py-2 bg-[var(--bg-surface)] hover:bg-white/10 border border-[var(--border-color)] hover:border-[var(--accent-primary)] text-[var(--text-primary)] font-semibold text-xs rounded-xl shadow-sm transition cursor-pointer whitespace-nowrap"
+                                            >
+                                                Save & Add Another
+                                            </button>
+                                        </div>
                                     </form>
 
                                     {monitoredMsg && (
