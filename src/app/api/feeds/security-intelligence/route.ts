@@ -3,8 +3,48 @@ import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { isPrivateIp } from "@/lib/iplocate";
 import { isResidentialOrg } from "@/lib/reputation-ledger";
+import { isIpInSubnet, parseCidr } from "@/lib/ip-subnet";
 import crypto from "crypto";
 
+export interface FeedResult {
+    body: string;
+    md5: string;
+    ips: string[];
+    metrics: {
+        total: number;
+        cveCount: number;
+        blacklistCount: number;
+        hostingCount: number;
+        residentialCount: number;
+        cidrCount?: number;
+        generatedAt: string;
+    };
+}
+
+export interface WhitelistFeedResult {
+    body: string;
+    md5: string;
+    ips: string[];
+    metrics: {
+        total: number;
+        watchlistCount: number;
+        pardonCount: number;
+        generatedAt: string;
+    };
+}
+
+let cachedFeeds: Record<string, { data: FeedResult; timestamp: number }> = {};
+let cachedWhitelistFeed: { data: WhitelistFeedResult; timestamp: number } | null = null;
+const FEED_CACHE_TTL_MS = 60 * 1000; // 60s TTL ensures FMC MD5 check and feed download receive 100% identical data
+
+export function invalidateFeedCache() {
+    cachedFeeds = {};
+    cachedWhitelistFeed = null;
+}
+
+// -----------------------------------------------------------------------------
+// 1. FMC THREAT INTELLIGENCE (BLOCK) FEED GENERATOR
+// -----------------------------------------------------------------------------
 export async function getSecurityIntelligenceIps(tierFilter: string = "all"): Promise<{
     ips: string[];
     metrics: {
@@ -13,10 +53,11 @@ export async function getSecurityIntelligenceIps(tierFilter: string = "all"): Pr
         blacklistCount: number;
         hostingCount: number;
         residentialCount: number;
+        cidrCount: number;
         generatedAt: string;
     };
 }> {
-    const ipSet = new Set<string>();
+    const rawEntries = new Set<string>();
     let cveCount = 0;
     let blacklistCount = 0;
     let hostingCount = 0;
@@ -24,8 +65,6 @@ export async function getSecurityIntelligenceIps(tierFilter: string = "all"): Pr
 
     const now = Date.now();
     // 7-Day (168-Hour) TTL for dynamic residential broadband IPs
-    // Aligns with typical Comcast/Spectrum/Verizon DHCP lease sticky times (7-14 days)
-    // and ensures multi-day weekend attack campaigns cannot reuse expired proxy nodes.
     const residentialCutoff = new Date(now - 7 * 24 * 60 * 60 * 1000);
 
     // 1. NetScaler CVE Active Shuns (Exploits / Critical IOCs) - Retained Indefinitely
@@ -36,20 +75,22 @@ export async function getSecurityIntelligenceIps(tierFilter: string = "all"): Pr
         });
         for (const item of cveShuns) {
             if (!isPrivateIp(item.ip)) {
-                ipSet.add(item.ip);
+                rawEntries.add(item.ip);
                 cveCount++;
             }
         }
     }
 
-    // 2. Permanent Guardian Blacklist - Retained Indefinitely
+    // 2. Permanent Guardian Blacklist (Supports both /32 host IPs and /24-/22 CIDRs)
     if (tierFilter === "all") {
         const blacklisted = await prisma.guardianBlacklist.findMany({
             select: { ip: true }
         });
         for (const item of blacklisted) {
-            if (!isPrivateIp(item.ip) && !ipSet.has(item.ip)) {
-                ipSet.add(item.ip);
+            const clean = item.ip.trim();
+            const hostOrNet = clean.split("/")[0];
+            if (!isPrivateIp(hostOrNet) && !rawEntries.has(clean)) {
+                rawEntries.add(clean);
                 blacklistCount++;
             }
         }
@@ -65,21 +106,17 @@ export async function getSecurityIntelligenceIps(tierFilter: string = "all"): Pr
             select: { ip: true }
         });
         for (const item of enforcedStrikes) {
-            if (!isPrivateIp(item.ip) && !ipSet.has(item.ip)) {
-                ipSet.add(item.ip);
+            if (!isPrivateIp(item.ip) && !rawEntries.has(item.ip)) {
+                rawEntries.add(item.ip);
                 residentialCount++;
             }
         }
     }
 
     // 4. Active Firewall Shun Database Records
-    // - Dynamic Residential ISPs: 7-Day (168-Hour) TTL aging to prevent bloat & DHCP employee collateral lockout
-    // - Cloud VPS / Hosting ASNs / Datacenters: RETAINED INDEFINITELY (zero business need for inbound VPS traffic)
     if (tierFilter === "all" || tierFilter === "hosting" || tierFilter === "residential") {
         const activeStats = await prisma.firewallShunStats.findMany({
-            where: {
-                isActive: true
-            },
+            where: { isActive: true },
             select: {
                 ip: true,
                 lastSeen: true,
@@ -93,74 +130,66 @@ export async function getSecurityIntelligenceIps(tierFilter: string = "all"): Pr
         });
 
         for (const stat of activeStats) {
-            const ip = stat.ip;
-            if (ipSet.has(ip) || isPrivateIp(ip)) continue;
+            const ip = stat.ip.trim();
+            if (rawEntries.has(ip) || isPrivateIp(ip)) continue;
 
             const isRes = isResidentialOrg(stat.shunIp?.org);
 
             if (isRes) {
-                // Tier 1: Dynamic Residential IP -> strictly apply 7-Day (168-Hour) TTL
+                // Tier 1: Dynamic Residential IP -> strictly apply 7-Day TTL
                 if (stat.lastSeen >= residentialCutoff) {
                     if (tierFilter === "all" || tierFilter === "residential") {
-                        ipSet.add(ip);
+                        rawEntries.add(ip);
                         residentialCount++;
                     }
                 }
             } else {
                 // Tier 3: Cloud VPS / Hosting ASNs / Datacenter -> RETAINED INDEFINITELY
                 if (tierFilter === "all" || tierFilter === "hosting") {
-                    ipSet.add(ip);
+                    rawEntries.add(ip);
                     hostingCount++;
                 }
             }
         }
     }
 
-    const sortedIps = Array.from(ipSet).sort((a, b) => {
-        const cleanA = a.split("/")[0];
-        const cleanB = b.split("/")[0];
-        const numA = cleanA.split(".").map(Number);
-        const numB = cleanB.split(".").map(Number);
+    // 5. Deduplicate redundant /32 host entries subsumed by consolidated CIDRs
+    const cidrs = Array.from(rawEntries).filter((entry) => entry.includes("/"));
+    const finalSet = new Set<string>();
+
+    for (const entry of rawEntries) {
+        if (entry.includes("/")) {
+            finalSet.add(entry);
+        } else {
+            // Check if this /32 is already covered by an active CIDR in the feed
+            const isSubsumed = cidrs.some((cidr) => isIpInSubnet(entry, cidr));
+            if (!isSubsumed) {
+                finalSet.add(entry);
+            }
+        }
+    }
+
+    const sortedEntries = Array.from(finalSet).sort((a, b) => {
+        const cleanA = a.split("/")[0].split(".").map(Number);
+        const cleanB = b.split("/")[0].split(".").map(Number);
         for (let i = 0; i < 4; i++) {
-            if (numA[i] !== numB[i]) return numA[i] - numB[i];
+            if (cleanA[i] !== cleanB[i]) return cleanA[i] - cleanB[i];
         }
         return 0;
     });
 
     return {
-        ips: sortedIps,
+        ips: sortedEntries,
         metrics: {
-            total: sortedIps.length,
+            total: sortedEntries.length,
             cveCount,
             blacklistCount,
             hostingCount,
             residentialCount,
+            cidrCount: cidrs.length,
             generatedAt: new Date().toISOString()
         }
     };
-}
-
-export const dynamic = "force-dynamic";
-
-export interface FeedResult {
-    body: string;
-    md5: string;
-    ips: string[];
-    metrics: {
-        total: number;
-        cveCount: number;
-        blacklistCount: number;
-        hostingCount: number;
-        residentialCount: number;
-        generatedAt: string;
-    };
-}
-
-let cachedFeeds: Record<string, { data: FeedResult; timestamp: number }> = {};
-const FEED_CACHE_TTL_MS = 60 * 1000; // 60s TTL ensures FMC MD5 check and feed download receive 100% identical data
-
-export function invalidateFeedCache() {
-    cachedFeeds = {};
 }
 
 export async function getSecurityIntelligenceFeed(tierFilter: string = "all", forceRefresh = false): Promise<FeedResult> {
@@ -172,14 +201,11 @@ export async function getSecurityIntelligenceFeed(tierFilter: string = "all", fo
 
     const { ips, metrics } = await getSecurityIntelligenceIps(tierFilter);
 
-    // Standard Cisco FMC plain text feed format
-    // Crucial: Deterministic content without volatile sub-minute timestamps in body
-    // so FMC checksum validation is 100% consistent between the MD5 check and the feed download.
     const lines: string[] = [
         `# ==============================================================================`,
         `# Cooper Health Security Intelligence Threat Feed (Cisco FTD / FMC)`,
         `# Total Active Threat Entries: ${metrics.total}`,
-        `# Breakdown: CVE (${metrics.cveCount}) | Blacklist (${metrics.blacklistCount}) | Datacenter/VPS (${metrics.hostingCount}) | Active Residential (<7d) (${metrics.residentialCount})`,
+        `# Breakdown: CVE (${metrics.cveCount}) | Blacklist (${metrics.blacklistCount}) | Datacenter/VPS (${metrics.hostingCount}) | Active Residential (<7d) (${metrics.residentialCount}) | Subnets (${metrics.cidrCount || 0})`,
         `# Recommended Action in FMC: Block with Reset`,
         `# ==============================================================================`
     ];
@@ -202,10 +228,115 @@ export async function getSecurityIntelligenceFeed(tierFilter: string = "all", fo
     return result;
 }
 
+// -----------------------------------------------------------------------------
+// 2. FMC DO NOT BLOCK / WHITELIST FEED GENERATOR
+// -----------------------------------------------------------------------------
+export async function getSecurityIntelligenceWhitelist(): Promise<{
+    ips: string[];
+    metrics: {
+        total: number;
+        watchlistCount: number;
+        pardonCount: number;
+        generatedAt: string;
+    };
+}> {
+    const ipSet = new Set<string>();
+    let watchlistCount = 0;
+    let pardonCount = 0;
+
+    // 1. Guardian Watchlist IPs
+    const watchIps = await prisma.guardianWatchIp.findMany({ select: { ip: true } });
+    for (const item of watchIps) {
+        const clean = item.ip.trim();
+        const host = clean.split("/")[0];
+        if (!isPrivateIp(host) && !ipSet.has(clean)) {
+            ipSet.add(clean);
+            watchlistCount++;
+        }
+    }
+
+    // 2. Active 30-Day Pardoned Strikes from Residential / User Ledger
+    const pardonedStrikes = await prisma.residentialStrikeLedger.findMany({
+        where: {
+            status: "PARDONED",
+            expiresAt: { gt: new Date() }
+        },
+        select: { ip: true }
+    });
+    for (const item of pardonedStrikes) {
+        const clean = item.ip.trim();
+        if (!isPrivateIp(clean) && !ipSet.has(clean)) {
+            ipSet.add(clean);
+            pardonCount++;
+        }
+    }
+
+    const sortedIps = Array.from(ipSet).sort((a, b) => {
+        const cleanA = a.split("/")[0].split(".").map(Number);
+        const cleanB = b.split("/")[0].split(".").map(Number);
+        for (let i = 0; i < 4; i++) {
+            if (cleanA[i] !== cleanB[i]) return cleanA[i] - cleanB[i];
+        }
+        return 0;
+    });
+
+    return {
+        ips: sortedIps,
+        metrics: {
+            total: sortedIps.length,
+            watchlistCount,
+            pardonCount,
+            generatedAt: new Date().toISOString()
+        }
+    };
+}
+
+export async function getSecurityIntelligenceWhitelistFeed(forceRefresh = false): Promise<WhitelistFeedResult> {
+    const now = Date.now();
+    if (!forceRefresh && cachedWhitelistFeed && (now - cachedWhitelistFeed.timestamp < FEED_CACHE_TTL_MS)) {
+        return cachedWhitelistFeed.data;
+    }
+
+    const { ips, metrics } = await getSecurityIntelligenceWhitelist();
+
+    const lines: string[] = [
+        `# ==============================================================================`,
+        `# Cooper Health Security Intelligence DO NOT BLOCK Feed (Cisco FTD / FMC)`,
+        `# Total Active Whitelist Entries: ${metrics.total}`,
+        `# Breakdown: Guardian Watchlist (${metrics.watchlistCount}) | Pardoned Strikes (${metrics.pardonCount})`,
+        `# Recommended Action in FMC: Do Not Block (Whitelist)`,
+        `# Note: Evaluates BEFORE the Security Intelligence Threat Feed in FMC`,
+        `# ==============================================================================`
+    ];
+
+    for (const ip of ips) {
+        lines.push(ip);
+    }
+
+    const body = lines.join("\n") + "\n";
+    const md5 = crypto.createHash("md5").update(body).digest("hex");
+
+    const result: WhitelistFeedResult = {
+        body,
+        md5,
+        ips,
+        metrics
+    };
+
+    cachedWhitelistFeed = { data: result, timestamp: now };
+    return result;
+}
+
+export const dynamic = "force-dynamic";
+
+// -----------------------------------------------------------------------------
+// 3. API ROUTE HANDLER (DISPATCHES BLOCK OR WHITELIST FEED)
+// -----------------------------------------------------------------------------
 export async function GET(req: Request) {
     try {
         const url = new URL(req.url);
         const format = url.searchParams.get("format") || "txt";
+        const feedType = (url.searchParams.get("feed") || url.searchParams.get("type") || "block").toLowerCase();
         const tier = url.searchParams.get("tier") || "all";
         const key = url.searchParams.get("key");
 
@@ -218,21 +349,55 @@ export async function GET(req: Request) {
             }
         }
 
-        // 2. Track last poll timestamp for FMC dynamic hold synchronization
-        // Only record when serving the plain-text feed (actual FMC poll), not UI ?format=json previews
+        const isWhitelist = feedType === "whitelist" || feedType === "do-not-block" || feedType === "allow";
+
+        // 2. Track FMC poll heartbeat timestamp
         if (format === "txt") {
+            const pollKey = isWhitelist ? "LAST_FMC_SI_WHITELIST_POLL" : "LAST_FMC_SI_POLL";
             await prisma.netscalerCveSetting.upsert({
-                where: { key: "LAST_FMC_SI_POLL" },
+                where: { key: pollKey },
                 update: { value: new Date().toISOString() },
-                create: { key: "LAST_FMC_SI_POLL", value: new Date().toISOString() }
+                create: { key: pollKey, value: new Date().toISOString() }
             }).catch(() => {});
         }
 
+        if (isWhitelist) {
+            const { body, md5, metrics, ips } = await getSecurityIntelligenceWhitelistFeed();
+
+            if (format === "json") {
+                return NextResponse.json({
+                    success: true,
+                    feed: "whitelist",
+                    metrics,
+                    count: ips.length,
+                    ips
+                });
+            }
+
+            const ifNoneMatch = req.headers.get("if-none-match");
+            if (ifNoneMatch === md5 || ifNoneMatch === `"${md5}"` || ifNoneMatch === `W/"${md5}"`) {
+                return new NextResponse(null, { status: 304 });
+            }
+
+            return new NextResponse(body, {
+                status: 200,
+                headers: {
+                    "Content-Type": "text/plain; charset=utf-8",
+                    "Cache-Control": "public, max-age=60, stale-while-revalidate=30",
+                    "ETag": `"${md5}"`,
+                    "X-Total-Entries": String(metrics.total),
+                    "X-Feed-Type": "whitelist"
+                }
+            });
+        }
+
+        // Standard Threat / Block Feed
         const { body, md5, metrics, ips } = await getSecurityIntelligenceFeed(tier);
 
         if (format === "json") {
             return NextResponse.json({
                 success: true,
+                feed: "block",
                 metrics,
                 count: ips.length,
                 ips
@@ -250,7 +415,8 @@ export async function GET(req: Request) {
                 "Content-Type": "text/plain; charset=utf-8",
                 "Cache-Control": "public, max-age=60, stale-while-revalidate=30",
                 "ETag": `"${md5}"`,
-                "X-Total-Entries": String(metrics.total)
+                "X-Total-Entries": String(metrics.total),
+                "X-Feed-Type": "block"
             }
         });
     } catch (error: any) {

@@ -5,7 +5,7 @@ import {
     Shield, Search, CheckCircle2, ShieldAlert, 
     RefreshCw, Trash2, ExternalLink, Copy, Check, Clock,
     AlertTriangle, Filter, Server, Zap, Flame, UserCheck,
-    ChevronLeft, ChevronRight, ArrowRight, ShieldCheck, Ban, Info
+    ChevronLeft, ChevronRight, ArrowRight, ShieldCheck, Ban, Info, Network
 } from "lucide-react";
 import { StrikeEvidencePanel } from "./StrikeEvidencePanel";
 
@@ -13,6 +13,7 @@ export function LiveFeedInspector() {
     // Inspection & Feed Data
     const [feedData, setFeedData] = useState<any | null>(null);
     const [loading, setLoading] = useState(false);
+    const [activeFeedTab, setActiveFeedTab] = useState<"block" | "whitelist">("block");
     const [searchQuery, setSearchQuery] = useState("");
     const [page, setPage] = useState(1);
     const [pageSize, setPageSize] = useState(25);
@@ -43,11 +44,13 @@ export function LiveFeedInspector() {
         size = pageSize,
         q = searchQuery,
         cat = categoryFilter,
-        checkIp = ""
+        checkIp = "",
+        feed = activeFeedTab
     ) => {
         setLoading(true);
         try {
             const params = new URLSearchParams({
+                feed,
                 page: String(p),
                 pageSize: String(size),
                 category: cat
@@ -69,7 +72,7 @@ export function LiveFeedInspector() {
             setLoading(false);
             setCheckingIp(false);
         }
-    }, [page, pageSize, searchQuery, categoryFilter]);
+    }, [page, pageSize, searchQuery, categoryFilter, activeFeedTab]);
 
     const didReadUrlIp = useRef(false);
 
@@ -85,8 +88,8 @@ export function LiveFeedInspector() {
                 setCheckingIp(true);
             }
         }
-        fetchFeedInspector(page, pageSize, searchQuery, categoryFilter, initialCheckIp);
-    }, [page, pageSize, categoryFilter, fetchFeedInspector]);
+        fetchFeedInspector(page, pageSize, searchQuery, categoryFilter, initialCheckIp, activeFeedTab);
+    }, [page, pageSize, categoryFilter, activeFeedTab, fetchFeedInspector]);
 
     // Handle Quick Check IP
     const handleCheckIp = (e: React.FormEvent) => {
@@ -264,17 +267,55 @@ export function LiveFeedInspector() {
             {/* 1. Header & Live FMC Sync Telemetry Banner */}
             <div className="bg-bg-card border border-border-color rounded-xl p-5 shadow-sm space-y-4">
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                    <div>
+                    <div className="flex-1 space-y-2">
+                        {/* Feed Type Switcher Tabs */}
+                        <div className="flex items-center gap-1.5 bg-bg-surface/90 p-1 rounded-lg border border-border-color w-fit">
+                            <button
+                                type="button"
+                                onClick={() => { setActiveFeedTab("block"); setPage(1); }}
+                                className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                                    activeFeedTab === "block"
+                                        ? "bg-red-500/20 text-red-300 border border-red-500/40 shadow-sm"
+                                        : "text-text-muted hover:text-text-primary"
+                                }`}
+                            >
+                                <ShieldAlert className="w-3.5 h-3.5 text-red-400" />
+                                Threat Block Feed ({feedData?.feedType === "block" ? totalEntries.toLocaleString() : "Active"})
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => { setActiveFeedTab("whitelist"); setPage(1); }}
+                                className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                                    activeFeedTab === "whitelist"
+                                        ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 shadow-sm"
+                                        : "text-text-muted hover:text-text-primary"
+                                }`}
+                            >
+                                <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+                                FMC Do Not Block List ({feedData?.feedType === "whitelist" ? totalEntries.toLocaleString() : "Active"})
+                            </button>
+                        </div>
+
                         <div className="flex items-center gap-3">
-                            <div className="p-2.5 bg-accent-primary/10 rounded-xl text-accent-primary border border-accent-primary/20">
-                                <ShieldCheck className="w-6 h-6" />
+                            <div className={`p-2.5 rounded-xl border ${
+                                activeFeedTab === "whitelist"
+                                    ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
+                                    : "bg-accent-primary/10 text-accent-primary border-accent-primary/20"
+                            }`}>
+                                {activeFeedTab === "whitelist" ? <ShieldCheck className="w-6 h-6" /> : <ShieldAlert className="w-6 h-6" />}
                             </div>
                             <div>
                                 <h3 className="text-lg font-bold text-text-primary tracking-tight flex items-center gap-2">
-                                    Live FMC Threat Feed: <span className="font-mono text-accent-primary font-extrabold">POG_SI_Edge_Defense</span>
+                                    {activeFeedTab === "whitelist" ? (
+                                        <>Live FMC Whitelist Feed: <span className="font-mono text-emerald-400 font-extrabold">POG_SI_Whitelist</span></>
+                                    ) : (
+                                        <>Live FMC Threat Feed: <span className="font-mono text-accent-primary font-extrabold">POG_SI_Edge_Defense</span></>
+                                    )}
                                 </h3>
                                 <p className="text-xs text-text-muted mt-0.5">
-                                    Direct transparency into the active IP snapshot served to Cisco FMC Security Intelligence.
+                                    {activeFeedTab === "whitelist"
+                                        ? "Pardoned corporate staff and watchlisted partners permitted through Cisco FMC edge rules."
+                                        : "Authoritative hostile IPs and consolidated BGP CIDR routes enforced with reset at the perimeter."}
                                 </p>
                             </div>
                         </div>
@@ -282,7 +323,7 @@ export function LiveFeedInspector() {
 
                     <div className="flex items-center gap-2">
                         <button
-                            onClick={() => fetchFeedInspector(page, pageSize, searchQuery, categoryFilter, checkIpInput.trim())}
+                            onClick={() => fetchFeedInspector(page, pageSize, searchQuery, categoryFilter, checkIpInput.trim(), activeFeedTab)}
                             disabled={loading}
                             className="px-3 py-1.5 bg-bg-surface hover:bg-bg-dark border border-border-color rounded-lg text-xs font-semibold text-text-primary flex items-center gap-1.5 transition-colors cursor-pointer"
                         >
@@ -290,7 +331,7 @@ export function LiveFeedInspector() {
                             Refresh Snapshot
                         </button>
                         <a
-                            href="/api/feeds/security-intelligence?format=txt"
+                            href={`/api/feeds/security-intelligence?feed=${activeFeedTab}&format=txt`}
                             target="_blank"
                             rel="noreferrer"
                             className="px-3 py-1.5 bg-accent-primary/10 hover:bg-accent-primary/20 text-accent-primary border border-accent-primary/30 rounded-lg text-xs font-semibold flex items-center gap-1 transition-colors"
@@ -298,7 +339,7 @@ export function LiveFeedInspector() {
                             Raw Feed <ExternalLink className="w-3 h-3" />
                         </a>
                         <a
-                            href="/api/feeds/security-intelligence/md5"
+                            href={`/api/feeds/security-intelligence/md5?feed=${activeFeedTab}`}
                             target="_blank"
                             rel="noreferrer"
                             className="px-3 py-1.5 bg-bg-surface hover:bg-bg-dark border border-border-color rounded-lg text-xs font-mono text-text-muted flex items-center gap-1 transition-colors"
@@ -313,7 +354,7 @@ export function LiveFeedInspector() {
                     <div className="bg-bg-surface/50 border border-border-color rounded-lg p-3">
                         <span className="text-text-muted block text-[11px] uppercase tracking-wider font-semibold">Active Feed Entries</span>
                         <span className="text-xl font-black text-text-primary mt-1 block">
-                            {totalEntries.toLocaleString()} <span className="text-xs font-normal text-text-muted">Unique IPs</span>
+                            {totalEntries.toLocaleString()} <span className="text-xs font-normal text-text-muted">{activeFeedTab === "whitelist" ? "Whitelisted IPs" : "Unique IPs / CIDRs"}</span>
                         </span>
                     </div>
 
@@ -336,7 +377,7 @@ export function LiveFeedInspector() {
                     </div>
 
                     <div className="bg-bg-surface/50 border border-border-color rounded-lg p-3">
-                        <span className="text-text-muted block text-[11px] uppercase tracking-wider font-semibold">Last FMC Poll (Heartbeat)</span>
+                        <span className="text-text-muted block text-[11px] uppercase tracking-wider font-semibold">Last FMC Poll ({activeFeedTab === "whitelist" ? "Whitelist" : "Threat"})</span>
                         <span className="text-xs font-bold text-emerald-400 mt-1 flex items-center gap-1.5">
                             <Clock className="w-3.5 h-3.5 text-emerald-400" />
                             {feedStatus?.lastFmcPoll ? new Date(feedStatus.lastFmcPoll).toLocaleTimeString() : "Pending First Poll"}
@@ -358,18 +399,37 @@ export function LiveFeedInspector() {
                 {feedStatus?.breakdown && (
                     <div className="flex items-center gap-2 flex-wrap text-[11px] pt-1">
                         <span className="text-text-muted font-semibold">Feed Composition:</span>
-                        <span className="px-2 py-0.5 rounded bg-purple-500/10 text-purple-300 border border-purple-500/20 font-medium">
-                            Cloud/Hosting VPS: {feedStatus.breakdown.hostingCount?.toLocaleString() || 0}
-                        </span>
-                        <span className="px-2 py-0.5 rounded bg-red-500/10 text-red-300 border border-red-500/20 font-medium">
-                            Permanent Blacklist: {feedStatus.breakdown.blacklistCount?.toLocaleString() || 0}
-                        </span>
-                        <span className="px-2 py-0.5 rounded bg-orange-500/10 text-orange-300 border border-orange-500/20 font-medium">
-                            Active Strikes (&lt;7d): {feedStatus.breakdown.residentialCount?.toLocaleString() || 0}
-                        </span>
-                        <span className="px-2 py-0.5 rounded bg-amber-500/10 text-amber-300 border border-amber-500/20 font-medium">
-                            CVE IOCs: {feedStatus.breakdown.cveCount?.toLocaleString() || 0}
-                        </span>
+                        {activeFeedTab === "whitelist" ? (
+                            <>
+                                <span className="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-300 border border-emerald-500/20 font-medium">
+                                    Guardian Watchlist: {feedStatus.breakdown.watchlistCount?.toLocaleString() || 0}
+                                </span>
+                                <span className="px-2 py-0.5 rounded bg-blue-500/10 text-blue-300 border border-blue-500/20 font-medium">
+                                    Pardoned Strikes: {feedStatus.breakdown.pardonCount?.toLocaleString() || 0}
+                                </span>
+                            </>
+                        ) : (
+                            <>
+                                <span className="px-2 py-0.5 rounded bg-purple-500/10 text-purple-300 border border-purple-500/20 font-medium">
+                                    Cloud/Hosting VPS: {feedStatus.breakdown.hostingCount?.toLocaleString() || 0}
+                                </span>
+                                <span className="px-2 py-0.5 rounded bg-red-500/10 text-red-300 border border-red-500/20 font-medium">
+                                    Permanent Blacklist: {feedStatus.breakdown.blacklistCount?.toLocaleString() || 0}
+                                </span>
+                                {feedStatus.breakdown.cidrCount !== undefined && feedStatus.breakdown.cidrCount > 0 && (
+                                    <span className="px-2 py-0.5 rounded bg-cyan-500/10 text-cyan-300 border border-cyan-500/20 font-medium flex items-center gap-1">
+                                        <Network className="w-3 h-3 text-cyan-400" />
+                                        Consolidated Subnets: {feedStatus.breakdown.cidrCount.toLocaleString()}
+                                    </span>
+                                )}
+                                <span className="px-2 py-0.5 rounded bg-orange-500/10 text-orange-300 border border-orange-500/20 font-medium">
+                                    Active Strikes (&lt;7d): {feedStatus.breakdown.residentialCount?.toLocaleString() || 0}
+                                </span>
+                                <span className="px-2 py-0.5 rounded bg-amber-500/10 text-amber-300 border border-amber-500/20 font-medium">
+                                    CVE IOCs: {feedStatus.breakdown.cveCount?.toLocaleString() || 0}
+                                </span>
+                            </>
+                        )}
                     </div>
                 )}
             </div>
@@ -468,13 +528,36 @@ export function LiveFeedInspector() {
                                     )}
                                 </div>
 
-                                {/* Five-Pillar Perimeter Block Posture */}
+                                {/* Cisco FMC Edge Effective Decision Banner */}
+                                {checkResult.blockPosture?.fmcDecision === "DO_NOT_BLOCK" ? (
+                                    <div className="p-3 rounded-lg bg-emerald-500/15 border border-emerald-500/30 text-emerald-200 text-xs flex items-center gap-2.5 font-medium">
+                                        <ShieldCheck className="w-5 h-5 text-emerald-400 shrink-0" />
+                                        <div>
+                                            <div className="font-bold text-emerald-300 text-sm">Cisco FMC Effective Decision: DO NOT BLOCK (Whitelisted / Pardoned)</div>
+                                            <p className="text-[11px] text-emerald-200/80 mt-0.5">
+                                                Evaluates prior to threat blocklists—traffic is actively permitted at perimeter edge{checkResult.blockPosture?.matchedSubnet ? ` (Overriding parent subnet ${checkResult.blockPosture.matchedSubnet})` : ""}.
+                                            </p>
+                                        </div>
+                                    </div>
+                                ) : checkResult.blockPosture?.fmcDecision === "BLOCK_WITH_RESET" ? (
+                                    <div className="p-3 rounded-lg bg-red-500/15 border border-red-500/30 text-red-200 text-xs flex items-center gap-2.5 font-medium">
+                                        <ShieldAlert className="w-5 h-5 text-red-400 shrink-0" />
+                                        <div>
+                                            <div className="font-bold text-red-300 text-sm">Cisco FMC Effective Decision: BLOCK WITH RESET</div>
+                                            <p className="text-[11px] text-red-200/80 mt-0.5">
+                                                Dropped at perimeter edge before reaching authentication gateways{checkResult.blockPosture?.matchedSubnet ? ` (Matched via hostile subnet ${checkResult.blockPosture.matchedSubnet})` : ""}.
+                                            </p>
+                                        </div>
+                                    </div>
+                                ) : null}
+
+                                {/* Six-Pillar Perimeter Defense Posture */}
                                 <div>
                                     <span className="text-[11px] font-bold text-text-muted uppercase tracking-wider block mb-2">
                                         Perimeter Defense Posture (All Layers)
                                     </span>
-                                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2.5">
-                                        {/* 1. FMC SI Feed */}
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-2.5">
+                                        {/* 1. FMC SI Threat Feed */}
                                         <div className={`p-2.5 rounded-lg border ${
                                             checkResult.blockPosture?.inFmcFeed
                                                 ? "bg-red-500/10 border-red-500/30 text-red-200"
@@ -482,17 +565,35 @@ export function LiveFeedInspector() {
                                         }`}>
                                             <span className="text-[10px] uppercase font-bold block mb-1">1. FMC Threat Feed</span>
                                             <span className="font-bold text-xs flex items-center gap-1">
-                                                {checkResult.blockPosture?.inFmcFeed ? "🔴 IN FEED (Blocked)" : "🟢 Clean / Not in Feed"}
+                                                {checkResult.blockPosture?.matchedSubnet 
+                                                    ? `🔴 Subnet (${checkResult.blockPosture.matchedSubnet})` 
+                                                    : checkResult.blockPosture?.inFmcFeed 
+                                                        ? "🔴 In Feed (Host)" 
+                                                        : "🟢 Clean / Not in Feed"}
                                             </span>
                                         </div>
 
-                                        {/* 2. Perimeter VPN / ASA Shun */}
+                                        {/* 2. FMC Do Not Block (Whitelist) */}
+                                        <div className={`p-2.5 rounded-lg border ${
+                                            checkResult.blockPosture?.inDoNotBlockFeed
+                                                ? "bg-emerald-500/15 border-emerald-500/40 text-emerald-200 font-bold"
+                                                : "bg-bg-card border-border-color text-text-muted"
+                                        }`}>
+                                            <span className="text-[10px] uppercase font-bold block mb-1">2. FMC Do Not Block</span>
+                                            <span className="font-bold text-xs flex items-center gap-1">
+                                                {checkResult.blockPosture?.inDoNotBlockFeed 
+                                                    ? "🟢 DO NOT BLOCK" 
+                                                    : "⚪ Not Whitelisted"}
+                                            </span>
+                                        </div>
+
+                                        {/* 3. Perimeter VPN / ASA Shun */}
                                         <div className={`p-2.5 rounded-lg border ${
                                             checkResult.blockPosture?.inPerimeterVpnShun
                                                 ? "bg-red-500/10 border-red-500/30 text-red-200"
                                                 : "bg-bg-card border-border-color text-text-muted"
                                         }`}>
-                                            <span className="text-[10px] uppercase font-bold block mb-1">2. Perimeter ASA Shun</span>
+                                            <span className="text-[10px] uppercase font-bold block mb-1">3. Perimeter ASA Shun</span>
                                             <span className="font-bold text-xs flex items-center gap-1">
                                                 {checkResult.blockPosture?.inPerimeterVpnShun 
                                                     ? `🔴 SHUNNED (${checkResult.blockPosture.activeShunNodes?.length || 1} node${checkResult.blockPosture.activeShunNodes?.length === 1 ? '' : 's'})` 
@@ -500,7 +601,7 @@ export function LiveFeedInspector() {
                                             </span>
                                         </div>
 
-                                        {/* 3. Progressive Strikes */}
+                                        {/* 4. Progressive Strikes */}
                                         <div className={`p-2.5 rounded-lg border ${
                                             checkResult.blockPosture?.strikeCount >= 2
                                                 ? "bg-orange-500/10 border-orange-500/30 text-orange-200"
@@ -508,7 +609,7 @@ export function LiveFeedInspector() {
                                                     ? "bg-amber-500/10 border-amber-500/30 text-amber-200"
                                                     : "bg-bg-card border-border-color text-text-muted"
                                         }`}>
-                                            <span className="text-[10px] uppercase font-bold block mb-1">3. Citrix Strike Ledger</span>
+                                            <span className="text-[10px] uppercase font-bold block mb-1">4. Citrix Strike Ledger</span>
                                             <span className="font-bold text-xs flex items-center gap-1">
                                                 {checkResult.blockPosture?.strikeCount > 0 
                                                     ? `Strike ${checkResult.blockPosture.strikeCount} (${checkResult.blockPosture.strikeStatus})` 
@@ -516,13 +617,13 @@ export function LiveFeedInspector() {
                                             </span>
                                         </div>
 
-                                        {/* 4. FMC ACP Geo-Fence */}
+                                        {/* 5. FMC ACP Geo-Fence */}
                                         <div className={`p-2.5 rounded-lg border ${
                                             checkResult.blockPosture?.fmcGeoStatus?.fmcGeoBlocked
                                                 ? "bg-amber-500/10 border-amber-500/30 text-amber-200"
                                                 : "bg-bg-card border-border-color text-text-muted"
                                         }`}>
-                                            <span className="text-[10px] uppercase font-bold block mb-1">4. FMC Geo-Fence</span>
+                                            <span className="text-[10px] uppercase font-bold block mb-1">5. FMC Geo-Fence</span>
                                             <span className="font-bold text-xs flex items-center gap-1">
                                                 {checkResult.blockPosture?.fmcGeoStatus?.isUsGeo 
                                                     ? "🟢 Domestic US (Rule 2)" 
@@ -532,19 +633,21 @@ export function LiveFeedInspector() {
                                             </span>
                                         </div>
 
-                                        {/* 5. Permanent Blacklist */}
+                                        {/* 6. Permanent Blacklist */}
                                         <div className={`p-2.5 rounded-lg border ${
                                             checkResult.blockPosture?.isBlacklisted || checkResult.blockPosture?.isAsnBlacklisted
                                                 ? "bg-red-500/10 border-red-500/30 text-red-200"
                                                 : "bg-bg-card border-border-color text-text-muted"
                                         }`}>
-                                            <span className="text-[10px] uppercase font-bold block mb-1">5. Guardian Blacklist</span>
+                                            <span className="text-[10px] uppercase font-bold block mb-1">6. Guardian Blacklist</span>
                                             <span className="font-bold text-xs flex items-center gap-1">
-                                                {checkResult.blockPosture?.isBlacklisted 
-                                                    ? "🔴 IP Blacklisted" 
-                                                    : checkResult.blockPosture?.isAsnBlacklisted
-                                                        ? "🔴 ASN Blacklisted"
-                                                        : "🟢 Clean"}
+                                                {checkResult.blockPosture?.matchedSubnet
+                                                    ? `🔴 Subnet ${checkResult.blockPosture.matchedSubnet}`
+                                                    : checkResult.blockPosture?.isBlacklisted 
+                                                        ? "🔴 IP Blacklisted" 
+                                                        : checkResult.blockPosture?.isAsnBlacklisted
+                                                            ? "🔴 ASN Blacklisted"
+                                                            : "🟢 Clean"}
                                             </span>
                                         </div>
                                     </div>
@@ -933,6 +1036,24 @@ export function LiveFeedInspector() {
                                             {item.ip}
                                         </td>
                                         <td className="py-2 px-3">
+                                            {item.category === "SUBNET_CIDR" && (
+                                                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-cyan-500/15 text-cyan-300 border border-cyan-500/30 flex items-center gap-1 w-fit">
+                                                    <Network className="w-3 h-3 text-cyan-400" />
+                                                    Consolidated Subnet
+                                                </span>
+                                            )}
+                                            {item.category === "WATCHLIST" && (
+                                                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 flex items-center gap-1 w-fit">
+                                                    <ShieldCheck className="w-3 h-3 text-emerald-400" />
+                                                    Guardian Watchlist
+                                                </span>
+                                            )}
+                                            {item.category === "PARDONED" && (
+                                                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-500/15 text-blue-300 border border-blue-500/30 flex items-center gap-1 w-fit">
+                                                    <CheckCircle2 className="w-3 h-3 text-blue-400" />
+                                                    Pardoned Strike
+                                                </span>
+                                            )}
                                             {item.category === "BLACKLIST" && (
                                                 <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-red-500/10 text-red-400 border border-red-500/20">
                                                     Permanent Blacklist

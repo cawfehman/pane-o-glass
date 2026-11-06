@@ -3,10 +3,11 @@ import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { hasPermission } from "@/app/actions/permissions";
 import { logAudit } from "@/lib/audit";
-import { getSecurityIntelligenceFeed, invalidateFeedCache } from "../route";
+import { getSecurityIntelligenceFeed, getSecurityIntelligenceWhitelistFeed, invalidateFeedCache } from "../route";
 import { enqueueFirewallCommand, drainFirewallQueue } from "@/lib/firewall-queue";
 import { evaluateSingleIpPosture, evaluateBatchIpPosture } from "@/lib/perimeter-posture";
 import { getStrikeEvidence } from "@/lib/strike-evidence";
+import { isIpInSubnet } from "@/lib/ip-subnet";
 
 export const dynamic = "force-dynamic";
 
@@ -31,6 +32,8 @@ export async function GET(req: NextRequest) {
         }
 
         const url = new URL(req.url);
+        const feedType = (url.searchParams.get("feed") || url.searchParams.get("type") || "block").toLowerCase();
+        const isWhitelist = feedType === "whitelist" || feedType === "do-not-block";
         const targetIp = url.searchParams.get("ip")?.trim() || "";
         const search = url.searchParams.get("search")?.trim() || "";
         const categoryFilter = url.searchParams.get("category") || "ALL";
@@ -38,8 +41,9 @@ export async function GET(req: NextRequest) {
         const pageSize = Math.min(100, Math.max(10, parseInt(url.searchParams.get("pageSize") || "50", 10)));
 
         // 1. FMC Sync Heartbeat Telemetry
+        const pollKey = isWhitelist ? "LAST_FMC_SI_WHITELIST_POLL" : "LAST_FMC_SI_POLL";
         const lastPollSetting = await prisma.netscalerCveSetting.findUnique({
-            where: { key: "LAST_FMC_SI_POLL" }
+            where: { key: pollKey }
         });
 
         const intervalMins = Math.max(5, parseInt(process.env.FMC_POLL_INTERVAL_MINUTES || "15", 10));
@@ -57,7 +61,9 @@ export async function GET(req: NextRequest) {
         }
 
         // 2. Fetch Active Feed Snapshot
-        const feed = await getSecurityIntelligenceFeed("all");
+        const feed = isWhitelist
+            ? await getSecurityIntelligenceWhitelistFeed()
+            : await getSecurityIntelligenceFeed("all");
         const feedIpSet = new Set(feed.ips);
 
         // 3. Single IP Lookup Mode (Instant Positive Confirmation & 360° Profile)
@@ -115,60 +121,104 @@ export async function GET(req: NextRequest) {
             filteredIps = filteredIps.filter(ip => ip.toLowerCase().includes(cleanSearch));
         }
 
+        if (categoryFilter === "CIDR") {
+            filteredIps = filteredIps.filter(ip => ip.includes("/"));
+        } else if (categoryFilter === "HOST") {
+            filteredIps = filteredIps.filter(ip => !ip.includes("/"));
+        }
+
         const totalMatching = filteredIps.length;
         const totalPages = Math.ceil(totalMatching / pageSize);
         const startIndex = (page - 1) * pageSize;
         const paginatedIps = filteredIps.slice(startIndex, startIndex + pageSize);
 
-        // Batch enrich paginated IPs for display
-        const [ledgerEntries, blacklistEntries] = await Promise.all([
-            prisma.residentialStrikeLedger.findMany({
-                where: { ip: { in: paginatedIps } },
-                select: { ip: true, strikeCount: true, status: true, ispOrg: true, country: true, attemptedUsers: true }
-            }),
-            prisma.guardianBlacklist.findMany({
-                where: { ip: { in: paginatedIps } },
-                select: { ip: true, reason: true }
-            })
-        ]);
+        let entries: any[] = [];
+        if (isWhitelist) {
+            const [watchEntries, pardonedEntries] = await Promise.all([
+                prisma.guardianWatchIp.findMany({
+                    where: { ip: { in: paginatedIps } },
+                    select: { ip: true, description: true, createdBy: true, createdAt: true }
+                }),
+                prisma.residentialStrikeLedger.findMany({
+                    where: { ip: { in: paginatedIps } },
+                    select: { ip: true, status: true, ispOrg: true, country: true, pardonReason: true, expiresAt: true }
+                })
+            ]);
 
-        const ledgerMap = new Map(ledgerEntries.map(l => [l.ip, l]));
-        const blacklistMap = new Map(blacklistEntries.map(b => [b.ip, b]));
+            const watchMap = new Map(watchEntries.map(w => [w.ip, w]));
+            const pardonedMap = new Map(pardonedEntries.map(p => [p.ip, p]));
 
-        const entries = paginatedIps.map(ip => {
-            const ledger = ledgerMap.get(ip);
-            const bl = blacklistMap.get(ip);
+            entries = paginatedIps.map(ip => {
+                const w = watchMap.get(ip);
+                const p = pardonedMap.get(ip);
+                return {
+                    ip,
+                    category: w ? "WATCHLIST" : "PARDONED",
+                    reason: w?.description || p?.pardonReason || "Do Not Block Policy",
+                    isp: p?.ispOrg || "Authorized Network",
+                    country: p?.country || "US",
+                    expiresAt: p?.expiresAt || null,
+                    isCidr: ip.includes("/")
+                };
+            });
+        } else {
+            // Batch enrich paginated IPs for display
+            const [ledgerEntries, blacklistEntries] = await Promise.all([
+                prisma.residentialStrikeLedger.findMany({
+                    where: { ip: { in: paginatedIps } },
+                    select: { ip: true, strikeCount: true, status: true, ispOrg: true, country: true, attemptedUsers: true }
+                }),
+                prisma.guardianBlacklist.findMany({
+                    where: { ip: { in: paginatedIps } },
+                    select: { ip: true, reason: true }
+                })
+            ]);
 
-            let cat = "HOSTING_VPS";
-            let reason = "Datacenter / VPS / Cloud Hosting Network";
+            const ledgerMap = new Map(ledgerEntries.map(l => [l.ip, l]));
+            const blacklistMap = new Map(blacklistEntries.map(b => [b.ip, b]));
 
-            if (bl) {
-                cat = "BLACKLIST";
-                reason = bl.reason || "Permanent Guardian Blacklist";
-            } else if (ledger) {
-                cat = "RESIDENTIAL";
-                reason = `Strike ${ledger.strikeCount} (${ledger.status}) - ${ledger.attemptedUsers.length} user(s)`;
-            }
+            entries = paginatedIps.map(ip => {
+                const ledger = ledgerMap.get(ip);
+                const bl = blacklistMap.get(ip);
+                const isCidr = ip.includes("/");
 
-            return {
-                ip,
-                category: cat,
-                reason,
-                isp: ledger?.ispOrg || "Cloud / Hosting Provider",
-                country: ledger?.country || "US"
-            };
-        });
+                let cat = isCidr ? "SUBNET_CIDR" : "HOSTING_VPS";
+                let reason = isCidr ? "Consolidated Hostile Subnet" : "Datacenter / VPS / Cloud Hosting Network";
+
+                if (bl) {
+                    cat = isCidr ? "SUBNET_CIDR" : "BLACKLIST";
+                    reason = bl.reason || (isCidr ? "Consolidated Hostile Subnet" : "Permanent Guardian Blacklist");
+                } else if (ledger) {
+                    cat = "RESIDENTIAL";
+                    reason = `Strike ${ledger.strikeCount} (${ledger.status}) - ${ledger.attemptedUsers.length} user(s)`;
+                }
+
+                return {
+                    ip,
+                    category: cat,
+                    reason,
+                    isp: ledger?.ispOrg || (isCidr ? "Consolidated BGP Route" : "Cloud / Hosting Provider"),
+                    country: ledger?.country || "US",
+                    isCidr
+                };
+            });
+        }
 
         return NextResponse.json({
             success: true,
+            feedType: isWhitelist ? "whitelist" : "block",
             feedStatus: {
                 totalCount: feed.metrics.total,
                 md5: feed.md5,
-                breakdown: {
-                    cveCount: feed.metrics.cveCount,
-                    blacklistCount: feed.metrics.blacklistCount,
-                    residentialCount: feed.metrics.residentialCount,
-                    hostingCount: feed.metrics.hostingCount
+                breakdown: isWhitelist ? {
+                    watchlistCount: (feed.metrics as any).watchlistCount || 0,
+                    pardonCount: (feed.metrics as any).pardonCount || 0
+                } : {
+                    cveCount: (feed.metrics as any).cveCount,
+                    blacklistCount: (feed.metrics as any).blacklistCount,
+                    residentialCount: (feed.metrics as any).residentialCount,
+                    hostingCount: (feed.metrics as any).hostingCount,
+                    cidrCount: (feed.metrics as any).cidrCount || 0
                 },
                 lastFmcPoll: lastPollSetting?.value || null,
                 nextPollExpected,

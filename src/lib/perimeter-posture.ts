@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { getIpEnrichment, isPrivateIp } from "@/lib/iplocate";
 import { isResidentialOrg } from "@/lib/reputation-ledger";
+import { isIpInSubnet } from "@/lib/ip-subnet";
 
 const PLACEHOLDER_TOKENS = new Set([
     "UNKNOWN",
@@ -45,11 +46,17 @@ export function extractAsnString(rawAsn: unknown): string | null {
 export interface EvaluatedIpPosture {
     ip: string;
     inFeed: boolean;
+    inDoNotBlockFeed?: boolean;
+    matchedSubnet?: string | null;
+    fmcDecision?: "BLOCK_WITH_RESET" | "DO_NOT_BLOCK" | "PERMIT";
     isCurrentlyBlocked: boolean;
     activeCategory: string;
     reason: string;
     blockPosture: {
         inFmcFeed: boolean;
+        inDoNotBlockFeed?: boolean;
+        matchedSubnet?: string | null;
+        fmcDecision?: "BLOCK_WITH_RESET" | "DO_NOT_BLOCK" | "PERMIT";
         inPerimeterVpnShun: boolean;
         activeShunNodes: string[];
         strikeCount: number;
@@ -89,6 +96,8 @@ export interface EvaluatedIpPosture {
 interface RawIpPostureInputs {
     ip: string;
     inFeed?: boolean;
+    inWhitelistFeed?: boolean;
+    matchedSubnet?: string | null;
     residential?: any | null;
     blacklist?: any | null;
     cve?: any | null;
@@ -194,8 +203,16 @@ function buildPostureFromRecords(inputs: RawIpPostureInputs): EvaluatedIpPosture
         (residential.status === "ENFORCED" || residential.status === "QUARANTINED" || residential.strikeCount >= 2)
     );
 
+    // Whitelist / Do Not Block status
+    const isPardoned = Boolean(
+        inputs.inWhitelistFeed ||
+        (residential?.status === "PARDONED" && isStrikeNotExpired)
+    );
+
     const isCveExploit = Boolean(cve && cve.status === "ACTIVE");
-    const isBlacklisted = Boolean(blacklist);
+    const matchedSubnet = inputs.matchedSubnet || null;
+    const isBlacklisted = Boolean(blacklist) || Boolean(matchedSubnet);
+    const blacklistReason = blacklist?.reason || (matchedSubnet ? `Covered by consolidated hostile subnet ${matchedSubnet}` : null);
 
     // If caller didn't supply a pre-computed feed set, compute whether this IP qualifies for the SI feed
     let inFeed = inputs.inFeed;
@@ -218,12 +235,15 @@ function buildPostureFromRecords(inputs: RawIpPostureInputs): EvaluatedIpPosture
     let activeCategory = "NONE";
     let reason = "Not blocked in FMC Security Intelligence feed or perimeter controls";
 
-    if (isCveExploit) {
+    if (isPardoned) {
+        activeCategory = "FMC_DO_NOT_BLOCK";
+        reason = `Explicitly permitted by FMC Security Intelligence 'Do Not Block' Policy${residential?.pardonReason ? `: "${residential.pardonReason}"` : " (Pardoned / Whitelisted)"}`;
+    } else if (isCveExploit) {
         activeCategory = "CVE_IOC";
         reason = `NetScaler CVE-2026 Exploit IOC (${cve.cve})`;
     } else if (isBlacklisted) {
-        activeCategory = "BLACKLIST";
-        reason = `Permanent Guardian Blacklist: ${blacklist.reason || "Administrative block"}`;
+        activeCategory = matchedSubnet ? "SUBNET_BLACKLIST" : "BLACKLIST";
+        reason = `Permanent Guardian Blacklist: ${blacklistReason || "Administrative block"}`;
     } else if (isAsnBlacklisted) {
         activeCategory = "ASN_BLACKLIST";
         reason = `Blacklisted Autonomous System (${asnStr}): ${asnBlacklistReason || "Administrative ASN block"}`;
@@ -241,29 +261,40 @@ function buildPostureFromRecords(inputs: RawIpPostureInputs): EvaluatedIpPosture
         reason = "Present in FMC Security Intelligence Feed (POG_SI_Edge_Defense)";
     }
 
-    const isCurrentlyBlocked =
+    const isBlockedByThreatRules =
         Boolean(inFeed) ||
-        inPerimeterVpnShun ||
         isAsnBlacklisted ||
         isBlacklisted ||
         isCveExploit ||
         isStrikeEnforced ||
         fmcGeoBlocked;
 
+    // In FMC, Do Not Block ALWAYS takes precedence over Threat Blocks!
+    const isCurrentlyBlocked = isPardoned ? inPerimeterVpnShun : (isBlockedByThreatRules || inPerimeterVpnShun);
+    const fmcDecision: "DO_NOT_BLOCK" | "BLOCK_WITH_RESET" | "PERMIT" = isPardoned
+        ? "DO_NOT_BLOCK"
+        : (isBlockedByThreatRules ? "BLOCK_WITH_RESET" : "PERMIT");
+
     return {
         ip,
         inFeed: Boolean(inFeed),
+        inDoNotBlockFeed: isPardoned,
+        matchedSubnet,
+        fmcDecision,
         isCurrentlyBlocked,
         activeCategory,
         reason,
         blockPosture: {
             inFmcFeed: Boolean(inFeed),
+            inDoNotBlockFeed: isPardoned,
+            matchedSubnet,
+            fmcDecision,
             inPerimeterVpnShun,
             activeShunNodes,
             strikeCount: residential?.strikeCount ?? 0,
             strikeStatus: residential?.status ?? "CLEAN",
             isBlacklisted,
-            blacklistReason: blacklist?.reason || null,
+            blacklistReason,
             isAsnBlacklisted,
             asnBlacklistReason,
             isCveExploit,
@@ -317,7 +348,7 @@ export async function evaluateSingleIpPosture(
         return null;
     }
 
-    const [residential, blacklist, cve, allShunStats, cache] = await Promise.all([
+    const [residential, blacklist, cve, allShunStats, cache, blacklistCidrs, watchEntry] = await Promise.all([
         prisma.residentialStrikeLedger.findUnique({ where: { ip: cleanIp } }).catch(() => null),
         prisma.guardianBlacklist.findUnique({ where: { ip: cleanIp } }).catch(() => null),
         prisma.netscalerCveShun.findUnique({ where: { ip: cleanIp } }).catch(() => null),
@@ -325,8 +356,14 @@ export async function evaluateSingleIpPosture(
             where: { ip: cleanIp },
             include: { shunIp: true }
         }).catch(() => []),
-        prisma.ipLookupCache.findUnique({ where: { ip: cleanIp } }).catch(() => null)
+        prisma.ipLookupCache.findUnique({ where: { ip: cleanIp } }).catch(() => null),
+        prisma.guardianBlacklist.findMany({ where: { ip: { contains: "/" } } }).catch(() => []),
+        prisma.guardianWatchIp.findUnique({ where: { ip: cleanIp } }).catch(() => null)
     ]);
+
+    const matchedSubnet = blacklistCidrs.find((c) => isIpInSubnet(cleanIp, c.ip))?.ip || null;
+    const isPardonedStrike = Boolean(residential?.status === "PARDONED" && (!residential.expiresAt || new Date(residential.expiresAt) > new Date()));
+    const inWhitelistFeed = Boolean(watchEntry) || isPardonedStrike;
 
     let hasCachedCountry = Boolean(cleanCountryCode(cache?.countryCode));
     if (!hasCachedCountry && cache?.rawJson) {
@@ -366,6 +403,8 @@ export async function evaluateSingleIpPosture(
     return buildPostureFromRecords({
         ip: cleanIp,
         inFeed: options?.inFeed,
+        inWhitelistFeed,
+        matchedSubnet,
         residential,
         blacklist,
         cve,
@@ -392,7 +431,7 @@ export async function evaluateBatchIpPosture(
     const cleanIps = Array.from(new Set(ips.map(i => i.trim()).filter(Boolean))).slice(0, 100);
     if (cleanIps.length === 0) return [];
 
-    const [residentialList, blacklistList, cveList, allShunStats, allCache, allAsnBlacklist, pendingCommands] = await Promise.all([
+    const [residentialList, blacklistList, cveList, allShunStats, allCache, allAsnBlacklist, pendingCommands, blacklistCidrs, watchList, pardonedList] = await Promise.all([
         prisma.residentialStrikeLedger.findMany({ where: { ip: { in: cleanIps } } }),
         prisma.guardianBlacklist.findMany({ where: { ip: { in: cleanIps } } }),
         prisma.netscalerCveShun.findMany({ where: { ip: { in: cleanIps } } }),
@@ -402,13 +441,24 @@ export async function evaluateBatchIpPosture(
         }),
         prisma.ipLookupCache.findMany({ where: { ip: { in: cleanIps } } }),
         prisma.guardianAsnBlacklist.findMany(),
-        prisma.firewallCommandQueue.findMany({ where: { ip: { in: cleanIps }, status: "PENDING" } })
+        prisma.firewallCommandQueue.findMany({ where: { ip: { in: cleanIps }, status: "PENDING" } }),
+        prisma.guardianBlacklist.findMany({ where: { ip: { contains: "/" } } }).catch(() => []),
+        prisma.guardianWatchIp.findMany({ where: { ip: { in: cleanIps } } }).catch(() => []),
+        prisma.residentialStrikeLedger.findMany({
+            where: {
+                ip: { in: cleanIps },
+                status: "PARDONED",
+                expiresAt: { gt: new Date() }
+            }
+        }).catch(() => [])
     ]);
 
     const resMap = new Map(residentialList.map(r => [r.ip, r]));
     const blMap = new Map(blacklistList.map(b => [b.ip, b]));
     const cveMap = new Map(cveList.map(c => [c.ip, c]));
     const cacheMap = new Map(allCache.map(c => [c.ip, c]));
+    const watchSet = new Set(watchList.map(w => w.ip));
+    const pardonedSet = new Set(pardonedList.map(p => p.ip));
     const pendingMap = new Map<string, number>();
     for (const p of pendingCommands) {
         pendingMap.set(p.ip, (pendingMap.get(p.ip) || 0) + 1);
@@ -426,9 +476,14 @@ export async function evaluateBatchIpPosture(
     }
 
     return cleanIps.map(currIp => {
+        const matchedSubnet = blacklistCidrs.find((c) => isIpInSubnet(currIp, c.ip))?.ip || null;
+        const inWhitelistFeed = watchSet.has(currIp) || pardonedSet.has(currIp);
+
         const evaluated = buildPostureFromRecords({
             ip: currIp,
-            inFeed: feedIpSet.has(currIp),
+            inFeed: feedIpSet.has(currIp) || Boolean(matchedSubnet),
+            inWhitelistFeed,
+            matchedSubnet,
             residential: resMap.get(currIp),
             blacklist: blMap.get(currIp),
             cve: cveMap.get(currIp),

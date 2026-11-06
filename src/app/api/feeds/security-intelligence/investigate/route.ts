@@ -4,6 +4,7 @@ import { auth } from "@/lib/auth";
 import { hasPermission } from "@/app/actions/permissions";
 import { logAudit } from "@/lib/audit";
 import { isPrivateIp } from "@/lib/iplocate";
+import { isIpInSubnet } from "@/lib/ip-subnet";
 import { getStrikeEvidence } from "@/lib/strike-evidence";
 import axios from "axios";
 import https from "https";
@@ -232,8 +233,9 @@ export async function GET(req: NextRequest) {
             }
         }
 
-        const [blacklisted, activeShunStats, cveRecord, residentialRecord, pendingCommands, strikeEvidence] = await Promise.all([
+        const [blacklisted, blacklistCidrs, activeShunStats, cveRecord, residentialRecord, pendingCommands, watchRecord, strikeEvidence] = await Promise.all([
             prisma.guardianBlacklist.findUnique({ where: { ip: ipToInspect } }),
+            prisma.guardianBlacklist.findMany({ where: { ip: { contains: "/" } } }).catch(() => []),
             prisma.firewallShunStats.findMany({
                 where: { ip: ipToInspect, isActive: true },
                 include: { shunIp: true }
@@ -241,17 +243,24 @@ export async function GET(req: NextRequest) {
             prisma.netscalerCveShun.findUnique({ where: { ip: ipToInspect } }),
             prisma.residentialStrikeLedger.findUnique({ where: { ip: ipToInspect } }),
             prisma.firewallCommandQueue.findMany({ where: { ip: ipToInspect, status: "PENDING" } }),
+            prisma.guardianWatchIp.findUnique({ where: { ip: ipToInspect } }).catch(() => null),
             getStrikeEvidence(ipToInspect).catch((e) => {
                 console.error("[Investigate] Strike evidence build failed:", e?.message || e);
                 return null;
             })
         ]);
 
-        const inResidentialBlock = Boolean(residentialRecord && (residentialRecord.strikeCount >= 2 || residentialRecord.status === "ENFORCED" || residentialRecord.status === "QUARANTINED"));
-        const inBlacklist = Boolean(blacklisted);
+        const matchedCidr = blacklistCidrs.find((c) => isIpInSubnet(ipToInspect, c.ip)) || null;
+        const isStrikePardoned = Boolean(residentialRecord?.status === "PARDONED" && (!residentialRecord.expiresAt || new Date(residentialRecord.expiresAt) > new Date()));
+        const inDoNotBlockFeed = Boolean(watchRecord) || isStrikePardoned;
+
+        const inResidentialBlock = Boolean(residentialRecord && !isStrikePardoned && (residentialRecord.strikeCount >= 2 || residentialRecord.status === "ENFORCED" || residentialRecord.status === "QUARANTINED"));
+        const inBlacklist = Boolean(blacklisted) || Boolean(matchedCidr);
         const inActiveShuns = activeShunStats.length > 0;
         const inCveBlock = Boolean(cveRecord && cveRecord.status === "ACTIVE");
-        const isCurrentlyBlocked = inBlacklist || inActiveShuns || inCveBlock || inResidentialBlock;
+        const isThreatBlocked = inBlacklist || inActiveShuns || inCveBlock || inResidentialBlock;
+        // In FMC, Do Not Block ALWAYS takes precedence over Threat Blocks!
+        const isCurrentlyBlocked = inDoNotBlockFeed ? inActiveShuns : isThreatBlocked;
 
         // Query Good Traffic Indicators (AnyConnect VPN Success)
         const [vpnSuccesses, vpnFailures] = await Promise.all([
@@ -371,12 +380,18 @@ export async function GET(req: NextRequest) {
         let verdict: "FALSE_POSITIVE_LIKELY" | "CONFIRMED_THREAT" | "CLEAN_NOT_BLOCKED";
         let verdictReason = "";
 
-        if (hasVpnSuccess || citrixSuccessCount > 0) {
+        if (inDoNotBlockFeed) {
+            verdict = "FALSE_POSITIVE_LIKELY";
+            verdictReason = `DO NOT BLOCK ACTIVE: IP ${ipToInspect} is explicitly present on the FMC Security Intelligence 'Do Not Block' (Whitelist) List (${watchRecord ? "Guardian Watchlist" : `Pardoned: "${residentialRecord?.pardonReason || "SOC override"}"`}). Cisco FMC evaluates Do Not Block before Block, so traffic is permitted at the edge${matchedCidr ? ` despite parent subnet ${matchedCidr.ip} being in the threat feed` : ""}.`;
+        } else if (hasVpnSuccess || citrixSuccessCount > 0) {
             verdict = "FALSE_POSITIVE_LIKELY";
             verdictReason = `WARNING: IP ${ipToInspect} is currently blocked or monitored, but has ${vpnSuccesses.length} successful VPN sessions and/or ${citrixSuccessCount} Citrix logins for legitimate corporate staff (${uniqueVpnSuccessUsers.slice(0, 3).join(", ") || "known users"}). Likely false positive!${inAsnBlacklist ? ` (Note: Host ASN ${asnStr} is blacklisted in Guardian: "${asnBlacklistEntry?.reason}")` : ''}`;
         } else if (inAsnBlacklist) {
             verdict = "CONFIRMED_THREAT";
             verdictReason = `CONFIRMED THREAT (BLACKLISTED ASN): IP ${ipToInspect} belongs to ${asnStr} (${orgName}), which is blacklisted fleet-wide in Guardian Policy. Reason: "${asnBlacklistEntry?.reason}".`;
+        } else if (matchedCidr) {
+            verdict = "CONFIRMED_THREAT";
+            verdictReason = `CONFIRMED THREAT (HOSTILE SUBNET): IP ${ipToInspect} falls inside blacklisted subnet ${matchedCidr.ip} (${matchedCidr.reason}). Zero legitimate corporate login history.`;
         } else if (inCveBlock) {
             verdict = "CONFIRMED_THREAT";
             verdictReason = `CONFIRMED MALICIOUS: IP ${ipToInspect} matched critical exploit signature ${cveRecord?.cve} (${cveRecord?.ruleName}). Zero legitimate login history.`;
@@ -395,16 +410,23 @@ export async function GET(req: NextRequest) {
             targetUser: targetUser || null,
             inSecurityIntelligence: isCurrentlyBlocked,
             isCurrentlyBlocked,
+            inDoNotBlockFeed,
+            matchedSubnet: matchedCidr?.ip || null,
+            fmcEffectiveDecision: inDoNotBlockFeed ? "DO_NOT_BLOCK" : (isThreatBlocked ? "BLOCK_WITH_RESET" : "PERMIT"),
             verdict: {
                 level: verdict,
                 reason: verdictReason,
-                recommendation: verdict === "FALSE_POSITIVE_LIKELY"
-                    ? "UNBLOCK_IMMEDIATELY: Verified corporate employee activity detected. Recommend pardoning or allowlisting."
-                    : (inAsnBlacklist
-                        ? `ENFORCE_BLOCK: Entire ASN ${asnStr} is blacklisted in Guardian Policy. Ensure IP is locked in Guardian Blacklist and enforced in SI feed.`
-                        : (verdict === "CLEAN_NOT_BLOCKED" 
-                            ? "NONE: IP is clean and not blocked anywhere across perimeter firewalls."
-                            : "MAINTAIN_BLOCK: Confirmed threat with zero legitimate employee login history."))
+                recommendation: inDoNotBlockFeed
+                    ? "PERMITTED_BY_WHITELIST: Active Do Not Block rule is overriding threat blocklists in Cisco FMC."
+                    : (verdict === "FALSE_POSITIVE_LIKELY"
+                        ? "UNBLOCK_IMMEDIATELY: Verified corporate employee activity detected. Recommend pardoning or allowlisting."
+                        : (inAsnBlacklist
+                            ? `ENFORCE_BLOCK: Entire ASN ${asnStr} is blacklisted in Guardian Policy. Ensure IP is locked in Guardian Blacklist and enforced in SI feed.`
+                            : (matchedCidr
+                                ? `MAINTAIN_BLOCK: Subnet ${matchedCidr.ip} is actively enforced across FMC Security Intelligence Threat Feed.`
+                                : (verdict === "CLEAN_NOT_BLOCKED" 
+                                    ? "NONE: IP is clean and not blocked anywhere across perimeter firewalls."
+                                    : "MAINTAIN_BLOCK: Confirmed threat with zero legitimate employee login history."))))
             },
             ipInfo: {
                 ip: ipToInspect,
