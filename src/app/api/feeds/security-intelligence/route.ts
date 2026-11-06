@@ -242,9 +242,9 @@ export async function getSecurityIntelligenceWhitelist(): Promise<{
 }> {
     const ipSet = new Set<string>();
     let watchlistCount = 0;
-    let pardonCount = 0;
 
-    // 1. Guardian Watchlist IPs
+    // 1. Authoritative Corporate & Partner Static Assets (Guardian Watchlist)
+    // Dynamic residential home IPs with pardons are EXCLUDED from FMC Whitelist to prevent global bypass
     const watchIps = await prisma.guardianWatchIp.findMany({ select: { ip: true } });
     for (const item of watchIps) {
         const clean = item.ip.trim();
@@ -252,22 +252,6 @@ export async function getSecurityIntelligenceWhitelist(): Promise<{
         if (!isPrivateIp(host) && !ipSet.has(clean)) {
             ipSet.add(clean);
             watchlistCount++;
-        }
-    }
-
-    // 2. Active 30-Day Pardoned Strikes from Residential / User Ledger
-    const pardonedStrikes = await prisma.residentialStrikeLedger.findMany({
-        where: {
-            status: "PARDONED",
-            expiresAt: { gt: new Date() }
-        },
-        select: { ip: true }
-    });
-    for (const item of pardonedStrikes) {
-        const clean = item.ip.trim();
-        if (!isPrivateIp(clean) && !ipSet.has(clean)) {
-            ipSet.add(clean);
-            pardonCount++;
         }
     }
 
@@ -285,7 +269,7 @@ export async function getSecurityIntelligenceWhitelist(): Promise<{
         metrics: {
             total: sortedIps.length,
             watchlistCount,
-            pardonCount,
+            pardonCount: 0,
             generatedAt: new Date().toISOString()
         }
     };
@@ -303,7 +287,7 @@ export async function getSecurityIntelligenceWhitelistFeed(forceRefresh = false)
         `# ==============================================================================`,
         `# Cooper Health Security Intelligence DO NOT BLOCK Feed (Cisco FTD / FMC)`,
         `# Total Active Whitelist Entries: ${metrics.total}`,
-        `# Breakdown: Guardian Watchlist (${metrics.watchlistCount}) | Pardoned Strikes (${metrics.pardonCount})`,
+        `# Source: Authoritative Corporate & Partner Static Assets (Guardian Watchlist)`,
         `# Recommended Action in FMC: Do Not Block (Whitelist)`,
         `# Note: Evaluates BEFORE the Security Intelligence Threat Feed in FMC`,
         `# ==============================================================================`

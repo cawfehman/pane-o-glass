@@ -402,10 +402,7 @@ export function LiveFeedInspector() {
                         {activeFeedTab === "whitelist" ? (
                             <>
                                 <span className="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-300 border border-emerald-500/20 font-medium">
-                                    Guardian Watchlist: {feedStatus.breakdown.watchlistCount?.toLocaleString() || 0}
-                                </span>
-                                <span className="px-2 py-0.5 rounded bg-blue-500/10 text-blue-300 border border-blue-500/20 font-medium">
-                                    Pardoned Strikes: {feedStatus.breakdown.pardonCount?.toLocaleString() || 0}
+                                    Corporate & Partner Watchlist: {feedStatus.breakdown.watchlistCount?.toLocaleString() || 0}
                                 </span>
                             </>
                         ) : (

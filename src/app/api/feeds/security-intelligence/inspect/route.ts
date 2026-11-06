@@ -134,30 +134,22 @@ export async function GET(req: NextRequest) {
 
         let entries: any[] = [];
         if (isWhitelist) {
-            const [watchEntries, pardonedEntries] = await Promise.all([
-                prisma.guardianWatchIp.findMany({
-                    where: { ip: { in: paginatedIps } },
-                    select: { ip: true, description: true, createdBy: true, createdAt: true }
-                }),
-                prisma.residentialStrikeLedger.findMany({
-                    where: { ip: { in: paginatedIps } },
-                    select: { ip: true, status: true, ispOrg: true, country: true, pardonReason: true, expiresAt: true }
-                })
-            ]);
+            const watchEntries = await prisma.guardianWatchIp.findMany({
+                where: { ip: { in: paginatedIps } },
+                select: { ip: true, description: true, createdBy: true, createdAt: true }
+            });
 
             const watchMap = new Map(watchEntries.map(w => [w.ip, w]));
-            const pardonedMap = new Map(pardonedEntries.map(p => [p.ip, p]));
 
             entries = paginatedIps.map(ip => {
                 const w = watchMap.get(ip);
-                const p = pardonedMap.get(ip);
                 return {
                     ip,
-                    category: w ? "WATCHLIST" : "PARDONED",
-                    reason: w?.description || p?.pardonReason || "Do Not Block Policy",
-                    isp: p?.ispOrg || "Authorized Network",
-                    country: p?.country || "US",
-                    expiresAt: p?.expiresAt || null,
+                    category: "WATCHLIST",
+                    reason: w?.description || "Corporate / Partner Static Asset",
+                    isp: "Authorized Corporate / Partner Asset",
+                    country: "US",
+                    expiresAt: null,
                     isCidr: ip.includes("/")
                 };
             });
