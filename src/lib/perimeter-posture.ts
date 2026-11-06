@@ -204,10 +204,8 @@ function buildPostureFromRecords(inputs: RawIpPostureInputs): EvaluatedIpPosture
     );
 
     // Whitelist / Do Not Block status
-    const isPardoned = Boolean(
-        inputs.inWhitelistFeed ||
-        (residential?.status === "PARDONED" && isStrikeNotExpired)
-    );
+    const isWatchlisted = Boolean(inputs.inWhitelistFeed);
+    const isPardoned = Boolean(residential?.status === "PARDONED" && isStrikeNotExpired);
 
     const isCveExploit = Boolean(cve && cve.status === "ACTIVE");
     const matchedSubnet = inputs.matchedSubnet || null;
@@ -235,9 +233,12 @@ function buildPostureFromRecords(inputs: RawIpPostureInputs): EvaluatedIpPosture
     let activeCategory = "NONE";
     let reason = "Not blocked in FMC Security Intelligence feed or perimeter controls";
 
-    if (isPardoned) {
+    if (isWatchlisted) {
         activeCategory = "FMC_DO_NOT_BLOCK";
-        reason = `Explicitly permitted by FMC Security Intelligence 'Do Not Block' Policy${residential?.pardonReason ? `: "${residential.pardonReason}"` : " (Pardoned / Whitelisted)"}`;
+        reason = `Explicitly permitted by FMC Security Intelligence 'Do Not Block' Policy (Corporate / Partner Watchlist)`;
+    } else if (isPardoned) {
+        activeCategory = "PARDONED";
+        reason = `Strikes pardoned / expunged from SI Threat Block feed${residential?.pardonReason ? `: "${residential.pardonReason}"` : ""}`;
     } else if (isCveExploit) {
         activeCategory = "CVE_IOC";
         reason = `NetScaler CVE-2026 Exploit IOC (${cve.cve})`;
@@ -270,10 +271,12 @@ function buildPostureFromRecords(inputs: RawIpPostureInputs): EvaluatedIpPosture
         fmcGeoBlocked;
 
     // In FMC, Do Not Block ALWAYS takes precedence over Threat Blocks!
-    const isCurrentlyBlocked = isPardoned ? inPerimeterVpnShun : (isBlockedByThreatRules || inPerimeterVpnShun);
-    const fmcDecision: "DO_NOT_BLOCK" | "BLOCK_WITH_RESET" | "PERMIT" = isPardoned
+    const isCurrentlyBlocked = isWatchlisted
+        ? inPerimeterVpnShun
+        : (isPardoned ? inPerimeterVpnShun : (isBlockedByThreatRules || inPerimeterVpnShun));
+    const fmcDecision: "DO_NOT_BLOCK" | "BLOCK_WITH_RESET" | "PERMIT" = isWatchlisted
         ? "DO_NOT_BLOCK"
-        : (isBlockedByThreatRules ? "BLOCK_WITH_RESET" : "PERMIT");
+        : (isBlockedByThreatRules && !isPardoned ? "BLOCK_WITH_RESET" : "PERMIT");
 
     return {
         ip,

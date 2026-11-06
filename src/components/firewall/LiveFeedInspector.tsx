@@ -530,9 +530,19 @@ export function LiveFeedInspector() {
                                     <div className="p-3 rounded-lg bg-emerald-500/15 border border-emerald-500/30 text-emerald-200 text-xs flex items-center gap-2.5 font-medium">
                                         <ShieldCheck className="w-5 h-5 text-emerald-400 shrink-0" />
                                         <div>
-                                            <div className="font-bold text-emerald-300 text-sm">Cisco FMC Effective Decision: DO NOT BLOCK (Whitelisted / Pardoned)</div>
+                                            <div className="font-bold text-emerald-300 text-sm">Cisco FMC Effective Decision: DO NOT BLOCK (Authoritative Watchlist)</div>
                                             <p className="text-[11px] text-emerald-200/80 mt-0.5">
                                                 Evaluates prior to threat blocklists—traffic is actively permitted at perimeter edge{checkResult.blockPosture?.matchedSubnet ? ` (Overriding parent subnet ${checkResult.blockPosture.matchedSubnet})` : ""}.
+                                            </p>
+                                        </div>
+                                    </div>
+                                ) : checkResult.blockPosture?.isPardoned ? (
+                                    <div className="p-3 rounded-lg bg-blue-500/15 border border-blue-500/30 text-blue-200 text-xs flex items-center gap-2.5 font-medium">
+                                        <CheckCircle2 className="w-5 h-5 text-blue-400 shrink-0" />
+                                        <div>
+                                            <div className="font-bold text-blue-300 text-sm">Cisco FMC Effective Decision: PERMIT (Pardoned Staff IP)</div>
+                                            <p className="text-[11px] text-blue-200/80 mt-0.5">
+                                                Strikes expunged and excluded from threat blocklists. Permitted through standard perimeter inspection.
                                             </p>
                                         </div>
                                     </div>

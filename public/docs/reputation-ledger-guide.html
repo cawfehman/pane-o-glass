@@ -466,7 +466,7 @@
   </p>
   <ul>
     <li><strong>Threat Block Feed (<code>/api/feeds/security-intelligence?feed=block</code>):</strong> Automatically consumed every 15 minutes by Cisco FMC. Enforces hardware Snort 3 / TCAM drops for active CVE IOCs, residential Strike 2/3 enforcements, and hostile BGP subnets. Automatically deduplicates redundant <code>/32</code> host IPs that fall inside active <code>/24</code>–<code>/22</code> subnets.</li>
-    <li><strong>Do Not Block (Whitelist) Feed (<code>/api/feeds/security-intelligence?feed=whitelist</code>):</strong> Consumed by Cisco FMC under the <em>Networks (Do Not Block)</em> policy. Serves actively pardoned employees and <code>GuardianWatchIp</code> records. <strong>Because Cisco FMC evaluates Do Not Block before Block</strong>, any pardoned IP is immediately passed at the perimeter edge even if its parent hostile CIDR remains blocked.</li>
+    <li><strong>Do Not Block (Whitelist) Feed (<code>/api/feeds/security-intelligence?feed=whitelist</code>):</strong> Consumed by Cisco FMC under the <em>Networks (Do Not Block)</em> policy. Serves strictly authoritative corporate partner facilities and static infrastructure registered in <code>GuardianWatchIp</code> (e.g., HeartHouse, URG, Corro Health, external clinics). <strong>Dynamic residential IPs are strictly excluded</strong> to prevent arbitrary home ISP pools from bypassing threat detection.</li>
     <li><strong>Hostile Subnet Condensation Engine:</strong> Automatically condenses clusters of attack IPs from blacklisted ASNs and bulletproof VPS providers into their IPLocate BGP routes (between <code>/24</code> and <code>/22</code>). This reduces FMC feed TCAM memory by 60%–80% and preempts IP hopping across botnet pools. <em>Strictly excludes residential broadband ISPs (Comcast, Verizon, Charter) and any subnet with corporate employee history.</em></li>
     <li><strong>Instant Ephemeral ASA CLI Shun Bridge:</strong> While waiting for FMC's 15-minute polling window, Pane-O-Glass immediately pushes <code>shun &lt;ip&gt;</code> to the perimeter ASA firewalls with a dynamic expiration of <em>Next Expected FMC Poll + 20 minutes</em>, closing the propagation gap instantly.</li>
   </ul>
@@ -484,13 +484,13 @@
       </ol>
     </div>
     <div class="card info">
-      <div class="card-title">B. Manual SOC Analyst Pardon (360° Clearance &amp; Whitelist Feed)</div>
+      <div class="card-title">B. Manual SOC Analyst Pardon (360° Clearance &amp; Threat Exemption)</div>
       <p style="margin:0 0 4px 0;">Clicking <strong>Pardon</strong> in the Reputation Ledger, Feed Inspector, or Citrix Triage performs an authoritative perimeter clearance:</p>
       <ol style="margin:0; padding-left:18px; font-size:9pt;">
         <li>Sets <code>status = "PARDONED"</code>, <code>strikeCount = 0</code>, <code>hasCitrixSuccess = true</code>, and extends an active 30-day pardon window.</li>
-        <li><strong>Publishes immediately to the FMC Do Not Block Feed:</strong> Even if the IP's parent <code>/24</code> or <code>/22</code> subnet is blocked in the threat feed, FMC's Do Not Block rule evaluates first and exempts the host.</li>
+        <li><strong>Immediately Expunges from the FMC Threat Block Feed:</strong> Because the Threat Block Feed strictly includes only <code>ENFORCED</code> and <code>QUARANTINED</code> entries, pardoning an IP instantly removes it from the block feed without polluting the global FMC Whitelist.</li>
         <li>Removes the <code>/32</code> from <code>GuardianBlacklist</code>, cancels pending shun queue items, and executes <code>no shun &lt;ip&gt;</code> immediately across all physical firewalls.</li>
-        <li>Invalidates feed caches so the next FMC sync ingests the pardon cleanly.</li>
+        <li>Invalidates feed caches so the next FMC sync drops any active block immediately.</li>
       </ol>
     </div>
   </div>

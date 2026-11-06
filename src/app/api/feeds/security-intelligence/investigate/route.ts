@@ -252,15 +252,15 @@ export async function GET(req: NextRequest) {
 
         const matchedCidr = blacklistCidrs.find((c) => isIpInSubnet(ipToInspect, c.ip)) || null;
         const isStrikePardoned = Boolean(residentialRecord?.status === "PARDONED" && (!residentialRecord.expiresAt || new Date(residentialRecord.expiresAt) > new Date()));
-        const inDoNotBlockFeed = Boolean(watchRecord) || isStrikePardoned;
+        const inDoNotBlockFeed = Boolean(watchRecord);
 
         const inResidentialBlock = Boolean(residentialRecord && !isStrikePardoned && (residentialRecord.strikeCount >= 2 || residentialRecord.status === "ENFORCED" || residentialRecord.status === "QUARANTINED"));
         const inBlacklist = Boolean(blacklisted) || Boolean(matchedCidr);
         const inActiveShuns = activeShunStats.length > 0;
         const inCveBlock = Boolean(cveRecord && cveRecord.status === "ACTIVE");
-        const isThreatBlocked = inBlacklist || inActiveShuns || inCveBlock || inResidentialBlock;
+        const isThreatBlocked = !isStrikePardoned && (inBlacklist || inActiveShuns || inCveBlock || inResidentialBlock);
         // In FMC, Do Not Block ALWAYS takes precedence over Threat Blocks!
-        const isCurrentlyBlocked = inDoNotBlockFeed ? inActiveShuns : isThreatBlocked;
+        const isCurrentlyBlocked = inDoNotBlockFeed ? inActiveShuns : (isThreatBlocked || inActiveShuns);
 
         // Query Good Traffic Indicators (AnyConnect VPN Success)
         const [vpnSuccesses, vpnFailures] = await Promise.all([
@@ -382,7 +382,10 @@ export async function GET(req: NextRequest) {
 
         if (inDoNotBlockFeed) {
             verdict = "FALSE_POSITIVE_LIKELY";
-            verdictReason = `DO NOT BLOCK ACTIVE: IP ${ipToInspect} is explicitly present on the FMC Security Intelligence 'Do Not Block' (Whitelist) List (${watchRecord ? "Guardian Watchlist" : `Pardoned: "${residentialRecord?.pardonReason || "SOC override"}"`}). Cisco FMC evaluates Do Not Block before Block, so traffic is permitted at the edge${matchedCidr ? ` despite parent subnet ${matchedCidr.ip} being in the threat feed` : ""}.`;
+            verdictReason = `DO NOT BLOCK ACTIVE: IP ${ipToInspect} is explicitly present on the FMC Security Intelligence 'Do Not Block' (Whitelist) Feed (Guardian Watchlist: "${watchRecord?.description || "Corporate Asset"}"). Cisco FMC evaluates Do Not Block before Block, so traffic is permitted at the edge${matchedCidr ? ` despite parent subnet ${matchedCidr.ip} being in the threat feed` : ""}.`;
+        } else if (isStrikePardoned) {
+            verdict = "FALSE_POSITIVE_LIKELY";
+            verdictReason = `PARDONED / CLEAN: IP ${ipToInspect} strikes have been expunged (${residentialRecord?.pardonReason || "SOC override"}). Excluded from the Security Intelligence threat blocklist.`;
         } else if (hasVpnSuccess || citrixSuccessCount > 0) {
             verdict = "FALSE_POSITIVE_LIKELY";
             verdictReason = `WARNING: IP ${ipToInspect} is currently blocked or monitored, but has ${vpnSuccesses.length} successful VPN sessions and/or ${citrixSuccessCount} Citrix logins for legitimate corporate staff (${uniqueVpnSuccessUsers.slice(0, 3).join(", ") || "known users"}). Likely false positive!${inAsnBlacklist ? ` (Note: Host ASN ${asnStr} is blacklisted in Guardian: "${asnBlacklistEntry?.reason}")` : ''}`;
@@ -418,11 +421,13 @@ export async function GET(req: NextRequest) {
                 reason: verdictReason,
                 recommendation: inDoNotBlockFeed
                     ? "PERMITTED_BY_WHITELIST: Active Do Not Block rule is overriding threat blocklists in Cisco FMC."
-                    : (verdict === "FALSE_POSITIVE_LIKELY"
-                        ? "UNBLOCK_IMMEDIATELY: Verified corporate employee activity detected. Recommend pardoning or allowlisting."
-                        : (inAsnBlacklist
-                            ? `ENFORCE_BLOCK: Entire ASN ${asnStr} is blacklisted in Guardian Policy. Ensure IP is locked in Guardian Blacklist and enforced in SI feed.`
-                            : (matchedCidr
+                    : (isStrikePardoned
+                        ? "PARDONED_CLEAN: IP strikes expunged from SI Block feed. Permitted at perimeter."
+                        : (verdict === "FALSE_POSITIVE_LIKELY"
+                            ? "UNBLOCK_IMMEDIATELY: Verified corporate employee activity detected. Recommend pardoning or allowlisting."
+                            : (inAsnBlacklist
+                                ? `ENFORCE_BLOCK: Entire ASN ${asnStr} is blacklisted in Guardian Policy. Ensure IP is locked in Guardian Blacklist and enforced in SI feed.`
+                                : (matchedCidr
                                 ? `MAINTAIN_BLOCK: Subnet ${matchedCidr.ip} is actively enforced across FMC Security Intelligence Threat Feed.`
                                 : (verdict === "CLEAN_NOT_BLOCKED" 
                                     ? "NONE: IP is clean and not blocked anywhere across perimeter firewalls."
