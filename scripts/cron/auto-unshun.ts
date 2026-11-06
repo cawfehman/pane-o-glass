@@ -13,6 +13,7 @@ import { replicateShunToFleet } from '../../src/lib/universal-shun-sync';
 import { isPrivateIp } from '../../src/lib/iplocate';
 import { updateCreditInfoFromHeaders } from '../../src/lib/iplocate-credits';
 import { isResidential } from '../../src/lib/isp-classification';
+import { runSubnetCondensation } from '../../src/lib/subnet-condenser';
 
 async function checkCitrixSuccessHistory(ip: string, username?: string): Promise<{ hasCitrixSuccess: boolean; exactUserMatch: boolean }> {
     const rawUrl = process.env.GRAYLOG_URL || process.env.OG_GRAYLOG_URL;
@@ -1052,6 +1053,16 @@ async function runAutoUnshun() {
         }
     } catch (citrixErr: any) {
         console.error("[GUARDIAN][CITRIX-AUTO-SHUN] Cycle error:", citrixErr.message);
+    }
+
+    // 4c. Autonomous Subnet Condensation Cycle (Condenses dense hosting clusters into BGP CIDRs)
+    try {
+        const condensationResult = await runSubnetCondensation({ dryRun: false });
+        if (condensationResult.condensedSubnetsCount > 0) {
+            console.log(`[GUARDIAN][SUBNET-CONDENSE] Consolidated ${condensationResult.redundantIpsSubsumed} attack IPs into ${condensationResult.condensedSubnetsCount} BGP CIDRs.`);
+        }
+    } catch (condenseErr: any) {
+        console.error("[GUARDIAN][SUBNET-CONDENSE] Cycle error:", condenseErr.message);
     }
     
     // 5. Update Heartbeat for Dashboard
