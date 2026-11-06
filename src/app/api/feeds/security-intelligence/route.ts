@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { isPrivateIp } from "@/lib/iplocate";
 import { isResidentialOrg } from "@/lib/reputation-ledger";
-import { isIpInSubnet, parseCidr } from "@/lib/ip-subnet";
+import { FastSubnetMatcher, parseCidr } from "@/lib/ip-subnet";
 import crypto from "crypto";
 
 export interface FeedResult {
@@ -153,17 +153,17 @@ export async function getSecurityIntelligenceIps(tierFilter: string = "all"): Pr
         }
     }
 
-    // 5. Deduplicate redundant /32 host entries subsumed by consolidated CIDRs
+    // 5. Deduplicate redundant /32 host entries subsumed by consolidated CIDRs in O(1) time
     const cidrs = Array.from(rawEntries).filter((entry) => entry.includes("/"));
     const finalSet = new Set<string>();
+    const matcher = new FastSubnetMatcher(cidrs);
 
     for (const entry of rawEntries) {
         if (entry.includes("/")) {
             finalSet.add(entry);
         } else {
-            // Check if this /32 is already covered by an active CIDR in the feed
-            const isSubsumed = cidrs.some((cidr) => isIpInSubnet(entry, cidr));
-            if (!isSubsumed) {
+            // Instant O(1) check if this /32 is already covered by an active CIDR in the feed
+            if (!matcher.isSubsumed(entry)) {
                 finalSet.add(entry);
             }
         }

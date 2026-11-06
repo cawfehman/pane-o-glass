@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { getIpEnrichment, isPrivateIp } from "@/lib/iplocate";
 import { isResidentialOrg } from "@/lib/reputation-ledger";
-import { isIpInSubnet } from "@/lib/ip-subnet";
+import { isIpInSubnet, FastSubnetMatcher } from "@/lib/ip-subnet";
 
 const PLACEHOLDER_TOKENS = new Set([
     "UNKNOWN",
@@ -361,7 +361,8 @@ export async function evaluateSingleIpPosture(
         prisma.guardianWatchIp.findUnique({ where: { ip: cleanIp } }).catch(() => null)
     ]);
 
-    const matchedSubnet = blacklistCidrs.find((c) => isIpInSubnet(cleanIp, c.ip))?.ip || null;
+    const subnetMatcher = new FastSubnetMatcher(blacklistCidrs.map((c) => c.ip));
+    const matchedSubnet = subnetMatcher.findMatchingSubnet(cleanIp);
     const isPardonedStrike = Boolean(residential?.status === "PARDONED" && (!residential.expiresAt || new Date(residential.expiresAt) > new Date()));
     const inWhitelistFeed = Boolean(watchEntry) || isPardonedStrike;
 
@@ -475,8 +476,10 @@ export async function evaluateBatchIpPosture(
         asnBlacklistMap.set(a.asn.toUpperCase().replace(/^AS/, ""), a.reason || null);
     }
 
+    const subnetMatcher = new FastSubnetMatcher(blacklistCidrs.map((c) => c.ip));
+
     return cleanIps.map(currIp => {
-        const matchedSubnet = blacklistCidrs.find((c) => isIpInSubnet(currIp, c.ip))?.ip || null;
+        const matchedSubnet = subnetMatcher.findMatchingSubnet(currIp);
         const inWhitelistFeed = watchSet.has(currIp) || pardonedSet.has(currIp);
 
         const evaluated = buildPostureFromRecords({

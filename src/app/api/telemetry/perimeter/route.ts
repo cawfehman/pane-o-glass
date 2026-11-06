@@ -55,22 +55,47 @@ export async function GET(req: NextRequest) {
             timeFormat = "MMM dd";
         }
 
-        // 1. Fetch VPN events in window
-        const vpnEvents = await prisma.vpnEvent.findMany({
-            where: {
-                status: "FAILURE",
-                createdAt: { gte: sinceDate },
-            },
-            select: {
-                sourceIp: true,
-                username: true,
-                vpnStream: true,
-                createdAt: true,
-            },
-        });
+        // 1. Fetch VPN events in window and Authoritative Ledger Status Counts in parallel
+        const [vpnEvents, statusGroups] = await Promise.all([
+            prisma.vpnEvent.findMany({
+                where: {
+                    status: "FAILURE",
+                    createdAt: { gte: sinceDate },
+                },
+                select: {
+                    sourceIp: true,
+                    username: true,
+                    vpnStream: true,
+                    createdAt: true,
+                },
+            }),
+            prisma.residentialStrikeLedger.groupBy({
+                by: ["status"],
+                _count: { _all: true },
+            }).catch(() => []),
+        ]);
 
-        // 2. Fetch Active Ledger Strikes and pardons
+        const statusCounts = new Map(statusGroups.map((g) => [g.status, g._count._all]));
+        const ledgerStats = {
+            quarantined: statusCounts.get("QUARANTINED") || 0,
+            enforced: statusCounts.get("ENFORCED") || 0,
+            watching: statusCounts.get("WATCHING") || 0,
+            pardoned: statusCounts.get("PARDONED") || 0,
+        };
+
+        // 2. Fetch Active Ledger Strikes and pardons relevant to this window or elevated
+        const vpnIps = Array.from(new Set(vpnEvents.map((v) => v.sourceIp).filter((ip): ip is string => Boolean(ip))));
         const ledgerEntries = await prisma.residentialStrikeLedger.findMany({
+            where: {
+                OR: [
+                    { ip: { in: vpnIps } },
+                    { lastSeen: { gte: sinceDate } },
+                    {
+                        strikeCount: { gte: 2 },
+                        lastSeen: { gte: new Date(now - 7 * 86400 * 1000) },
+                    },
+                ],
+            },
             select: {
                 ip: true,
                 strikeCount: true,
@@ -85,6 +110,8 @@ export async function GET(req: NextRequest) {
                 lastSeen: true,
                 firstSeen: true,
             },
+            orderBy: { lastSeen: "desc" },
+            take: 2000,
         });
         const ledgerMap = new Map(ledgerEntries.map((l) => [l.ip, l]));
 
@@ -361,13 +388,7 @@ export async function GET(req: NextRequest) {
                 isCorporateFormat: CORPORATE_REGEX.test(username),
             }));
 
-        // Ledger totals
-        const ledgerStats = {
-            quarantined: ledgerEntries.filter((l) => l.status === "QUARANTINED").length,
-            enforced: ledgerEntries.filter((l) => l.status === "ENFORCED").length,
-            watching: ledgerEntries.filter((l) => l.status === "WATCHING").length,
-            pardoned: ledgerEntries.filter((l) => l.status === "PARDONED").length,
-        };
+        // Use precomputed authoritative ledgerStats from the status group-by aggregation
 
         return NextResponse.json({
             success: true,
