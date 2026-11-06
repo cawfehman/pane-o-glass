@@ -1,8 +1,13 @@
 import axios from "axios";
 import path from "path";
+import https from "https";
 import dotenv from "dotenv";
 dotenv.config({ path: path.resolve(__dirname, "../../.env") });
 import { PrismaClient } from "@prisma/client";
+
+// Ensure internal corporate self-signed / local enterprise CA certs are accepted
+process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
+const httpsAgent = new https.Agent({ rejectUnauthorized: false });
 
 const prisma = new PrismaClient();
 
@@ -13,7 +18,8 @@ async function prewarmOnce(): Promise<{ success: boolean; message: string }> {
 
     try {
         const res = await axios.get(targetUrl, {
-            timeout: 60000,
+            timeout: 75000,
+            httpsAgent,
             headers: { "X-Requested-By": "anyconnect-prewarm-worker" }
         });
 
