@@ -42,6 +42,22 @@ function main() {
         console.warn('[Deploy Post-Build] Warning reloading PM2:', e.message);
     }
 
+    // 1b. Ensure PM2 restarts anyconnect-prewarm immediately
+    try {
+        console.log('[Deploy Post-Build] Ensuring anyconnect-prewarm is active in PM2...');
+        try {
+            execSync('pm2 restart anyconnect-prewarm', { stdio: 'inherit' });
+            console.log('[Deploy Post-Build] Successfully restarted anyconnect-prewarm in PM2.');
+        } catch {
+            console.log('[Deploy Post-Build] Starting anyconnect-prewarm for the first time in PM2...');
+            execSync('pm2 start dist-scripts/cron/prewarm-anyconnect.js --name anyconnect-prewarm -- --daemon', { stdio: 'inherit' });
+            execSync('pm2 save', { stdio: 'inherit' });
+            console.log('[Deploy Post-Build] Started and saved anyconnect-prewarm in PM2.');
+        }
+    } catch (e) {
+        console.warn('[Deploy Post-Build] Warning reloading anyconnect-prewarm in PM2:', e.message);
+    }
+
     // 2. Automatically update post-receive hook so Step [4/4] always reloads citrix-guardian on every future deploy
     const potentialHookPaths = [
         '/home/rivera/git-server/linux-dash.git/hooks/post-receive',
@@ -59,19 +75,23 @@ function main() {
                 // Match both "pm2 reload ..." and "pm2 restart ..."
                 const pm2Regex = /pm2\s+(reload|restart)\s+([^\n]+)/g;
 
-                if (pm2Regex.test(hookContent) && !hookContent.includes('citrix-guardian')) {
+                if (pm2Regex.test(hookContent)) {
                     hookContent = hookContent.replace(pm2Regex, (match, action, procs) => {
-                        const trimmed = procs.trim();
-                        if (!trimmed.includes('citrix-guardian')) {
-                            return `pm2 ${action} ${trimmed} citrix-guardian`;
-                        }
-                        return match;
+                        let trimmed = procs.trim();
+                        if (!trimmed.includes('citrix-guardian')) trimmed += ' citrix-guardian';
+                        if (!trimmed.includes('anyconnect-prewarm')) trimmed += ' anyconnect-prewarm';
+                        return `pm2 ${action} ${trimmed}`;
                     });
                     modified = true;
-                } else if (!hookContent.includes('citrix-guardian')) {
-                    // Append before exit if no match found
-                    hookContent += '\npm2 restart citrix-guardian || pm2 start dist-scripts/cron/citrix-guardian.js --name citrix-guardian\n';
-                    modified = true;
+                } else {
+                    if (!hookContent.includes('citrix-guardian')) {
+                        hookContent += '\npm2 restart citrix-guardian || pm2 start dist-scripts/cron/citrix-guardian.js --name citrix-guardian\n';
+                        modified = true;
+                    }
+                    if (!hookContent.includes('anyconnect-prewarm')) {
+                        hookContent += '\npm2 restart anyconnect-prewarm || pm2 start dist-scripts/cron/prewarm-anyconnect.js --name anyconnect-prewarm -- --daemon\n';
+                        modified = true;
+                    }
                 }
 
                 if (modified) {

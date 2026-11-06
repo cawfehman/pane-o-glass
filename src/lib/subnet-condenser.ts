@@ -1,7 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { isResidentialOrg } from "@/lib/isp-classification";
-import { isIpInSubnet, parseCidr, isValidCidr, normalizeAsn } from "@/lib/ip-subnet";
-import { invalidateFeedCache } from "@/app/api/feeds/security-intelligence/route";
+import { isIpInSubnet, parseCidr, isValidCidr, normalizeAsn, FastSubnetMatcher } from "@/lib/ip-subnet";
 
 export interface SubnetCondensationCandidate {
     cidr: string;
@@ -140,12 +139,24 @@ export async function runSubnetCondensation(options?: {
         subnetMap.get(key)!.ips.add(ip);
     }
 
-    // 5. Pre-load historical successful VPN source IPs to evaluate Guardrail 3 completely in-memory
+    // 5. Pre-load historical successful VPN source IPs and index candidate subnets for O(1) Guardrail 3 check
     const successfulVpns = await prisma.vpnEvent.findMany({
         where: { status: "SUCCESS" },
         select: { sourceIp: true }
     });
-    const successfulIpList = Array.from(new Set(successfulVpns.map((v) => v.sourceIp)));
+    const successfulIpList = Array.from(new Set(successfulVpns.map((v) => v.sourceIp).filter((ip): ip is string => Boolean(ip))));
+
+    // Build O(1) subnet matcher across all candidate subnets
+    const candidateSubnetKeys = Array.from(subnetMap.keys());
+    const candidateMatcher = new FastSubnetMatcher(candidateSubnetKeys);
+    const excludedSubnets = new Set<string>();
+
+    for (const goodIp of successfulIpList) {
+        const matched = candidateMatcher.findMatchingSubnet(goodIp);
+        if (matched) {
+            excludedSubnets.add(matched);
+        }
+    }
 
     // 6. Filter subnets meeting attacker threshold & GUARDRAIL 3 (Zero corporate logins)
     const validCandidates: SubnetCondensationCandidate[] = [];
@@ -157,8 +168,7 @@ export async function runSubnetCondensation(options?: {
         if (data.ips.size < requiredThreshold) continue;
 
         // GUARDRAIL 3: Verify zero historical corporate logins from ANY address in this subnet
-        const hasCorporateSuccess = successfulIpList.some((goodIp) => isIpInSubnet(goodIp, cidr));
-        if (hasCorporateSuccess) {
+        if (excludedSubnets.has(cidr)) {
             // Abort condensation for this subnet: corporate employee has successfully connected from it!
             continue;
         }
@@ -202,7 +212,6 @@ export async function runSubnetCondensation(options?: {
             }
             appliedSubnets.push(cand.cidr);
         }
-        invalidateFeedCache();
     }
 
     return {

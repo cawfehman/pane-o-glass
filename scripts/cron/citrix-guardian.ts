@@ -63,6 +63,20 @@ async function executeOnce(forceRun = false) {
 
     // 3. Run Citrix triage & enforcement cycle
     const res = await runCitrixLoginAutoShunCycle({ forceRun });
+
+    // 4. Update Heartbeat for Firewall Guardian in BackgroundJob table
+    try {
+        const guardianStatus = !res.executed ? "INACTIVE" : "SUCCESS";
+        const msg = !res.executed ? "Paused via UI configuration" : (res.summary || `Evaluated ${res.evaluatedIps} IPs (${res.newlyShunned.length} newly shunned)`);
+        await prisma.backgroundJob.upsert({
+            where: { name: "Firewall Guardian" },
+            update: { lastRun: new Date(), status: guardianStatus, message: msg },
+            create: { name: "Firewall Guardian", lastRun: new Date(), status: guardianStatus, message: msg }
+        });
+    } catch (e: any) {
+        console.error("[CITRIX-GUARDIAN] Heartbeat update error:", e.message);
+    }
+
     if (!res.executed) {
         return;
     }

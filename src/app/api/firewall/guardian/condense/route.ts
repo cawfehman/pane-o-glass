@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth";
 import { hasPermission } from "@/app/actions/permissions";
 import { logAudit } from "@/lib/audit";
 import { runSubnetCondensation } from "@/lib/subnet-condenser";
+import { invalidateFeedCache } from "@/app/api/feeds/security-intelligence/route";
 
 export const dynamic = "force-dynamic";
 
@@ -72,6 +73,8 @@ export async function POST(req: NextRequest) {
                 session.user.id,
                 clientIp
             ).catch(() => {});
+
+            invalidateFeedCache();
         }
 
         return NextResponse.json({

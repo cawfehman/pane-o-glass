@@ -1,8 +1,9 @@
 import { NodeSSH } from 'node-ssh';
 import { PrismaClient } from '@prisma/client';
 import path from 'path';
-import axios from 'axios';
 import fs from 'fs';
+import os from 'os';
+import axios from 'axios';
 import https from 'https';
 import { Client } from 'ldapts';
 import dotenv from 'dotenv';
@@ -1055,11 +1056,26 @@ async function runAutoUnshun() {
         console.error("[GUARDIAN][CITRIX-AUTO-SHUN] Cycle error:", citrixErr.message);
     }
 
-    // 4c. Autonomous Subnet Condensation Cycle (Condenses dense hosting clusters into BGP CIDRs)
+    // 4c. Autonomous Subnet Condensation Cycle (Runs once daily during nightly maintenance window)
     try {
-        const condensationResult = await runSubnetCondensation({ dryRun: false });
-        if (condensationResult.condensedSubnetsCount > 0) {
-            console.log(`[GUARDIAN][SUBNET-CONDENSE] Consolidated ${condensationResult.redundantIpsSubsumed} attack IPs into ${condensationResult.condensedSubnetsCount} BGP CIDRs.`);
+        const lastCondenseSetting = await prisma.netscalerCveSetting.findUnique({
+            where: { key: "LAST_SUBNET_CONDENSATION_RUN" }
+        }).catch(() => null);
+
+        const lastCondenseTime = lastCondenseSetting?.value ? new Date(lastCondenseSetting.value).getTime() : 0;
+        const hoursSinceLast = (Date.now() - lastCondenseTime) / (1000 * 60 * 60);
+
+        if (hoursSinceLast >= 20) {
+            console.log(`[GUARDIAN][SUBNET-CONDENSE] Running scheduled daily condensation cycle (last run: ${hoursSinceLast.toFixed(1)}h ago)...`);
+            const condensationResult = await runSubnetCondensation({ dryRun: false });
+            if (condensationResult.condensedSubnetsCount > 0) {
+                console.log(`[GUARDIAN][SUBNET-CONDENSE] Consolidated ${condensationResult.redundantIpsSubsumed} attack IPs into ${condensationResult.condensedSubnetsCount} BGP CIDRs.`);
+            }
+            await prisma.netscalerCveSetting.upsert({
+                where: { key: "LAST_SUBNET_CONDENSATION_RUN" },
+                update: { value: new Date().toISOString() },
+                create: { key: "LAST_SUBNET_CONDENSATION_RUN", value: new Date().toISOString() }
+            });
         }
     } catch (condenseErr: any) {
         console.error("[GUARDIAN][SUBNET-CONDENSE] Cycle error:", condenseErr.message);
@@ -1077,13 +1093,55 @@ async function runAutoUnshun() {
     }
 }
 
+const LOCK_FILE = path.resolve(os.tmpdir(), "guardian-auto-unshun.lock");
+
+function acquireLock(): boolean {
+    try {
+        if (fs.existsSync(LOCK_FILE)) {
+            const pidStr = fs.readFileSync(LOCK_FILE, "utf8");
+            const pid = parseInt(pidStr.trim(), 10);
+            if (!isNaN(pid) && pid > 0) {
+                try {
+                    process.kill(pid, 0);
+                    // Process with this PID is still active
+                    return false;
+                } catch {
+                    // Process is not running; lock is stale
+                }
+            }
+        }
+        fs.writeFileSync(LOCK_FILE, String(process.pid), { flag: "w" });
+        return true;
+    } catch {
+        return true;
+    }
+}
+
+function releaseLock() {
+    try {
+        if (fs.existsSync(LOCK_FILE)) {
+            const pidStr = fs.readFileSync(LOCK_FILE, "utf8");
+            if (parseInt(pidStr.trim(), 10) === process.pid) {
+                fs.unlinkSync(LOCK_FILE);
+            }
+        }
+    } catch {}
+}
+
+if (!acquireLock()) {
+    console.log("[GUARDIAN] Another auto-unshun cycle is currently active. Skipping overlapping run to prevent firewall SSH contention.");
+    process.exit(0);
+}
+
 // Execute once and exit
 runAutoUnshun()
     .then(async () => {
+        releaseLock();
         await prisma.$disconnect();
         process.exit(0);
     })
     .catch(async (e: any) => {
+        releaseLock();
         console.error(e);
         await prisma.$disconnect();
         process.exit(1);
