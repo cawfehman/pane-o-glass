@@ -231,9 +231,14 @@ export const helpData: Record<string, TooltipDetails> = {
                 tag: "Perimeter RBAC"
             },
             {
-                title: "Cisco FMC Security Intelligence (SI) Dynamic Feed",
-                detail: "Serves an automated, high-speed flat-text dynamic feed consumed every 15 minutes by Cisco Firepower Management Center (FMC). Offloads perimeter blocking to FTD hardware TCAM / Snort 3 data-plane pre-filters with zero Lina connection state memory overhead.",
+                title: "Dual Cisco FMC Dynamic Feeds: Threat Block & 'Do Not Block' (Whitelist)",
+                detail: "Serves two synchronized, high-speed flat-text dynamic feeds consumed every 15 minutes by Cisco Firepower Management Center (FMC): (1) Threat Block Feed (feed=block) enforcing Snort 3 / TCAM hardware pre-filter drops for active attacks and consolidated /24–/22 BGP subnets, and (2) Do Not Block (Whitelist) Feed (feed=whitelist) enforcing priority exceptions for pardoned staff and watchlisted partners. Because FMC evaluates Do Not Block prior to threat blocks, pardoned employees pass through immediately without needing to alter or remove the surrounding hostile CIDR.",
                 tag: "Security Intelligence"
+            },
+            {
+                title: "Hostile ASN Subnet Condensation Engine",
+                detail: "Autonomous BGP route condensation condensing dense clusters of attack IPs from blacklisted ASNs and bulletproof VPS providers into their IPLocate /24 to /22 subnets. Automatically deduplicates the threat feed, saving TCAM memory and preempting rotating botnet IP pools while strictly excluding residential ISPs (Comcast, Verizon, Spectrum) and any subnet with corporate employee history.",
+                tag: "Subnet Defense"
             },
             {
                 title: "3-Strike Progressive Residential Reputation Ledger",
@@ -265,18 +270,21 @@ export const helpData: Record<string, TooltipDetails> = {
             { name: "Strike 1 (Watchlist)", meaning: "Single-account password failure on home residential ISP (Comcast, Verizon). 14-day observation hold; NOT blocked in SI feed to protect corporate employees.", rgb: "#f59e0b" },
             { name: "Strike 2 (7d Enforced Block)", meaning: "Active 7-day rolling perimeter block in Cisco FMC SI feed + dynamic firewall bridge shun for repeated password failures or multi-user sprays.", rgb: "#f97316" },
             { name: "Strike 3 (90d Quarantine)", meaning: "Extended 90-day quarantine for repeat multi-user credential sprays, botnets, and distributed brute-force origins.", rgb: "#ef4444" },
+            { name: "FMC Do Not Block (Whitelist)", meaning: "IP is registered on the FMC Do Not Block feed (pardoned strike or watchlist). Overrides threat blocklists and CIDR subnets at the edge.", rgb: "#10b981" },
+            { name: "Consolidated Subnet (CIDR)", meaning: "Tight BGP route (/24 to /22) from a blacklisted ASN or hosting provider, blocking entire rotating botnet clusters.", rgb: "#06b6d4" },
             { name: "Pardoned (MFA OK)", meaning: "IP successfully expunged and unblocked following verified Active Directory + Duo/Imprivata MFA login or manual SOC pardon.", rgb: "#10b981" },
             { name: "Guardian Blacklist (Permanent Lock)", meaning: "Locked on the Guardian Do-Not-Unshun Blacklist (/32 IP or entire ASN). Barred from auto-unshun cron jobs.", rgb: "#a855f7" }
         ],
         shortcuts: [
             "Use the top tabs to toggle between 'Perimeter Telemetry', '3-Strike & SI Defense', 'Guardian Blacklist', and 'ASA Shuns & CLI'.",
             "In 3-Strike & SI Defense, click 'Investigate IP / ASN' or 'Ad-Hoc Feed Block' to open collapsible tools without losing your place in the ledger.",
+            "In Live Feed Inspector, use the top switcher to inspect either the Threat Block Feed (POG_SI_Edge_Defense) or the Do Not Block List (POG_SI_Whitelist).",
             "Click any IP address in the Reputation Ledger table to open the Threat Investigator drawer with full multi-platform history.",
             "In ASA Shuns & CLI, switch between 'Shun Database', 'Guardian Auto-Unshun Logs', and 'Manual Shun CLI' using the segmented sub-nav.",
             "Click '3-Strike & Ledger Guide' to open the SOC Analyst Guide in a new window."
         ],
         backgroundJobs: [
-            "Cisco FMC Dynamic Feed: Synchronizes perimeter SI blocklists every 15 minutes across all FTD edge firewalls.",
+            "Cisco FMC Dual Feeds: Synchronizes perimeter SI threat blocklists (feed=block) and Do Not Block whitelist (feed=whitelist) every 15 minutes across all FTD edge firewalls.",
             "Guardian Automated Scanner: Monitors connection status, processes the queue, and manages threat lists continuously.",
             "Daily Fleet Shun Snapshot: Reconciles active vs. historical shuns across all 4 ASA nodes every 24 hours into PostgreSQL."
         ]
