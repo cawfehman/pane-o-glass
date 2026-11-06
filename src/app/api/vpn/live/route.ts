@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth";
 import { execFile } from "child_process";
 import { promisify } from "util";
 import path from "path";
+import fs from "fs";
 
 const execFileAsync = promisify(execFile);
 
@@ -11,6 +12,8 @@ interface CacheEntry<T> {
     data: T;
     timestamp: number;
 }
+
+const SESSIONS_CACHE_FILE = path.join(process.cwd(), ".anyconnect_sessions_cache.json");
 
 let cachedSummary: CacheEntry<any> | null = null;
 let cachedPools: CacheEntry<any> | null = null;
@@ -191,6 +194,20 @@ export async function GET(req: NextRequest) {
                 return NextResponse.json({ ...cachedSessions!.data, cached: true });
             }
 
+            // 1b. Check persisted disk cache written by background pre-warm worker
+            if (!refresh) {
+                try {
+                    if (fs.existsSync(SESSIONS_CACHE_FILE)) {
+                        const fileContent = fs.readFileSync(SESSIONS_CACHE_FILE, "utf-8");
+                        const parsed = JSON.parse(fileContent);
+                        if (parsed?.timestamp && (now - parsed.timestamp) < TTL_SESSIONS_MS && parsed?.data) {
+                            cachedSessions = parsed;
+                            return NextResponse.json({ ...cachedSessions!.data, cached: true, prewarmed: true });
+                        }
+                    }
+                } catch {}
+            }
+
             // Function to perform the live multi-firewall retrieval and deduplication
             const doFetch = async () => {
                 const raw = await runFtdCli(["--action", "ra_sessions", "--target", firewall]);
@@ -225,6 +242,13 @@ export async function GET(req: NextRequest) {
                 };
 
                 cachedSessions = { data: result, timestamp: Date.now() };
+
+                // Persist to shared disk cache
+                try {
+                    const tmpFile = `${SESSIONS_CACHE_FILE}.tmp.${Date.now()}`;
+                    fs.writeFileSync(tmpFile, JSON.stringify(cachedSessions), "utf-8");
+                    fs.renameSync(tmpFile, SESSIONS_CACHE_FILE);
+                } catch {}
 
                 // Track in BackgroundJob for System Health dashboard monitor
                 try {

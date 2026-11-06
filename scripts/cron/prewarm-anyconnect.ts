@@ -1,31 +1,103 @@
-import axios from "axios";
 import path from "path";
-import https from "https";
+import fs from "fs";
 import dotenv from "dotenv";
 dotenv.config({ path: path.resolve(__dirname, "../../.env") });
 import { PrismaClient } from "@prisma/client";
+import { execFile } from "child_process";
+import { promisify } from "util";
 
-// Ensure internal corporate self-signed / local enterprise CA certs are accepted
-process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
-const httpsAgent = new https.Agent({ rejectUnauthorized: false });
-
+const execFileAsync = promisify(execFile);
 const prisma = new PrismaClient();
 
-async function prewarmOnce(): Promise<{ success: boolean; message: string }> {
-    const port = process.env.PORT || 3000;
-    const targetUrl = `http://127.0.0.1:${port}/api/vpn/live?action=sessions&refresh=true`;
-    const t0 = Date.now();
+const CACHE_FILE = path.resolve(process.cwd(), ".anyconnect_sessions_cache.json");
 
+async function resolvePythonCommand(): Promise<string> {
+    if (process.env.PYTHON_PATH) return process.env.PYTHON_PATH;
+    const candidates = process.platform === "win32" ? ["python", "python3", "py"] : ["python3", "python"];
+    for (const cmd of candidates) {
+        try {
+            await execFileAsync(cmd, ["--version"]);
+            return cmd;
+        } catch {}
+    }
+    return process.platform === "win32" ? "python" : "python3";
+}
+
+function resolveScriptPath(): string {
+    const candidates = [
+        path.resolve(__dirname, "../../services/firewall/ftd_client.py"),
+        path.resolve(__dirname, "../services/firewall/ftd_client.py"),
+        path.resolve(process.cwd(), "services/firewall/ftd_client.py")
+    ];
+    for (const p of candidates) {
+        if (fs.existsSync(p)) return p;
+    }
+    return path.resolve(process.cwd(), "services/firewall/ftd_client.py");
+}
+
+async function runFtdCli(args: string[]): Promise<any> {
+    const pythonBin = await resolvePythonCommand();
+    const scriptPath = resolveScriptPath();
     try {
-        const res = await axios.get(targetUrl, {
+        const { stdout } = await execFileAsync(pythonBin, [scriptPath, "--json", ...args], {
+            cwd: process.cwd(),
             timeout: 75000,
-            httpsAgent,
-            headers: { "X-Requested-By": "anyconnect-prewarm-worker" }
+            maxBuffer: 50 * 1024 * 1024,
+            env: { ...process.env, PYTHONIOENCODING: "utf-8" }
         });
+        return JSON.parse(stdout);
+    } catch (err: any) {
+        console.error("[ANYCONNECT-PREWARM] Python execution error:", err.message);
+        throw err;
+    }
+}
+
+async function prewarmOnce(): Promise<{ success: boolean; message: string }> {
+    const t0 = Date.now();
+    try {
+        console.log(`[ANYCONNECT-PREWARM] Starting sweep across cluster nodes...`);
+        const raw = await runFtdCli(["--action", "ra_sessions", "--target", "ra"]);
+        const sessions: any[] = [];
+        if (Array.isArray(raw)) {
+            for (const r of raw) {
+                if (r.success && Array.isArray(r.sessions)) {
+                    sessions.push(...r.sessions);
+                }
+            }
+        }
+
+        // Deduplicate across HA / load-balanced cluster members
+        const seen = new Set<string>();
+        const deduplicated: any[] = [];
+        for (const s of sessions) {
+            const key = s.auditSessionId ? `${s.auditSessionId}` : `${s.username}-${s.assignedIp || s.publicIp}`;
+            if (!seen.has(key)) {
+                seen.add(key);
+                deduplicated.push(s);
+            }
+        }
+
+        // Sort by throughput (highest traffic first)
+        deduplicated.sort((a, b) => ((b.bytesTx || 0) + (b.bytesRx || 0)) - ((a.bytesTx || 0) + (a.bytesRx || 0)));
 
         const durationMs = Date.now() - t0;
-        const total = res.data?.totalSessions || res.data?.sessions?.length || 0;
-        const msg = `Warmed ${total} active sessions across cluster nodes in ${durationMs}ms`;
+        const result = {
+            success: true,
+            totalSessions: deduplicated.length,
+            sessions: deduplicated,
+            timestamp: new Date().toISOString()
+        };
+
+        // Persist to shared disk cache for Next.js web application
+        try {
+            const tmpFile = `${CACHE_FILE}.tmp.${Date.now()}`;
+            fs.writeFileSync(tmpFile, JSON.stringify({ data: result, timestamp: Date.now() }), "utf-8");
+            fs.renameSync(tmpFile, CACHE_FILE);
+        } catch (cacheErr: any) {
+            console.warn(`[ANYCONNECT-PREWARM] Note: Could not write cache file: ${cacheErr.message}`);
+        }
+
+        const msg = `Warmed ${deduplicated.length} active sessions across cluster nodes in ${durationMs}ms`;
         console.log(`[ANYCONNECT-PREWARM] ${msg}`);
 
         // Update BackgroundJob heartbeat
