@@ -567,11 +567,20 @@ export async function getPermissionsDiagnostic() {
         let absDbPath = '';
         let exists = false;
 
-        if (rawDbUrl.startsWith('file:') || rawDbUrl.endsWith('.db')) {
-            const cleanPath = rawDbUrl.replace(/^file:/, '');
-            absDbPath = path.isAbsolute(cleanPath) ? cleanPath : path.resolve(process.cwd(), cleanPath);
+        const isPostgres = rawDbUrl.startsWith('postgres:') || rawDbUrl.startsWith('postgresql:');
+        if (isPostgres) {
+            absDbPath = 'PostgreSQL Connection';
             try {
-                exists = fs.existsSync(absDbPath);
+                await prisma.$queryRaw`SELECT 1`;
+                exists = true;
+            } catch {
+                exists = false;
+            }
+        } else if (rawDbUrl.startsWith('file:') || rawDbUrl.endsWith('.db')) {
+            const cleanPath = rawDbUrl.replace(/^file:/, '');
+            absDbPath = path.isAbsolute(cleanPath) ? cleanPath : path.resolve(/*turbopackIgnore: true*/ process.cwd(), cleanPath);
+            try {
+                exists = fs.existsSync(/*turbopackIgnore: true*/ absDbPath);
             } catch {}
         }
 
