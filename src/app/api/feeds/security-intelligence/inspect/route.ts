@@ -134,22 +134,34 @@ export async function GET(req: NextRequest) {
 
         let entries: any[] = [];
         if (isWhitelist) {
-            const watchEntries = await prisma.guardianWatchIp.findMany({
-                where: { ip: { in: paginatedIps } },
-                select: { ip: true, description: true, createdBy: true, createdAt: true }
-            });
+            const [watchEntries, pardonEntries] = await Promise.all([
+                prisma.guardianWatchIp.findMany({
+                    where: { ip: { in: paginatedIps } },
+                    select: { ip: true, description: true, createdBy: true, createdAt: true }
+                }),
+                prisma.residentialStrikeLedger.findMany({
+                    where: { ip: { in: paginatedIps } },
+                    select: { ip: true, pardonReason: true, ispOrg: true, country: true, expiresAt: true, attemptedUsers: true }
+                })
+            ]);
 
             const watchMap = new Map(watchEntries.map(w => [w.ip, w]));
+            const pardonMap = new Map(pardonEntries.map(p => [p.ip, p]));
 
             entries = paginatedIps.map(ip => {
-                const w = watchMap.get(ip);
+                const w = watchMap.get(ip) as any;
+                const p = pardonMap.get(ip) as any;
+                const isWatch = Boolean(w);
+
                 return {
                     ip,
-                    category: "WATCHLIST",
-                    reason: w?.description || "Corporate / Partner Static Asset",
-                    isp: "Authorized Corporate / Partner Asset",
-                    country: "US",
-                    expiresAt: null,
+                    category: isWatch ? "WATCHLIST" : "SUBNET_PARDON",
+                    reason: isWatch
+                        ? (w?.description || "Corporate / Partner Static Asset")
+                        : (p?.pardonReason ? `Pardoned Subnet Exemption: ${p.pardonReason}` : "Pardoned Host Exception (Blocked CIDR Punch-Through)"),
+                    isp: isWatch ? "Authorized Corporate / Partner Asset" : (p?.ispOrg || "Residential Broadband"),
+                    country: isWatch ? "US" : (p?.country || "US"),
+                    expiresAt: isWatch ? null : p?.expiresAt,
                     isCidr: ip.includes("/")
                 };
             });

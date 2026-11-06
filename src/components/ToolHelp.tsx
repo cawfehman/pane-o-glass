@@ -232,7 +232,7 @@ export const helpData: Record<string, TooltipDetails> = {
             },
             {
                 title: "Dual Cisco FMC Dynamic Feeds: Threat Block & 'Do Not Block' (Whitelist)",
-                detail: "Serves two synchronized, high-speed flat-text dynamic feeds consumed every 15 minutes by Cisco Firepower Management Center (FMC): (1) Threat Block Feed (feed=block) enforcing Snort 3 / TCAM hardware pre-filter drops for active attacks and consolidated /24–/22 BGP subnets, and (2) Do Not Block (Whitelist) Feed (feed=whitelist) enforcing authoritative exceptions strictly for verified corporate assets and partner facilities (HeartHouse, URG, Corro Health, external clinics). Because FMC evaluates Do Not Block prior to threat blocks, trusted partner networks pass through without edge disruption.",
+                detail: "Serves two synchronized, high-speed flat-text dynamic feeds consumed every 15 minutes by Cisco Firepower Management Center (FMC): (1) Threat Block Feed (feed=block) enforcing Snort 3 / TCAM hardware pre-filter drops for active attacks and consolidated /24–/22 BGP subnets, and (2) Do Not Block (Whitelist) Feed (feed=whitelist) enforcing authoritative exceptions for verified corporate/partner assets and precision punch-through exceptions for pardoned remote employees located within blocked CIDR subnets. Because FMC evaluates Do Not Block prior to threat blocks, trusted partner networks and pardoned users pass through without edge disruption.",
                 tag: "Security Intelligence"
             },
             {
@@ -270,7 +270,7 @@ export const helpData: Record<string, TooltipDetails> = {
             { name: "Strike 1 (Watchlist)", meaning: "Single-account password failure on home residential ISP (Comcast, Verizon). 14-day observation hold; NOT blocked in SI feed to protect corporate employees.", rgb: "#f59e0b" },
             { name: "Strike 2 (7d Enforced Block)", meaning: "Active 7-day rolling perimeter block in Cisco FMC SI feed + dynamic firewall bridge shun for repeated password failures or multi-user sprays.", rgb: "#f97316" },
             { name: "Strike 3 (90d Quarantine)", meaning: "Extended 90-day quarantine for repeat multi-user credential sprays, botnets, and distributed brute-force origins.", rgb: "#ef4444" },
-            { name: "FMC Do Not Block (Whitelist)", meaning: "IP is registered on the FMC Do Not Block feed (authoritative corporate/partner watchlist). Overrides threat blocklists and CIDR subnets at the edge.", rgb: "#10b981" },
+            { name: "FMC Do Not Block (Whitelist)", meaning: "IP is registered on the FMC Do Not Block feed (corporate/partner watchlist or pardoned CIDR punch-through). Overrides threat blocklists and CIDR subnets at the edge.", rgb: "#10b981" },
             { name: "Consolidated Subnet (CIDR)", meaning: "Tight BGP route (/24 to /22) from a blacklisted ASN or hosting provider, blocking entire rotating botnet clusters.", rgb: "#06b6d4" },
             { name: "Pardoned (MFA OK)", meaning: "IP strikes cleared and expunged from the SI Threat Block feed following verified Active Directory + Duo/Imprivata MFA login or manual SOC pardon.", rgb: "#10b981" },
             { name: "Guardian Blacklist (Permanent Lock)", meaning: "Locked on the Guardian Do-Not-Unshun Blacklist (/32 IP or entire ASN). Barred from auto-unshun cron jobs.", rgb: "#a855f7" }

@@ -234,8 +234,10 @@ function buildPostureFromRecords(inputs: RawIpPostureInputs): EvaluatedIpPosture
     let reason = "Not blocked in FMC Security Intelligence feed or perimeter controls";
 
     if (isWatchlisted) {
-        activeCategory = "FMC_DO_NOT_BLOCK";
-        reason = `Explicitly permitted by FMC Security Intelligence 'Do Not Block' Policy (Corporate / Partner Watchlist)`;
+        activeCategory = matchedSubnet ? "SUBNET_PARDON_ALLOW" : "FMC_DO_NOT_BLOCK";
+        reason = matchedSubnet
+            ? `Permitted via FMC Do Not Block feed: Host punch-through exception for pardoned residential IP inside blocked subnet ${matchedSubnet}`
+            : `Explicitly permitted by FMC Security Intelligence 'Do Not Block' Policy (Corporate / Partner Watchlist)`;
     } else if (isPardoned) {
         activeCategory = "PARDONED";
         reason = `Strikes pardoned / expunged from SI Threat Block feed${residential?.pardonReason ? `: "${residential.pardonReason}"` : ""}`;
@@ -281,7 +283,7 @@ function buildPostureFromRecords(inputs: RawIpPostureInputs): EvaluatedIpPosture
     return {
         ip,
         inFeed: Boolean(inFeed),
-        inDoNotBlockFeed: isPardoned,
+        inDoNotBlockFeed: isWatchlisted,
         matchedSubnet,
         fmcDecision,
         isCurrentlyBlocked,
@@ -289,7 +291,7 @@ function buildPostureFromRecords(inputs: RawIpPostureInputs): EvaluatedIpPosture
         reason,
         blockPosture: {
             inFmcFeed: Boolean(inFeed),
-            inDoNotBlockFeed: isPardoned,
+            inDoNotBlockFeed: isWatchlisted,
             matchedSubnet,
             fmcDecision,
             inPerimeterVpnShun,
@@ -367,7 +369,8 @@ export async function evaluateSingleIpPosture(
     const subnetMatcher = new FastSubnetMatcher(blacklistCidrs.map((c) => c.ip));
     const matchedSubnet = subnetMatcher.findMatchingSubnet(cleanIp);
     const isPardonedStrike = Boolean(residential?.status === "PARDONED" && (!residential.expiresAt || new Date(residential.expiresAt) > new Date()));
-    const inWhitelistFeed = Boolean(watchEntry) || isPardonedStrike;
+    // Only corporate/partner watchlist or pardons that fall inside an active blocked CIDR are published to FMC Do Not Block
+    const inWhitelistFeed = Boolean(watchEntry) || (isPardonedStrike && Boolean(matchedSubnet));
 
     let hasCachedCountry = Boolean(cleanCountryCode(cache?.countryCode));
     if (!hasCachedCountry && cache?.rawJson) {
@@ -483,7 +486,8 @@ export async function evaluateBatchIpPosture(
 
     return cleanIps.map(currIp => {
         const matchedSubnet = subnetMatcher.findMatchingSubnet(currIp);
-        const inWhitelistFeed = watchSet.has(currIp) || pardonedSet.has(currIp);
+        const isPardonedStrike = pardonedSet.has(currIp);
+        const inWhitelistFeed = watchSet.has(currIp) || (isPardonedStrike && Boolean(matchedSubnet));
 
         const evaluated = buildPostureFromRecords({
             ip: currIp,

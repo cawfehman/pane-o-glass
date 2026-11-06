@@ -242,9 +242,9 @@ export async function getSecurityIntelligenceWhitelist(): Promise<{
 }> {
     const ipSet = new Set<string>();
     let watchlistCount = 0;
+    let pardonCount = 0;
 
     // 1. Authoritative Corporate & Partner Static Assets (Guardian Watchlist)
-    // Dynamic residential home IPs with pardons are EXCLUDED from FMC Whitelist to prevent global bypass
     const watchIps = await prisma.guardianWatchIp.findMany({ select: { ip: true } });
     for (const item of watchIps) {
         const clean = item.ip.trim();
@@ -252,6 +252,39 @@ export async function getSecurityIntelligenceWhitelist(): Promise<{
         if (!isPrivateIp(host) && !ipSet.has(clean)) {
             ipSet.add(clean);
             watchlistCount++;
+        }
+    }
+
+    // 2. Subnet Punch-Through Exceptions: Pardoned IPs that fall within an active blocked CIDR
+    // In Cisco FMC, Do Not Block evaluates BEFORE Block. If a /24 or /22 is blocked in POG_SI_Edge_Defense,
+    // a pardoned employee inside that subnet will still be blocked unless their /32 is published to POG_SI_Whitelist.
+    // General residential dynamic IPs NOT in any blocked subnet are NOT published to whitelist (they are simply expunged from the Threat Block feed).
+    const blockedCidrs = await prisma.guardianBlacklist.findMany({
+        where: { ip: { contains: "/" } },
+        select: { ip: true }
+    });
+
+    if (blockedCidrs.length > 0) {
+        const matcher = new FastSubnetMatcher(blockedCidrs.map(c => c.ip));
+        const activePardons = await prisma.residentialStrikeLedger.findMany({
+            where: {
+                status: "PARDONED",
+                OR: [
+                    { expiresAt: null },
+                    { expiresAt: { gt: new Date() } }
+                ]
+            },
+            select: { ip: true }
+        });
+
+        for (const pardon of activePardons) {
+            const clean = pardon.ip.trim();
+            if (!isPrivateIp(clean) && !ipSet.has(clean)) {
+                if (matcher.isSubsumed(clean)) {
+                    ipSet.add(clean);
+                    pardonCount++;
+                }
+            }
         }
     }
 
@@ -269,7 +302,7 @@ export async function getSecurityIntelligenceWhitelist(): Promise<{
         metrics: {
             total: sortedIps.length,
             watchlistCount,
-            pardonCount: 0,
+            pardonCount,
             generatedAt: new Date().toISOString()
         }
     };
@@ -287,9 +320,10 @@ export async function getSecurityIntelligenceWhitelistFeed(forceRefresh = false)
         `# ==============================================================================`,
         `# Cooper Health Security Intelligence DO NOT BLOCK Feed (Cisco FTD / FMC)`,
         `# Total Active Whitelist Entries: ${metrics.total}`,
-        `# Source: Authoritative Corporate & Partner Static Assets (Guardian Watchlist)`,
+        `# Breakdown: Guardian Watchlist (${metrics.watchlistCount}) | Subnet Punch-Through Pardons (${metrics.pardonCount})`,
         `# Recommended Action in FMC: Do Not Block (Whitelist)`,
         `# Note: Evaluates BEFORE the Security Intelligence Threat Feed in FMC`,
+        `# Note: Punch-Through Pardons exempt legitimate users inside blocked CIDR subnets`,
         `# ==============================================================================`
     ];
 

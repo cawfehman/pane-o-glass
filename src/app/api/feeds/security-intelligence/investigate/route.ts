@@ -252,7 +252,9 @@ export async function GET(req: NextRequest) {
 
         const matchedCidr = blacklistCidrs.find((c) => isIpInSubnet(ipToInspect, c.ip)) || null;
         const isStrikePardoned = Boolean(residentialRecord?.status === "PARDONED" && (!residentialRecord.expiresAt || new Date(residentialRecord.expiresAt) > new Date()));
-        const inDoNotBlockFeed = Boolean(watchRecord);
+        // In Cisco FMC, Do Not Block evaluates BEFORE Block. If pardoned employee falls inside a blocked CIDR,
+        // they are published to POG_SI_Whitelist as a precision punch-through host exception.
+        const inDoNotBlockFeed = Boolean(watchRecord) || (isStrikePardoned && Boolean(matchedCidr));
 
         const inResidentialBlock = Boolean(residentialRecord && !isStrikePardoned && (residentialRecord.strikeCount >= 2 || residentialRecord.status === "ENFORCED" || residentialRecord.status === "QUARANTINED"));
         const inBlacklist = Boolean(blacklisted) || Boolean(matchedCidr);
@@ -406,6 +408,25 @@ export async function GET(req: NextRequest) {
             verdictReason = `THREAT: IP ${ipToInspect} has ${vpnFailures.length} failed login attempts with zero successful VPN or Citrix history.`;
         }
 
+        let recommendationStr: string;
+        if (inDoNotBlockFeed) {
+            recommendationStr = (isStrikePardoned && matchedCidr)
+                ? `PARDONED_SUBNET_PUNCHTHROUGH: Employee is pardoned and published to POG_SI_Whitelist to punch through blocked CIDR subnet ${matchedCidr.ip}.`
+                : "PERMITTED_BY_WHITELIST: Active Do Not Block rule is overriding threat blocklists in Cisco FMC.";
+        } else if (isStrikePardoned) {
+            recommendationStr = "PARDONED_CLEAN: IP strikes expunged from SI Block feed. Permitted at perimeter.";
+        } else if (verdict === "FALSE_POSITIVE_LIKELY") {
+            recommendationStr = "UNBLOCK_IMMEDIATELY: Verified corporate employee activity detected. Recommend pardoning or allowlisting.";
+        } else if (inAsnBlacklist) {
+            recommendationStr = `ENFORCE_BLOCK: Entire ASN ${asnStr} is blacklisted in Guardian Policy. Ensure IP is locked in Guardian Blacklist and enforced in SI feed.`;
+        } else if (matchedCidr) {
+            recommendationStr = `MAINTAIN_BLOCK: Subnet ${matchedCidr.ip} is actively enforced across FMC Security Intelligence Threat Feed.`;
+        } else if (verdict === "CLEAN_NOT_BLOCKED") {
+            recommendationStr = "NONE: IP is clean and not blocked anywhere across perimeter firewalls.";
+        } else {
+            recommendationStr = "MAINTAIN_BLOCK: Confirmed threat with zero legitimate employee login history.";
+        }
+
         return NextResponse.json({
             type: "IP",
             target: ipToInspect,
@@ -419,19 +440,7 @@ export async function GET(req: NextRequest) {
             verdict: {
                 level: verdict,
                 reason: verdictReason,
-                recommendation: inDoNotBlockFeed
-                    ? "PERMITTED_BY_WHITELIST: Active Do Not Block rule is overriding threat blocklists in Cisco FMC."
-                    : (isStrikePardoned
-                        ? "PARDONED_CLEAN: IP strikes expunged from SI Block feed. Permitted at perimeter."
-                        : (verdict === "FALSE_POSITIVE_LIKELY"
-                            ? "UNBLOCK_IMMEDIATELY: Verified corporate employee activity detected. Recommend pardoning or allowlisting."
-                            : (inAsnBlacklist
-                                ? `ENFORCE_BLOCK: Entire ASN ${asnStr} is blacklisted in Guardian Policy. Ensure IP is locked in Guardian Blacklist and enforced in SI feed.`
-                                : (matchedCidr
-                                ? `MAINTAIN_BLOCK: Subnet ${matchedCidr.ip} is actively enforced across FMC Security Intelligence Threat Feed.`
-                                : (verdict === "CLEAN_NOT_BLOCKED" 
-                                    ? "NONE: IP is clean and not blocked anywhere across perimeter firewalls."
-                                    : "MAINTAIN_BLOCK: Confirmed threat with zero legitimate employee login history."))))
+                recommendation: recommendationStr
             },
             ipInfo: {
                 ip: ipToInspect,
