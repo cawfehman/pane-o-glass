@@ -7,7 +7,7 @@ import { getSecurityIntelligenceFeed, getSecurityIntelligenceWhitelistFeed, inva
 import { enqueueFirewallCommand, drainFirewallQueue } from "@/lib/firewall-queue";
 import { evaluateSingleIpPosture, evaluateBatchIpPosture } from "@/lib/perimeter-posture";
 import { getStrikeEvidence } from "@/lib/strike-evidence";
-import { isIpInSubnet } from "@/lib/ip-subnet";
+import { isIpInSubnet, isValidIpv4 } from "@/lib/ip-subnet";
 
 export const dynamic = "force-dynamic";
 
@@ -118,7 +118,13 @@ export async function GET(req: NextRequest) {
 
         if (search) {
             const cleanSearch = search.toLowerCase();
-            filteredIps = filteredIps.filter(ip => ip.toLowerCase().includes(cleanSearch));
+            filteredIps = filteredIps.filter(ip => {
+                if (ip.toLowerCase().includes(cleanSearch)) return true;
+                if (ip.includes("/") && isValidIpv4(cleanSearch)) {
+                    return isIpInSubnet(cleanSearch, ip);
+                }
+                return false;
+            });
         }
 
         if (categoryFilter === "CIDR") {
@@ -266,7 +272,7 @@ export async function POST(req: NextRequest) {
             if (Array.isArray(targets)) {
                 targetList = targets.map(t => String(t).trim()).filter(Boolean);
             } else if (typeof targets === "string") {
-                const matches = targets.match(/(?:[0-9]{1,3}\.){3}[0-9]{1,3}/g);
+                const matches = targets.match(/(?:[0-9]{1,3}\.){3}[0-9]{1,3}(?:\/(?:3[0-2]|[12]?[0-9]))?/g);
                 targetList = matches ? Array.from(new Set(matches)) : [];
             }
 
@@ -274,7 +280,7 @@ export async function POST(req: NextRequest) {
             const cleanIps = Array.from(new Set(targetList)).slice(0, 100);
 
             if (cleanIps.length === 0) {
-                return NextResponse.json({ error: "No valid IPv4 addresses provided for batch inspection." }, { status: 400 });
+                return NextResponse.json({ error: "No valid IPv4 addresses or CIDRs provided for batch inspection." }, { status: 400 });
             }
 
             // Fetch live feed snapshot and evaluate batch posture through single shared engine
@@ -372,14 +378,16 @@ export async function POST(req: NextRequest) {
             // 6. Invalidate in-memory feed cache
             invalidateFeedCache();
 
-            // 7. Enqueue UNSHUN commands for each IP
+            // 7. Enqueue UNSHUN commands for each IP (ASAs only accept host IPs, skip CIDRs)
             for (const cleanIp of cleanIps) {
-                await enqueueFirewallCommand({
-                    ip: cleanIp,
-                    action: "UNSHUN",
-                    targetHost: "all",
-                    reason: `SOC Bulk Pardon by ${userId}: ${reason || "Batch analyst unblock"}`
-                });
+                if (!cleanIp.includes("/")) {
+                    await enqueueFirewallCommand({
+                        ip: cleanIp,
+                        action: "UNSHUN",
+                        targetHost: "all",
+                        reason: `SOC Bulk Pardon by ${userId}: ${reason || "Batch analyst unblock"}`
+                    });
+                }
             }
 
             // 8. Drain queue immediately across firewalls
@@ -503,13 +511,15 @@ export async function POST(req: NextRequest) {
         // 6. Invalidate in-memory feed cache so subsequent downloads reflect removal instantly
         invalidateFeedCache();
 
-        // 7. Enqueue UNSHUN into FirewallCommandQueue (ensures proper auditing, deduping & lifecycle)
-        await enqueueFirewallCommand({
-            ip: cleanIp,
-            action: "UNSHUN",
-            targetHost: "all",
-            reason: `SOC Manual Pardon & Feed Removal by ${userId}: ${reason || "User unblock request"}`
-        });
+        // 7. Enqueue UNSHUN into FirewallCommandQueue (skip CIDRs for ASA CLI)
+        if (!cleanIp.includes("/")) {
+            await enqueueFirewallCommand({
+                ip: cleanIp,
+                action: "UNSHUN",
+                targetHost: "all",
+                reason: `SOC Manual Pardon & Feed Removal by ${userId}: ${reason || "User unblock request"}`
+            });
+        }
 
         // 8. Drain the queue immediately so the analyst gets instant execution across the firewalls
         const drainResult = await drainFirewallQueue(25);

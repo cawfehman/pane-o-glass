@@ -122,8 +122,9 @@ export class FastSubnetMatcher {
     findMatchingSubnet(ip: string): string | null {
         if (!ip) return null;
         const clean = ip.trim();
-        const oct = clean.split(".").map(Number);
-        if (oct.length !== 4) return null;
+        const baseIp = clean.includes("/") ? clean.split("/")[0] : clean;
+        const oct = baseIp.split(".").map(Number);
+        if (oct.length !== 4 || oct.some(isNaN)) return null;
 
         const key24 = (oct[0] << 16) | (oct[1] << 8) | oct[2];
         const match = this.slash24Map.get(key24);

@@ -445,7 +445,7 @@ export function LiveFeedInspector() {
                             }`}
                         >
                             <Search className="w-3.5 h-3.5" />
-                            Single IP 360° Lookup
+                            Single IP / CIDR 360° Lookup
                         </button>
                         <button
                             type="button"
@@ -457,7 +457,7 @@ export function LiveFeedInspector() {
                             }`}
                         >
                             <Filter className="w-3.5 h-3.5" />
-                            Bulk Multi-IP Triage
+                            Bulk Multi-IP / CIDR Triage
                             {bulkResults.length > 0 && (
                                 <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-emerald-500/20 text-emerald-300 font-mono font-bold">
                                     {bulkResults.length}
@@ -466,7 +466,7 @@ export function LiveFeedInspector() {
                         </button>
                     </div>
                     <span className="text-xs text-text-muted">
-                        {lookupMode === "SINGLE" ? "Inspect all perimeter defense layers for one IP" : "Paste, evaluate, and bulk unblock up to 100 IPs simultaneously"}
+                        {lookupMode === "SINGLE" ? "Inspect all perimeter defense layers for one IP or CIDR route" : "Paste, evaluate, and bulk unblock up to 100 IPs & CIDRs simultaneously"}
                     </span>
                 </div>
 
@@ -475,7 +475,7 @@ export function LiveFeedInspector() {
                         <form onSubmit={handleCheckIp} className="flex gap-2">
                             <input
                                 type="text"
-                                placeholder="Enter IPv4 address to verify (e.g. 73.150.121.81 or 198.51.100.4)..."
+                                placeholder="Enter IPv4 or CIDR to verify (e.g. 73.150.121.81 or 163.5.171.0/24)..."
                                 value={checkIpInput}
                                 onChange={(e) => setCheckIpInput(e.target.value)}
                                 className="flex-1 bg-bg-surface border border-border-color rounded-lg px-3 py-2 text-xs font-mono text-text-primary placeholder:text-text-muted focus:outline-none focus:border-accent-primary"
@@ -486,7 +486,7 @@ export function LiveFeedInspector() {
                                 className="px-4 py-2 bg-accent-primary hover:bg-accent-hover disabled:opacity-50 text-white rounded-lg text-xs font-bold transition-colors cursor-pointer flex items-center gap-1.5"
                             >
                                 {checkingIp ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Search className="w-3.5 h-3.5" />}
-                                Check IP Presence
+                                Check Presence
                             </button>
                         </form>
 
@@ -758,14 +758,14 @@ export function LiveFeedInspector() {
                         <form onSubmit={handleBatchInspect} className="space-y-2">
                             <textarea
                                 rows={4}
-                                placeholder="Paste list of IPv4 addresses (comma-separated, space-separated, or one per line)..."
+                                placeholder="Paste list of IPv4 addresses or CIDRs (e.g. 73.150.121.81, 163.5.171.0/24 - comma-separated, space-separated, or one per line)..."
                                 value={bulkInput}
                                 onChange={(e) => setBulkInput(e.target.value)}
                                 className="w-full bg-bg-surface border border-border-color rounded-lg p-3 text-xs font-mono text-text-primary placeholder:text-text-muted focus:outline-none focus:border-accent-primary"
                             />
                             <div className="flex items-center justify-between">
                                 <span className="text-[11px] text-text-muted">
-                                    Supports up to 100 IPs simultaneously from HelpDesk tickets, logs, or incident reports.
+                                    Supports up to 100 IPs & CIDR subnets simultaneously from tickets, logs, or incident reports.
                                 </span>
                                 <div className="flex items-center gap-2">
                                     <button
@@ -781,7 +781,7 @@ export function LiveFeedInspector() {
                                         className="px-4 py-1.5 bg-accent-primary hover:bg-accent-hover disabled:opacity-50 text-white rounded-lg text-xs font-bold transition-colors cursor-pointer flex items-center gap-1.5"
                                     >
                                         {bulkLoading ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Search className="w-3.5 h-3.5" />}
-                                        Inspect All IPs
+                                        Inspect All Targets
                                     </button>
                                 </div>
                             </div>
@@ -851,7 +851,7 @@ export function LiveFeedInspector() {
                                                         className="cursor-pointer"
                                                     />
                                                 </th>
-                                                <th className="py-2 px-3 font-semibold">IP Address</th>
+                                                <th className="py-2 px-3 font-semibold">IP / CIDR Address</th>
                                                 <th className="py-2 px-3 font-semibold">Overall Verdict</th>
                                                 <th className="py-2 px-3 font-semibold">FMC Feed</th>
                                                 <th className="py-2 px-3 font-semibold">Perimeter Shun</th>
@@ -1011,7 +1011,7 @@ export function LiveFeedInspector() {
                     <div className="w-full md:w-72">
                         <input
                             type="text"
-                            placeholder="Filter feed entries by IP prefix..."
+                            placeholder="Filter by IP, CIDR, or subnet host..."
                             value={searchQuery}
                             onChange={(e) => {
                                 setSearchQuery(e.target.value);

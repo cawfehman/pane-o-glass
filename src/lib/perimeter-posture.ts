@@ -208,9 +208,10 @@ function buildPostureFromRecords(inputs: RawIpPostureInputs): EvaluatedIpPosture
     const isPardoned = Boolean(residential?.status === "PARDONED" && isStrikeNotExpired);
 
     const isCveExploit = Boolean(cve && cve.status === "ACTIVE");
-    const matchedSubnet = inputs.matchedSubnet || null;
-    const isBlacklisted = Boolean(blacklist) || Boolean(matchedSubnet);
-    const blacklistReason = blacklist?.reason || (matchedSubnet ? `Covered by consolidated hostile subnet ${matchedSubnet}` : null);
+    const isSelfCidr = inputs.ip.includes("/") && inputs.matchedSubnet === inputs.ip;
+    const parentSubnet = isSelfCidr ? null : (inputs.matchedSubnet || null);
+    const isBlacklisted = Boolean(blacklist) || Boolean(parentSubnet) || isSelfCidr;
+    const blacklistReason = blacklist?.reason || (parentSubnet ? `Covered by consolidated hostile subnet ${parentSubnet}` : (isSelfCidr ? "Consolidated hostile BGP subnet block" : null));
 
     // If caller didn't supply a pre-computed feed set, compute whether this IP qualifies for the SI feed
     let inFeed = inputs.inFeed;
@@ -260,8 +261,10 @@ function buildPostureFromRecords(inputs: RawIpPostureInputs): EvaluatedIpPosture
         activeCategory = "FMC_GEOIP_BLOCKED";
         reason = `Non-US Location (${resolvedCountryCode}): Likely blocked by FMC ACP Rule 3 ('Block access to Netscaler') unless whitelisted in Rule 1`;
     } else if (inFeed) {
-        activeCategory = "SI_FEED";
-        reason = "Present in FMC Security Intelligence Feed (POG_SI_Edge_Defense)";
+        activeCategory = ip.includes("/") ? "SUBNET_CIDR" : "SI_FEED";
+        reason = ip.includes("/")
+            ? `Active consolidated CIDR route in FMC Security Intelligence Feed (${ip})`
+            : "Present in FMC Security Intelligence Feed (POG_SI_Edge_Defense)";
     }
 
     const isBlockedByThreatRules =
@@ -284,7 +287,7 @@ function buildPostureFromRecords(inputs: RawIpPostureInputs): EvaluatedIpPosture
         ip,
         inFeed: Boolean(inFeed),
         inDoNotBlockFeed: isWatchlisted,
-        matchedSubnet,
+        matchedSubnet: parentSubnet,
         fmcDecision,
         isCurrentlyBlocked,
         activeCategory,
@@ -292,7 +295,7 @@ function buildPostureFromRecords(inputs: RawIpPostureInputs): EvaluatedIpPosture
         blockPosture: {
             inFmcFeed: Boolean(inFeed),
             inDoNotBlockFeed: isWatchlisted,
-            matchedSubnet,
+            matchedSubnet: parentSubnet,
             fmcDecision,
             inPerimeterVpnShun,
             activeShunNodes,
@@ -349,7 +352,8 @@ export async function evaluateSingleIpPosture(
     }
 ): Promise<EvaluatedIpPosture | null> {
     const cleanIp = (ip || "").trim();
-    if (!cleanIp || isPrivateIp(cleanIp)) {
+    const baseHost = cleanIp.includes("/") ? cleanIp.split("/")[0] : cleanIp;
+    if (!cleanIp || isPrivateIp(baseHost)) {
         return null;
     }
 
@@ -361,7 +365,10 @@ export async function evaluateSingleIpPosture(
             where: { ip: cleanIp },
             include: { shunIp: true }
         }).catch(() => []),
-        prisma.ipLookupCache.findUnique({ where: { ip: cleanIp } }).catch(() => null),
+        (cleanIp.includes("/")
+            ? prisma.ipLookupCache.findFirst({ where: { OR: [{ ip: cleanIp }, { ip: baseHost }] } })
+            : prisma.ipLookupCache.findUnique({ where: { ip: cleanIp } })
+        ).catch(() => null),
         prisma.guardianBlacklist.findMany({ where: { ip: { contains: "/" } } }).catch(() => []),
         prisma.guardianWatchIp.findUnique({ where: { ip: cleanIp } }).catch(() => null)
     ]);
@@ -383,7 +390,7 @@ export async function evaluateSingleIpPosture(
     let enrichment = null;
     if (options?.enrichIfMissing !== false && !hasCachedCountry && !cleanCountryCode(options?.hintCountryCode)) {
         try {
-            enrichment = await getIpEnrichment(cleanIp);
+            enrichment = await getIpEnrichment(baseHost);
         } catch {}
     }
 
@@ -438,22 +445,25 @@ export async function evaluateBatchIpPosture(
     const cleanIps = Array.from(new Set(ips.map(i => i.trim()).filter(Boolean))).slice(0, 100);
     if (cleanIps.length === 0) return [];
 
+    const baseHosts = cleanIps.map(ip => ip.includes("/") ? ip.split("/")[0] : ip);
+    const allQueryIps = Array.from(new Set([...cleanIps, ...baseHosts]));
+
     const [residentialList, blacklistList, cveList, allShunStats, allCache, allAsnBlacklist, pendingCommands, blacklistCidrs, watchList, pardonedList] = await Promise.all([
-        prisma.residentialStrikeLedger.findMany({ where: { ip: { in: cleanIps } } }),
-        prisma.guardianBlacklist.findMany({ where: { ip: { in: cleanIps } } }),
-        prisma.netscalerCveShun.findMany({ where: { ip: { in: cleanIps } } }),
+        prisma.residentialStrikeLedger.findMany({ where: { ip: { in: allQueryIps } } }),
+        prisma.guardianBlacklist.findMany({ where: { ip: { in: allQueryIps } } }),
+        prisma.netscalerCveShun.findMany({ where: { ip: { in: allQueryIps } } }),
         prisma.firewallShunStats.findMany({
-            where: { ip: { in: cleanIps } },
+            where: { ip: { in: allQueryIps } },
             include: { shunIp: true }
         }),
-        prisma.ipLookupCache.findMany({ where: { ip: { in: cleanIps } } }),
+        prisma.ipLookupCache.findMany({ where: { ip: { in: allQueryIps } } }),
         prisma.guardianAsnBlacklist.findMany(),
-        prisma.firewallCommandQueue.findMany({ where: { ip: { in: cleanIps }, status: "PENDING" } }),
+        prisma.firewallCommandQueue.findMany({ where: { ip: { in: allQueryIps }, status: "PENDING" } }),
         prisma.guardianBlacklist.findMany({ where: { ip: { contains: "/" } } }).catch(() => []),
-        prisma.guardianWatchIp.findMany({ where: { ip: { in: cleanIps } } }).catch(() => []),
+        prisma.guardianWatchIp.findMany({ where: { ip: { in: allQueryIps } } }).catch(() => []),
         prisma.residentialStrikeLedger.findMany({
             where: {
-                ip: { in: cleanIps },
+                ip: { in: allQueryIps },
                 status: "PARDONED",
                 expiresAt: { gt: new Date() }
             }
@@ -485,8 +495,9 @@ export async function evaluateBatchIpPosture(
     const subnetMatcher = new FastSubnetMatcher(blacklistCidrs.map((c) => c.ip));
 
     return cleanIps.map(currIp => {
+        const baseHost = currIp.includes("/") ? currIp.split("/")[0] : currIp;
         const matchedSubnet = subnetMatcher.findMatchingSubnet(currIp);
-        const isPardonedStrike = pardonedSet.has(currIp);
+        const isPardonedStrike = pardonedSet.has(currIp) || pardonedSet.has(baseHost);
         const inWhitelistFeed = watchSet.has(currIp) || (isPardonedStrike && Boolean(matchedSubnet));
 
         const evaluated = buildPostureFromRecords({
@@ -494,11 +505,11 @@ export async function evaluateBatchIpPosture(
             inFeed: feedIpSet.has(currIp) || Boolean(matchedSubnet),
             inWhitelistFeed,
             matchedSubnet,
-            residential: resMap.get(currIp),
+            residential: resMap.get(currIp) || (currIp.includes("/") ? resMap.get(baseHost) : undefined),
             blacklist: blMap.get(currIp),
-            cve: cveMap.get(currIp),
-            shunStats: shunStatsMap.get(currIp) || [],
-            cache: cacheMap.get(currIp),
+            cve: cveMap.get(currIp) || (currIp.includes("/") ? cveMap.get(baseHost) : undefined),
+            shunStats: shunStatsMap.get(currIp) || (currIp.includes("/") ? shunStatsMap.get(baseHost) || [] : []),
+            cache: cacheMap.get(currIp) || (currIp.includes("/") ? cacheMap.get(baseHost) : undefined),
             asnBlacklistLookup: (rawNum) => ({
                 isBlacklisted: asnBlacklistMap.has(rawNum),
                 reason: asnBlacklistMap.get(rawNum) || null
@@ -507,7 +518,7 @@ export async function evaluateBatchIpPosture(
 
         return {
             ...evaluated,
-            pendingCommandsCount: pendingMap.get(currIp) || 0
+            pendingCommandsCount: (pendingMap.get(currIp) || 0) + (currIp.includes("/") ? (pendingMap.get(baseHost) || 0) : 0)
         };
     });
 }
