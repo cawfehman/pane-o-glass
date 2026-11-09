@@ -209,9 +209,10 @@ function buildPostureFromRecords(inputs: RawIpPostureInputs): EvaluatedIpPosture
 
     const isCveExploit = Boolean(cve && cve.status === "ACTIVE");
     const isSelfCidr = inputs.ip.includes("/") && inputs.matchedSubnet === inputs.ip;
-    const parentSubnet = isSelfCidr ? null : (inputs.matchedSubnet || null);
-    const isBlacklisted = Boolean(blacklist) || Boolean(parentSubnet) || isSelfCidr;
-    const blacklistReason = blacklist?.reason || (parentSubnet ? `Covered by consolidated hostile subnet ${parentSubnet}` : (isSelfCidr ? "Consolidated hostile BGP subnet block" : null));
+    const matchedSubnet = isSelfCidr ? null : (inputs.matchedSubnet || null);
+    const parentSubnet = matchedSubnet;
+    const isBlacklisted = Boolean(blacklist) || Boolean(matchedSubnet) || isSelfCidr;
+    const blacklistReason = blacklist?.reason || (matchedSubnet ? `Covered by consolidated hostile subnet ${matchedSubnet}` : (isSelfCidr ? "Consolidated hostile BGP subnet block" : null));
 
     // If caller didn't supply a pre-computed feed set, compute whether this IP qualifies for the SI feed
     let inFeed = inputs.inFeed;

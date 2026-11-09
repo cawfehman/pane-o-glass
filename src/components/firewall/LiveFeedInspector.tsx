@@ -853,7 +853,8 @@ export function LiveFeedInspector() {
                                                 </th>
                                                 <th className="py-2 px-3 font-semibold">IP / CIDR Address</th>
                                                 <th className="py-2 px-3 font-semibold">Overall Verdict</th>
-                                                <th className="py-2 px-3 font-semibold">FMC Feed</th>
+                                                <th className="py-2 px-3 font-semibold">FMC Threat Feed</th>
+                                                <th className="py-2 px-3 font-semibold">FMC Do Not Block</th>
                                                 <th className="py-2 px-3 font-semibold">Perimeter Shun</th>
                                                 <th className="py-2 px-3 font-semibold">Citrix Strikes</th>
                                                 <th className="py-2 px-3 font-semibold">FMC GeoIP</th>
@@ -892,6 +893,13 @@ export function LiveFeedInspector() {
                                                                 <span className="text-red-400 font-bold">In Feed</span>
                                                             ) : (
                                                                 <span className="text-emerald-400">Not in Feed</span>
+                                                            )}
+                                                        </td>
+                                                        <td className="py-2 px-3">
+                                                            {r.blockPosture?.inDoNotBlockFeed ? (
+                                                                <span className="text-emerald-400 font-bold">DO NOT BLOCK</span>
+                                                            ) : (
+                                                                <span className="text-text-muted">Not Whitelisted</span>
                                                             )}
                                                         </td>
                                                         <td className="py-2 px-3">
