@@ -269,10 +269,7 @@ export async function getSecurityIntelligenceWhitelist(): Promise<{
         const activePardons = await prisma.residentialStrikeLedger.findMany({
             where: {
                 status: "PARDONED",
-                OR: [
-                    { expiresAt: null },
-                    { expiresAt: { gt: new Date() } }
-                ]
+                expiresAt: { gt: new Date() }
             },
             select: { ip: true }
         });
