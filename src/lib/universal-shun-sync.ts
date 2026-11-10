@@ -74,15 +74,18 @@ export async function getFleetShunCoverage(ips: string[]): Promise<Map<string, I
     const result = new Map<string, IpFleetCoverage>();
     if (ips.length === 0) return result;
 
-    const [stats, blacklists] = await Promise.all([
-        prisma.firewallShunStats.findMany({
-            where: { ip: { in: ips } }
-        }),
-        prisma.guardianBlacklist.findMany({
-            where: { ip: { in: ips } },
-            select: { ip: true }
-        })
-    ]);
+    const stats: any[] = [];
+    for (let i = 0; i < ips.length; i += 1000) {
+        const slice = ips.slice(i, i + 1000);
+        const chunk = await prisma.firewallShunStats.findMany({
+            where: { ip: { in: slice } }
+        });
+        stats.push(...chunk);
+    }
+
+    const blacklists = await prisma.guardianBlacklist.findMany({
+        select: { ip: true }
+    });
 
     const blacklistSet = new Set(blacklists.map(b => b.ip));
     const statsByIp = new Map<string, typeof stats>();
@@ -532,22 +535,29 @@ export async function pruneDormantResidentialShuns(options?: {
     });
     const uniqueActiveIps = Array.from(new Set(activeStats.map(s => s.ip)));
 
-    // 2. Fetch metadata, VPN attack IOCs, and Blacklist/CVE
-    const [shunIps, vpnEvents, blacklist, cve] = await Promise.all([
-        prisma.shunDatabaseIp.findMany({
-            where: { ip: { in: uniqueActiveIps } },
+    // 2. Fetch metadata in safe 2,000-IP chunks to strictly prevent SQLite bind variable overflow (max 32,767)
+    const shunIps: Array<{ ip: string; ipCountryCode: string | null; org: string | null }> = [];
+    for (let i = 0; i < uniqueActiveIps.length; i += 2000) {
+        const slice = uniqueActiveIps.slice(i, i + 2000);
+        const chunk = await prisma.shunDatabaseIp.findMany({
+            where: { ip: { in: slice } },
             select: { ip: true, ipCountryCode: true, org: true }
-        }),
+        });
+        shunIps.push(...chunk);
+    }
+
+    // Threat sets with 0 bind variables to avoid parameter exhaustion on large fleets
+    const [vpnEvents, blacklist, cve] = await Promise.all([
         prisma.vpnEvent.findMany({
-            where: { sourceIp: { in: uniqueActiveIps }, status: "FAILURE" },
+            where: { status: "FAILURE" },
+            distinct: ["sourceIp"],
             select: { sourceIp: true }
         }),
         prisma.guardianBlacklist.findMany({
-            where: { ip: { in: uniqueActiveIps } },
             select: { ip: true }
         }),
         prisma.netscalerCveShun.findMany({
-            where: { ip: { in: uniqueActiveIps }, status: "ACTIVE" },
+            where: { status: "ACTIVE" },
             select: { ip: true }
         })
     ]);
@@ -584,12 +594,25 @@ export async function pruneDormantResidentialShuns(options?: {
     const fleet = getFleetFirewalls();
     for (const fw of fleet) prunedByFirewall[fw.name] = 0;
 
+    const targetsToPrune = eligibleIps.slice(0, limit);
+    const targetSet = new Set(targetsToPrune);
+    for (const stat of activeStats) {
+        if (targetSet.has(stat.ip)) {
+            prunedByFirewall[stat.firewall] = (prunedByFirewall[stat.firewall] || 0) + 1;
+        }
+    }
+
+    const totalEvaluated = uniqueActiveIps.length;
+    const totalProtected = totalEvaluated - eligibleIps.length;
+
     if (isDryRun || eligibleIps.length === 0) {
         return {
             success: true,
             isDryRun: true,
+            totalEvaluated,
+            totalProtected,
             totalEligible: eligibleIps.length,
-            totalPruned: 0,
+            totalPruned: targetsToPrune.length,
             candidateSamples,
             prunedByFirewall,
             errors: [],
@@ -598,9 +621,6 @@ export async function pruneDormantResidentialShuns(options?: {
     }
 
     // Execute Live Pruning on eligible IPs
-    const targetsToPrune = eligibleIps.slice(0, limit);
-    const targetSet = new Set(targetsToPrune);
-
     // Map which firewall has which target IP
     const fwToPruneIps = new Map<string, string[]>();
     for (const fw of fleet) fwToPruneIps.set(fw.name, []);
@@ -628,11 +648,14 @@ export async function pruneDormantResidentialShuns(options?: {
         })
     );
 
-    // Mark pruned records as inactive in FirewallShunStats
-    await prisma.firewallShunStats.updateMany({
-        where: { ip: { in: targetsToPrune } },
-        data: { isActive: false }
-    });
+    // Mark pruned records as inactive in FirewallShunStats in safe chunks
+    for (let i = 0; i < targetsToPrune.length; i += 1000) {
+        const slice = targetsToPrune.slice(i, i + 1000);
+        await prisma.firewallShunStats.updateMany({
+            where: { ip: { in: slice } },
+            data: { isActive: false }
+        });
+    }
 
     await logAudit(
         "PRUNE_DORMANT_SHUNS",
@@ -644,6 +667,8 @@ export async function pruneDormantResidentialShuns(options?: {
     return {
         success: errors.length === 0,
         isDryRun: false,
+        totalEvaluated,
+        totalProtected,
         totalEligible: eligibleIps.length,
         totalPruned: targetsToPrune.length,
         candidateSamples,

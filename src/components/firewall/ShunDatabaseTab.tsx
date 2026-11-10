@@ -2488,10 +2488,10 @@ export function ShunDatabaseTab({ initialSearch = "", onClose, isModal = false }
                                         </div>
                                         <div className="p-2.5 rounded-lg bg-slate-900 border border-slate-800">
                                             <div className="text-[10px] text-amber-400 uppercase font-semibold">
-                                                {pruneResult.isDryRun ? "Eligible" : "Pruned"}
+                                                {pruneResult.isDryRun ? "Eligible Candidates" : "Successfully Pruned"}
                                             </div>
                                             <div className="text-base font-bold font-mono text-amber-300 mt-0.5">
-                                                {pruneResult.totalPruned?.toLocaleString() ?? 0}
+                                                {(pruneResult.isDryRun ? (pruneResult.totalEligible || pruneResult.totalPruned) : pruneResult.totalPruned)?.toLocaleString() ?? 0}
                                             </div>
                                         </div>
                                     </div>
