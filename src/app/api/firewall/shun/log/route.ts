@@ -21,8 +21,52 @@ export async function GET(req: Request) {
 
         const url = new URL(req.url);
         const download = url.searchParams.get("download") === "true";
+        const format = url.searchParams.get("format");
         const raw = url.searchParams.get("raw") === "true";
         const limit = parseInt(url.searchParams.get("limit") || "50", 10);
+
+        if (format === "csv") {
+            const entries = getRecentShunActionLogs(500);
+            const headers = [
+                "Timestamp (UTC)",
+                "Action",
+                "Initiator",
+                "Client IP",
+                "Verdict",
+                "Target Fleet",
+                "Total IPs",
+                "Node Confirmation Details",
+                "Reason / Notes"
+            ];
+
+            const rows = entries.map(e => {
+                const nodeDetails = (e.nodeVerifications || [])
+                    .map(n => `${n.target}: ${n.success ? "PASS" : "FAIL"} (${n.commandsCount} cmds)`)
+                    .join("; ");
+                const reasonAndNotes = [e.reason, e.notes].filter(Boolean).join(" | ").replace(/"/g, '""');
+                return [
+                    `"${e.timestamp || ""}"`,
+                    `"${e.action}"`,
+                    `"${e.initiator}"`,
+                    `"${e.clientIp || ""}"`,
+                    `"${e.verdict}"`,
+                    `"${(e.targetFleet || "").replace(/"/g, '""')}"`,
+                    e.ips?.length || 0,
+                    `"${nodeDetails}"`,
+                    `"${reasonAndNotes}"`
+                ].join(",");
+            });
+
+            const csvContent = [headers.join(","), ...rows].join("\n");
+            const dateStr = new Date().toISOString().split("T")[0];
+            return new NextResponse(csvContent, {
+                status: 200,
+                headers: {
+                    "Content-Type": "text/csv; charset=utf-8",
+                    "Content-Disposition": `attachment; filename="firewall-shun-audit-report-${dateStr}.csv"`,
+                },
+            });
+        }
 
         if (download) {
             const filePath = getShunActionLogFilePath();

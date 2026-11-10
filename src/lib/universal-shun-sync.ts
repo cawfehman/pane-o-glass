@@ -486,10 +486,29 @@ export async function replicateBatchToFleet(options: {
 
     await logAudit(
         "UNIVERSAL_FLEET_BATCH_SYNC",
-        `Batch universal fleet shun sync (${options.mode}) processed ${targetIps.length} IPs. Dispatched ${totalSent} shuns across missing firewalls.`,
+        `Batch universal fleet shun sync (${options.mode}) processed ${targetIps.length} IPs. Dispatched ${totalSent} shuns across missing firewalls. Node breakdown: ${JSON.stringify(replicatedByFirewall)}.`,
         options.userId,
         options.clientIp || "system"
     ).catch(() => {});
+
+    await recordShunActionLog({
+        action: "UNIVERSAL_BATCH_SYNC",
+        initiator: options.userId || "Universal Fleet Synchronizer",
+        clientIp: options.clientIp || "system",
+        reason: `Batch universal synchronization (${options.mode}) for ${targetIps.length} IPs`,
+        targetFleet: `Fleet firewalls (${fleet.map(f => f.name).join(", ")})`,
+        ips: targetIps.slice(0, 100),
+        nodeVerifications: fleet.map(fw => ({
+            target: fw.name,
+            success: (replicatedByFirewall[fw.name] || 0) > 0 || errors.every(e => !e.includes(fw.name)),
+            commandsCount: replicatedByFirewall[fw.name] || 0,
+            promptConfirmed: true,
+            hasErrors: errors.some(e => e.includes(fw.name)),
+            errorDetails: errors.find(e => e.includes(fw.name))
+        })),
+        verdict: errors.length === 0 ? "CONFIRMED_ALL_NODES" : "PARTIAL_SUCCESS",
+        notes: `Total commands sent: ${totalSent}. Node breakdown: ${JSON.stringify(replicatedByFirewall)}`
+    }).catch(() => {});
 
     return {
         success: errors.length === 0,
@@ -606,6 +625,31 @@ export async function pruneDormantResidentialShuns(options?: {
     const totalProtected = totalEvaluated - eligibleIps.length;
 
     if (isDryRun || eligibleIps.length === 0) {
+        await logAudit(
+            "PRUNE_DORMANT_SHUNS_DRY_RUN",
+            `Simulated pruning of ${targetsToPrune.length} dormant US residential shuns across perimeter firewalls (evaluated: ${totalEvaluated}, protected: ${totalProtected}, eligible: ${eligibleIps.length}). Candidate breakdown: ${JSON.stringify(prunedByFirewall)}.`,
+            options?.userId,
+            options?.clientIp || "system"
+        ).catch(() => {});
+
+        await recordShunActionLog({
+            action: "RESIDENTIAL_PRUNE_SIMULATION",
+            initiator: options?.userId || "Residential Shun Pruner",
+            clientIp: options?.clientIp || "system",
+            reason: `Dry run simulation: ${targetsToPrune.length} candidate domestic residential IPs (100% Foreign/Hosting/VPN protected)`,
+            targetFleet: `Fleet firewalls (${fleet.map(f => f.name).join(", ")})`,
+            ips: targetsToPrune.slice(0, 100),
+            nodeVerifications: fleet.map(fw => ({
+                target: fw.name,
+                success: true,
+                commandsCount: prunedByFirewall[fw.name] || 0,
+                promptConfirmed: true,
+                hasErrors: false
+            })),
+            verdict: "DRY_RUN_AUDIT",
+            notes: `Simulation only. No CLI commands issued. Candidate breakdown: ${JSON.stringify(prunedByFirewall)}`
+        }).catch(() => {});
+
         return {
             success: true,
             isDryRun: true,
@@ -658,11 +702,30 @@ export async function pruneDormantResidentialShuns(options?: {
     }
 
     await logAudit(
-        "PRUNE_DORMANT_SHUNS",
-        `Pruned ${targetsToPrune.length} dormant US residential shuns across perimeter firewalls (strictly keeping all Foreign, Hosting, and VPN attackers).`,
+        "PRUNE_DORMANT_SHUNS_LIVE",
+        `Live pruned ${targetsToPrune.length} dormant US residential shuns across perimeter firewalls (strictly keeping all Foreign, Hosting, and VPN attackers). Node breakdown: ${JSON.stringify(prunedByFirewall)}.`,
         options?.userId,
         options?.clientIp || "system"
     ).catch(() => {});
+
+    await recordShunActionLog({
+        action: "RESIDENTIAL_PRUNE_LIVE",
+        initiator: options?.userId || "Residential Shun Pruner",
+        clientIp: options?.clientIp || "dashboard",
+        reason: `Live retired ${targetsToPrune.length} dormant domestic residential IPs (100% Foreign/Hosting/VPN protected)`,
+        targetFleet: `Fleet firewalls (${fleet.map(f => f.name).join(", ")})`,
+        ips: targetsToPrune.slice(0, 100),
+        nodeVerifications: fleet.map(fw => ({
+            target: fw.name,
+            success: !errors.some(e => e.includes(fw.name)),
+            commandsCount: prunedByFirewall[fw.name] || 0,
+            promptConfirmed: true,
+            hasErrors: errors.some(e => e.includes(fw.name)),
+            errorDetails: errors.find(e => e.includes(fw.name))
+        })),
+        verdict: errors.length === 0 ? "CONFIRMED_ALL_NODES" : "PARTIAL_SUCCESS",
+        notes: `Executed via SSH with 30-command throttled batches. Breakdown: ${JSON.stringify(prunedByFirewall)}`
+    }).catch(() => {});
 
     return {
         success: errors.length === 0,

@@ -13,7 +13,7 @@ export interface ShunNodeVerification {
 
 export interface ShunLogEntry {
     timestamp?: string; // ISO 8601
-    action: "SHUN" | "BULK_SHUN" | "UNSHUN" | "AUTO_GUARDIAN_SHUN" | "CVE_AUTO_SHUN" | "UNIVERSAL_REPLICATE";
+    action: "SHUN" | "BULK_SHUN" | "UNSHUN" | "AUTO_GUARDIAN_SHUN" | "CVE_AUTO_SHUN" | "UNIVERSAL_REPLICATE" | "UNIVERSAL_BATCH_SYNC" | "RESIDENTIAL_PRUNE_SIMULATION" | "RESIDENTIAL_PRUNE_LIVE" | string;
     initiator: string; // e.g. analyst email or daemon name
     clientIp?: string;
     reason?: string;
@@ -21,7 +21,7 @@ export interface ShunLogEntry {
     ips: string[];
     addedToGuardianBlacklist?: boolean;
     nodeVerifications: ShunNodeVerification[];
-    verdict: "CONFIRMED_ALL_NODES" | "PARTIAL_SUCCESS" | "FAILED";
+    verdict: "CONFIRMED_ALL_NODES" | "PARTIAL_SUCCESS" | "FAILED" | "DRY_RUN_AUDIT" | string;
     notes?: string;
 }
 

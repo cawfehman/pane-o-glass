@@ -6,7 +6,7 @@ import {
     Info, RefreshCw, CheckCircle2, AlertTriangle, X, Unlock, Flame, 
     CheckSquare, Square, MinusSquare, FileSpreadsheet, Shield, ExternalLink,
     ClipboardCheck, Sparkles, Filter, Calendar, Zap, Globe, Cloud, BarChart3,
-    PieChart as PieChartIcon, ChevronDown, ChevronUp, Play, Users, SlidersHorizontal, ShieldCheck
+    PieChart as PieChartIcon, ChevronDown, ChevronUp, Play, Users, SlidersHorizontal, ShieldCheck, FileText
 } from "lucide-react";
 import { 
     ResponsiveContainer, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, Tooltip, CartesianGrid, Legend 
@@ -113,6 +113,33 @@ export function ShunDatabaseTab({ initialSearch = "", onClose, isModal = false }
     const [pruneExecuting, setPruneExecuting] = useState(false);
     const [pruneResult, setPruneResult] = useState<any | null>(null);
     const [pruneError, setPruneError] = useState<string | null>(null);
+
+    // Activity & Audit History Modal State
+    const [showAuditModal, setShowAuditModal] = useState(false);
+    const [auditLogs, setAuditLogs] = useState<any[]>([]);
+    const [auditLoading, setAuditLoading] = useState(false);
+    const [auditFilter, setAuditFilter] = useState<"all" | "prune" | "universalize" | "unshun">("all");
+
+    const fetchAuditLogs = useCallback(async () => {
+        try {
+            setAuditLoading(true);
+            const res = await fetch("/api/firewall/shun/log?limit=100");
+            if (res.ok) {
+                const data = await res.json();
+                setAuditLogs(data.entries || []);
+            }
+        } catch (err) {
+            console.error("Failed to fetch shun audit logs:", err);
+        } finally {
+            setAuditLoading(false);
+        }
+    }, []);
+
+    useEffect(() => {
+        if (showAuditModal) {
+            fetchAuditLogs();
+        }
+    }, [showAuditModal, fetchAuditLogs]);
 
     const [isSyncing, setIsSyncing] = useState(false);
     const [syncBanner, setSyncBanner] = useState<{
@@ -1198,6 +1225,15 @@ export function ShunDatabaseTab({ initialSearch = "", onClose, isModal = false }
                             <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? "animate-spin" : ""}`} />
                             {isSyncing ? "Querying Fleet..." : "Update Shun DB Now"}
                         </button>
+                        <button
+                            type="button"
+                            onClick={() => setShowAuditModal(true)}
+                            className="px-3 py-1.5 rounded-lg border border-[var(--border-color)] bg-[var(--bg-surface)] hover:bg-[var(--bg-surface-hover)] text-[var(--text-secondary)] hover:text-white text-xs font-semibold transition-all flex items-center gap-1.5 whitespace-nowrap cursor-pointer shadow-sm"
+                            title="View immutable audit log and download reports of all pruning, universalizing, and fleet actions"
+                        >
+                            <FileSpreadsheet className="w-3.5 h-3.5 text-indigo-400" />
+                            Activity & Audit
+                        </button>
                     </div>
                 </div>
 
@@ -2282,17 +2318,50 @@ export function ShunDatabaseTab({ initialSearch = "", onClose, isModal = false }
                         {/* Modal Footer */}
                         <div className="px-6 py-4 bg-slate-950/80 border-t border-slate-800 flex items-center justify-between">
                             {universalResult ? (
-                                <button
-                                    type="button"
-                                    onClick={() => {
-                                        setShowUniversalModal(false);
-                                        setUniversalResult(null);
-                                        setUniversalError(null);
-                                    }}
-                                    className="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs transition-colors ml-auto shadow-md shadow-indigo-600/30"
-                                >
-                                    Close & Refresh Database
-                                </button>
+                                <div className="flex flex-col sm:flex-row items-center justify-between w-full gap-3">
+                                    <div className="flex items-center gap-2">
+                                        <a
+                                            href="/api/firewall/shun/log?format=csv"
+                                            download
+                                            className="px-3 py-1.5 rounded-lg border border-slate-700 bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white text-xs font-medium flex items-center gap-1.5 transition-colors"
+                                            title="Download full audit report as CSV"
+                                        >
+                                            <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-400" />
+                                            Audit Report (CSV)
+                                        </a>
+                                        <a
+                                            href="/api/firewall/shun/log?download=true"
+                                            download
+                                            className="px-3 py-1.5 rounded-lg border border-slate-700 bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white text-xs font-medium flex items-center gap-1.5 transition-colors"
+                                            title="Download raw execution log as plain text"
+                                        >
+                                            <FileText className="w-3.5 h-3.5 text-sky-400" />
+                                            Execution Log (TXT)
+                                        </a>
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                setShowUniversalModal(false);
+                                                setShowAuditModal(true);
+                                            }}
+                                            className="px-3 py-1.5 rounded-lg border border-indigo-500/40 bg-indigo-950/40 hover:bg-indigo-900/60 text-indigo-300 hover:text-white text-xs font-medium flex items-center gap-1.5 transition-colors"
+                                        >
+                                            <ClipboardCheck className="w-3.5 h-3.5 text-indigo-400" />
+                                            View Audit Ledger
+                                        </button>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setShowUniversalModal(false);
+                                            setUniversalResult(null);
+                                            setUniversalError(null);
+                                        }}
+                                        className="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs transition-colors ml-auto shadow-md shadow-indigo-600/30"
+                                    >
+                                        Close & Refresh Database
+                                    </button>
+                                </div>
                             ) : (
                                 <>
                                     <button
@@ -2524,17 +2593,50 @@ export function ShunDatabaseTab({ initialSearch = "", onClose, isModal = false }
                         {/* Modal Footer */}
                         <div className="px-6 py-4 bg-slate-950/80 border-t border-slate-800 flex items-center justify-between">
                             {pruneResult ? (
-                                <button
-                                    type="button"
-                                    onClick={() => {
-                                        setShowPruneModal(false);
-                                        setPruneResult(null);
-                                        setPruneError(null);
-                                    }}
-                                    className="px-4 py-2 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs transition-colors ml-auto shadow-md shadow-amber-500/30"
-                                >
-                                    Close & Refresh Database
-                                </button>
+                                <div className="flex flex-col sm:flex-row items-center justify-between w-full gap-3">
+                                    <div className="flex items-center gap-2">
+                                        <a
+                                            href="/api/firewall/shun/log?format=csv"
+                                            download
+                                            className="px-3 py-1.5 rounded-lg border border-slate-700 bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white text-xs font-medium flex items-center gap-1.5 transition-colors"
+                                            title="Download full audit report as CSV"
+                                        >
+                                            <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-400" />
+                                            Audit Report (CSV)
+                                        </a>
+                                        <a
+                                            href="/api/firewall/shun/log?download=true"
+                                            download
+                                            className="px-3 py-1.5 rounded-lg border border-slate-700 bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white text-xs font-medium flex items-center gap-1.5 transition-colors"
+                                            title="Download raw execution log as plain text"
+                                        >
+                                            <FileText className="w-3.5 h-3.5 text-sky-400" />
+                                            Execution Log (TXT)
+                                        </a>
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                setShowPruneModal(false);
+                                                setShowAuditModal(true);
+                                            }}
+                                            className="px-3 py-1.5 rounded-lg border border-amber-500/40 bg-amber-950/40 hover:bg-amber-900/60 text-amber-300 hover:text-white text-xs font-medium flex items-center gap-1.5 transition-colors"
+                                        >
+                                            <ClipboardCheck className="w-3.5 h-3.5 text-amber-400" />
+                                            View Audit Ledger
+                                        </button>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setShowPruneModal(false);
+                                            setPruneResult(null);
+                                            setPruneError(null);
+                                        }}
+                                        className="px-4 py-2 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs transition-colors ml-auto shadow-md shadow-amber-500/30"
+                                    >
+                                        Close & Refresh Database
+                                    </button>
+                                </div>
                             ) : (
                                 <>
                                     <button
@@ -2575,6 +2677,207 @@ export function ShunDatabaseTab({ initialSearch = "", onClose, isModal = false }
                                     </button>
                                 </>
                             )}
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Fleet Shun Activity & Audit History Modal */}
+            {showAuditModal && (
+                <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+                    <div className="bg-slate-900 border border-indigo-500/30 rounded-2xl max-w-4xl w-full shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+                        {/* Header */}
+                        <div className="px-6 py-4 bg-slate-950/90 border-b border-slate-800 flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                                <div className="p-2.5 rounded-xl bg-indigo-500/15 border border-indigo-500/30 text-indigo-400">
+                                    <FileSpreadsheet className="w-5 h-5" />
+                                </div>
+                                <div>
+                                    <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                                        Perimeter Firewall Shun Activity & Audit History
+                                        <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                                            Tamper-Evident Ledger
+                                        </span>
+                                    </h3>
+                                    <p className="text-xs text-slate-400 mt-0.5">
+                                        Comprehensive record of all dry runs, residential pruning, universal fleet syncs, and manual shuns with node confirmation checks.
+                                    </p>
+                                </div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <a
+                                    href="/api/firewall/shun/log?format=csv"
+                                    download
+                                    className="px-3 py-1.5 rounded-lg border border-slate-700 bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-sm"
+                                    title="Download structured audit report in CSV format"
+                                >
+                                    <Download className="w-3.5 h-3.5 text-emerald-400" />
+                                    Download CSV
+                                </a>
+                                <a
+                                    href="/api/firewall/shun/log?download=true"
+                                    download
+                                    className="px-3 py-1.5 rounded-lg border border-slate-700 bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-sm"
+                                    title="Download raw CLI transcript and debug log in plain text format"
+                                >
+                                    <FileText className="w-3.5 h-3.5 text-sky-400" />
+                                    Download TXT
+                                </a>
+                                <button
+                                    type="button"
+                                    onClick={fetchAuditLogs}
+                                    disabled={auditLoading}
+                                    className="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white transition-colors"
+                                    title="Refresh audit logs"
+                                >
+                                    <RefreshCw className={`w-4 h-4 ${auditLoading ? "animate-spin" : ""}`} />
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setShowAuditModal(false)}
+                                    className="p-2 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white transition-colors"
+                                >
+                                    <X className="w-5 h-5" />
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Filter Tabs */}
+                        <div className="px-6 py-2.5 bg-slate-950/50 border-b border-slate-800/80 flex items-center justify-between">
+                            <div className="flex items-center gap-1.5">
+                                {[
+                                    { id: "all", label: "All Operations" },
+                                    { id: "prune", label: "Residential Pruning" },
+                                    { id: "universalize", label: "Universalize Sync" },
+                                    { id: "unshun", label: "Manual / Blacklist" },
+                                ].map(tab => (
+                                    <button
+                                        key={tab.id}
+                                        type="button"
+                                        onClick={() => setAuditFilter(tab.id as any)}
+                                        className={`px-3 py-1 rounded-lg text-xs font-medium transition-all ${
+                                            auditFilter === tab.id
+                                                ? "bg-indigo-600 text-white shadow-sm font-semibold"
+                                                : "bg-slate-800/60 hover:bg-slate-800 text-slate-400 hover:text-slate-200"
+                                        }`}
+                                    >
+                                        {tab.label}
+                                    </button>
+                                ))}
+                            </div>
+                            <div className="text-[11px] text-slate-400 font-mono">
+                                {auditLogs.length} operations retrieved
+                            </div>
+                        </div>
+
+                        {/* Content List */}
+                        <div className="p-6 overflow-y-auto space-y-3 flex-1 custom-scrollbar">
+                            {auditLoading && auditLogs.length === 0 ? (
+                                <div className="py-12 flex flex-col items-center justify-center text-slate-400 gap-3">
+                                    <RefreshCw className="w-6 h-6 animate-spin text-indigo-400" />
+                                    <span className="text-xs">Loading audit ledger...</span>
+                                </div>
+                            ) : auditLogs.filter(e => {
+                                if (auditFilter === "all") return true;
+                                if (auditFilter === "prune") return e.action?.toLowerCase().includes("prune");
+                                if (auditFilter === "universalize") return e.action?.toLowerCase().includes("universal");
+                                if (auditFilter === "unshun") return e.action?.toLowerCase().includes("unshun") || e.action?.toLowerCase().includes("shun") || e.action?.toLowerCase().includes("guardian");
+                                return true;
+                            }).length === 0 ? (
+                                <div className="py-12 flex flex-col items-center justify-center text-slate-500 gap-2">
+                                    <ClipboardCheck className="w-8 h-8 text-slate-600" />
+                                    <span className="text-xs font-medium">No activity logged matching the selected filter.</span>
+                                </div>
+                            ) : (
+                                auditLogs.filter(e => {
+                                    if (auditFilter === "all") return true;
+                                    if (auditFilter === "prune") return e.action?.toLowerCase().includes("prune");
+                                    if (auditFilter === "universalize") return e.action?.toLowerCase().includes("universal");
+                                    if (auditFilter === "unshun") return e.action?.toLowerCase().includes("unshun") || e.action?.toLowerCase().includes("shun") || e.action?.toLowerCase().includes("guardian");
+                                    return true;
+                                }).map((entry, idx) => {
+                                    const isSimulation = entry.action?.includes("SIMULATION") || entry.verdict === "DRY_RUN_AUDIT";
+                                    const isPruneLive = entry.action?.includes("PRUNE_LIVE");
+                                    const isUniversal = entry.action?.includes("UNIVERSAL");
+                                    const isConfirmed = entry.verdict === "CONFIRMED_ALL_NODES";
+                                    const isPartial = entry.verdict === "PARTIAL_SUCCESS";
+
+                                    return (
+                                        <div key={idx} className="p-4 rounded-xl bg-slate-950/70 border border-slate-800 space-y-3 hover:border-slate-700/80 transition-colors">
+                                            <div className="flex flex-wrap items-center justify-between gap-2">
+                                                <div className="flex items-center gap-2">
+                                                    <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-mono font-bold uppercase tracking-wider ${
+                                                        isSimulation
+                                                            ? "bg-amber-500/20 text-amber-300 border border-amber-500/40"
+                                                            : isPruneLive
+                                                            ? "bg-rose-500/20 text-rose-300 border border-rose-500/40"
+                                                            : isUniversal
+                                                            ? "bg-purple-500/20 text-purple-300 border border-purple-500/40"
+                                                            : "bg-indigo-500/20 text-indigo-300 border border-indigo-500/40"
+                                                    }`}>
+                                                        {entry.action}
+                                                    </span>
+                                                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-mono font-semibold ${
+                                                        isSimulation
+                                                            ? "bg-amber-500/10 text-amber-400 border border-amber-500/20"
+                                                            : isConfirmed
+                                                            ? "bg-emerald-500/15 text-emerald-400 border border-emerald-500/30"
+                                                            : isPartial
+                                                            ? "bg-orange-500/15 text-orange-400 border border-orange-500/30"
+                                                            : "bg-red-500/15 text-red-400 border border-red-500/30"
+                                                    }`}>
+                                                        {isSimulation ? "DRY RUN AUDIT" : isConfirmed ? "CONFIRMED ALL NODES" : entry.verdict}
+                                                    </span>
+                                                </div>
+                                                <span className="text-xs text-slate-400 font-mono">
+                                                    {entry.timestamp ? new Date(entry.timestamp).toLocaleString("en-US", { timeZone: "UTC", dateStyle: "medium", timeStyle: "short" }) + " UTC" : "Recently"}
+                                                </span>
+                                            </div>
+
+                                            <div className="text-xs text-slate-200 font-medium leading-relaxed">
+                                                {entry.reason || entry.notes || "Operation executed on fleet"}
+                                            </div>
+
+                                            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-slate-400 font-mono">
+                                                <div><span className="text-slate-500">Initiator:</span> <strong className="text-slate-300">{entry.initiator}</strong></div>
+                                                {entry.clientIp && <div><span className="text-slate-500">Client IP:</span> <strong className="text-slate-300">{entry.clientIp}</strong></div>}
+                                                {entry.ips && entry.ips.length > 0 && <div><span className="text-slate-500">Sample/Target IPs:</span> <strong className="text-slate-300">{entry.ips.length.toLocaleString()} IPs</strong></div>}
+                                            </div>
+
+                                            {entry.nodeVerifications && entry.nodeVerifications.length > 0 && (
+                                                <div className="pt-2 border-t border-slate-900 grid grid-cols-2 sm:grid-cols-4 gap-2">
+                                                    {entry.nodeVerifications.map((node: any, nIdx: number) => (
+                                                        <div key={nIdx} className="p-2 rounded bg-slate-900 border border-slate-800/80 flex items-center justify-between text-[11px] font-mono">
+                                                            <span className="text-slate-300 truncate max-w-[120px]" title={node.target}>
+                                                                {node.target}
+                                                            </span>
+                                                            <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                                                                node.success ? "text-emerald-400 bg-emerald-950/50" : "text-rose-400 bg-rose-950/50"
+                                                            }`}>
+                                                                {node.success ? "PASS" : "FAIL"} ({node.commandsCount || 0})
+                                                            </span>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            )}
+                                        </div>
+                                    );
+                                })
+                            )}
+                        </div>
+
+                        {/* Footer */}
+                        <div className="px-6 py-4 bg-slate-950/90 border-t border-slate-800 flex items-center justify-between">
+                            <span className="text-xs text-slate-500 font-mono">
+                                Audited across Prisma SQLite and logs/shun-actions.log (tamper-evident)
+                            </span>
+                            <button
+                                type="button"
+                                onClick={() => setShowAuditModal(false)}
+                                className="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold transition-colors"
+                            >
+                                Close
+                            </button>
                         </div>
                     </div>
                 </div>
