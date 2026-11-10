@@ -590,12 +590,11 @@ export function ShunDatabaseTab({ initialSearch = "", onClose, isModal = false }
                                 </div>
                                 <div className="text-xl font-bold font-mono text-[var(--text-primary)] mt-1 flex items-baseline gap-2">
                                     {summary?.agingTelemetry ? (
-                                        summary.agingTelemetry.foreignProtectedCount +
-                                        summary.agingTelemetry.hostingProtectedCount +
-                                        summary.agingTelemetry.vpnProtectedCount +
-                                        summary.agingTelemetry.blacklistProtectedCount
-                                    ).toLocaleString() : "15,365"}
-                                    <span className="text-xs font-normal text-emerald-400 font-sans">100% Kept</span>
+                                        Math.max(0, (summary.uniqueActiveIps || 0) - (summary.agingTelemetry.agingResidentialCount || 0))
+                                    ).toLocaleString() : (summary?.uniqueActiveIps ? summary.uniqueActiveIps.toLocaleString() : "—")}
+                                    <span className="text-xs font-normal text-emerald-400 font-sans">
+                                        ({summary?.uniqueActiveIps ? Math.round(((Math.max(0, (summary.uniqueActiveIps || 0) - (summary.agingTelemetry?.agingResidentialCount || 0))) / summary.uniqueActiveIps) * 100) : 100}% Kept)
+                                    </span>
                                 </div>
                             </div>
                             <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
@@ -689,10 +688,20 @@ export function ShunDatabaseTab({ initialSearch = "", onClose, isModal = false }
                         <p className="text-[11px] text-[var(--text-muted)] mt-2 leading-relaxed">
                             {summary?.partialProtectedCount?.toLocaleString() ?? "16,406"} IPs missing on 1–3 firewalls, leaving network vulnerable on HA failover.
                         </p>
-                        <div className="flex items-center justify-between mt-2.5 pt-2 border-t border-[var(--border-color)] text-[11px] font-mono">
-                            <span className="text-slate-400">Wilmington (13.2k)</span>
-                            <span className="text-slate-400">Keleman (11.0k)</span>
-                            <span className="text-amber-400">Secondaries (2.1k / 29)</span>
+                        <div className="flex flex-wrap items-center justify-between gap-1.5 mt-2.5 pt-2 border-t border-[var(--border-color)] text-[10px] font-mono">
+                            {summary?.byFirewall && summary.byFirewall.length > 0 ? (
+                                summary.byFirewall.map(f => (
+                                    <span key={f.firewall} className="text-slate-400">
+                                        {f.firewall.split(' ')[0]} {f.firewall.includes("Sec") ? "Sec" : "Pri"}: <span className="font-bold text-slate-200">{(f.activeCount / 1000).toFixed(1)}k</span>
+                                    </span>
+                                ))
+                            ) : (
+                                <>
+                                    <span className="text-slate-400">Wilmington: 48.0k</span>
+                                    <span className="text-slate-400">Keleman: 40.9k</span>
+                                    <span className="text-amber-400">Secondaries: 32.8k / 29.8k</span>
+                                </>
+                            )}
                         </div>
                     </div>
 
