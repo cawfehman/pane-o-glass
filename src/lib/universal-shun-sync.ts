@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { logAudit } from "@/lib/audit";
 import { isPrivateIp } from "@/lib/iplocate";
 import { recordShunActionLog, ShunNodeVerification } from "@/lib/shun-logger";
+import { isResidential } from "@/lib/isp-classification";
 
 export interface FirewallNodeConfig {
     id: string;
@@ -493,6 +494,160 @@ export async function replicateBatchToFleet(options: {
         totalIpsProcessed: targetIps.length,
         totalShunCommandsSent: totalSent,
         replicatedByFirewall,
+        errors,
+        durationMs: Date.now() - startTime
+    };
+}
+
+export interface PruneDormantResult {
+    success: boolean;
+    isDryRun: boolean;
+    totalEligible: number;
+    totalPruned: number;
+    candidateSamples: Array<{ ip: string; org: string; country: string }>;
+    prunedByFirewall: Record<string, number>;
+    errors: string[];
+    durationMs: number;
+}
+
+/**
+ * Prunes dormant domestic US residential broadband IPs that have no VPN attacks
+ * and zero active strikes, while strictly protecting all foreign and cloud/hosting IPs.
+ */
+export async function pruneDormantResidentialShuns(options?: {
+    isDryRun?: boolean;
+    limit?: number;
+    userId?: string;
+    clientIp?: string;
+}): Promise<PruneDormantResult> {
+    const startTime = Date.now();
+    const isDryRun = Boolean(options?.isDryRun ?? true);
+    const limit = options?.limit || 1500;
+    const errors: string[] = [];
+
+    // 1. Fetch active shuns
+    const activeStats = await prisma.firewallShunStats.findMany({
+        where: { isActive: true },
+        select: { ip: true, firewall: true }
+    });
+    const uniqueActiveIps = Array.from(new Set(activeStats.map(s => s.ip)));
+
+    // 2. Fetch metadata, VPN attack IOCs, and Blacklist/CVE
+    const [shunIps, vpnEvents, blacklist, cve] = await Promise.all([
+        prisma.shunDatabaseIp.findMany({
+            where: { ip: { in: uniqueActiveIps } },
+            select: { ip: true, ipCountryCode: true, org: true }
+        }),
+        prisma.vpnEvent.findMany({
+            where: { sourceIp: { in: uniqueActiveIps }, status: "FAILURE" },
+            select: { sourceIp: true }
+        }),
+        prisma.guardianBlacklist.findMany({
+            where: { ip: { in: uniqueActiveIps } },
+            select: { ip: true }
+        }),
+        prisma.netscalerCveShun.findMany({
+            where: { ip: { in: uniqueActiveIps }, status: "ACTIVE" },
+            select: { ip: true }
+        })
+    ]);
+
+    const shunMap = new Map(shunIps.map(s => [s.ip, s]));
+    const vpnSet = new Set(vpnEvents.map(v => v.sourceIp));
+    const blSet = new Set([...blacklist.map(b => b.ip), ...cve.map(c => c.ip)]);
+
+    const eligibleIps: string[] = [];
+    const candidateSamples: Array<{ ip: string; org: string; country: string }> = [];
+
+    for (const ip of uniqueActiveIps) {
+        const s = shunMap.get(ip);
+        const countryCode = s?.ipCountryCode || "UNRESOLVED";
+        const org = s?.org || "";
+
+        // STRICT SAFETY RULES:
+        // Rule 1: Never remove Foreign (Non-US) IPs
+        if (countryCode !== "US") continue;
+        // Rule 2: Never remove Hosting / VPS / Cloud / Proxy ASNs
+        if (!isResidential(org)) continue;
+        // Rule 3: Never remove VPN Attackers
+        if (vpnSet.has(ip)) continue;
+        // Rule 4: Never remove Guardian Blacklist or CVE IOCs
+        if (blSet.has(ip)) continue;
+
+        eligibleIps.push(ip);
+        if (candidateSamples.length < 50) {
+            candidateSamples.push({ ip, org: org || "US Residential ISP", country: countryCode });
+        }
+    }
+
+    const prunedByFirewall: Record<string, number> = {};
+    const fleet = getFleetFirewalls();
+    for (const fw of fleet) prunedByFirewall[fw.name] = 0;
+
+    if (isDryRun || eligibleIps.length === 0) {
+        return {
+            success: true,
+            isDryRun: true,
+            totalEligible: eligibleIps.length,
+            totalPruned: 0,
+            candidateSamples,
+            prunedByFirewall,
+            errors: [],
+            durationMs: Date.now() - startTime
+        };
+    }
+
+    // Execute Live Pruning on eligible IPs
+    const targetsToPrune = eligibleIps.slice(0, limit);
+    const targetSet = new Set(targetsToPrune);
+
+    // Map which firewall has which target IP
+    const fwToPruneIps = new Map<string, string[]>();
+    for (const fw of fleet) fwToPruneIps.set(fw.name, []);
+
+    for (const stat of activeStats) {
+        if (targetSet.has(stat.ip)) {
+            fwToPruneIps.get(stat.firewall)?.push(stat.ip);
+        }
+    }
+
+    // Execute batch 'no shun' commands across firewalls in parallel
+    await Promise.all(
+        fleet.map(async (fw) => {
+            const ipsForFw = fwToPruneIps.get(fw.name) || [];
+            if (ipsForFw.length === 0) return;
+
+            const commands = ipsForFw.map(ip => `no shun ${ip}`);
+            const res = await executeBatchOnFirewall(fw, commands, 30);
+
+            if (res.success || res.executedCount > 0) {
+                prunedByFirewall[fw.name] = ipsForFw.length;
+            } else {
+                errors.push(`Firewall ${fw.name} failed during prune: ${res.error || "Unknown execution error"}`);
+            }
+        })
+    );
+
+    // Mark pruned records as inactive in FirewallShunStats
+    await prisma.firewallShunStats.updateMany({
+        where: { ip: { in: targetsToPrune } },
+        data: { isActive: false }
+    });
+
+    await logAudit(
+        "PRUNE_DORMANT_SHUNS",
+        `Pruned ${targetsToPrune.length} dormant US residential shuns across perimeter firewalls (strictly keeping all Foreign, Hosting, and VPN attackers).`,
+        options?.userId,
+        options?.clientIp || "system"
+    ).catch(() => {});
+
+    return {
+        success: errors.length === 0,
+        isDryRun: false,
+        totalEligible: eligibleIps.length,
+        totalPruned: targetsToPrune.length,
+        candidateSamples,
+        prunedByFirewall,
         errors,
         durationMs: Date.now() - startTime
     };

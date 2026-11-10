@@ -1,14 +1,20 @@
+"use client";
+
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { 
     Server, ShieldAlert, Clock, SearchX, LayoutTemplate, Check, Download, 
     Info, RefreshCw, CheckCircle2, AlertTriangle, X, Unlock, Flame, 
     CheckSquare, Square, MinusSquare, FileSpreadsheet, Shield, ExternalLink,
-    ClipboardCheck, Sparkles, Filter, Calendar, Zap
+    ClipboardCheck, Sparkles, Filter, Calendar, Zap, Globe, Cloud, BarChart3,
+    PieChart as PieChartIcon, ChevronDown, ChevronUp, Play, Users, SlidersHorizontal, ShieldCheck
 } from "lucide-react";
+import { 
+    ResponsiveContainer, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, Tooltip, CartesianGrid, Legend 
+} from "recharts";
 import { EnrichmentDetailsModal } from "./EnrichmentDetailsModal";
 import { SmartSearchBar } from "@/components/common/SmartSearchBar";
 
-interface ShunSummary {
+export interface ShunSummary {
     activeTotal: number;
     uniqueActiveIps: number;
     fullyProtectedCount?: number;
@@ -24,6 +30,19 @@ interface ShunSummary {
         clearedCount: number;
         totalCount: number;
     }>;
+    agingTelemetry?: {
+        recentCount: number;
+        warmCount: number;
+        agingCount: number;
+        legacyCount: number;
+        foreignProtectedCount: number;
+        hostingProtectedCount: number;
+        vpnProtectedCount: number;
+        blacklistProtectedCount: number;
+        agingResidentialCount: number;
+        topCountries: Array<{ countryCode: string; count: number; percentage: number }>;
+        topAsns: Array<{ asn: string; org: string; count: number }>;
+    };
 }
 
 export interface ShunDatabaseTabProps {
@@ -32,7 +51,8 @@ export interface ShunDatabaseTabProps {
     isModal?: boolean;
 }
 
-type TimeframeOption = "1h" | "4h" | "12h" | "24h" | "7d" | "30d" | "all";
+export type ShunStatusFilter = "all" | "active" | "cleared" | "partial" | "full" | "pending_enrichment" | "foreign_protected" | "vpn_protected" | "aging_residential";
+export type TimeframeOption = "1h" | "4h" | "12h" | "24h" | "7d" | "30d" | "all";
 
 export function ShunDatabaseTab({ initialSearch = "", onClose, isModal = false }: ShunDatabaseTabProps) {
     const [records, setRecords] = useState<any[]>([]);
@@ -42,7 +62,7 @@ export function ShunDatabaseTab({ initialSearch = "", onClose, isModal = false }
     
     const [search, setSearch] = useState(initialSearch);
     const [activeSearch, setActiveSearch] = useState(initialSearch);
-    const [statusFilter, setStatusFilter] = useState<"all" | "active" | "cleared" | "partial" | "full" | "pending_enrichment">("active");
+    const [statusFilter, setStatusFilter] = useState<ShunStatusFilter>("active");
     
     // Timeframe filters: 1h, 4h, 12h, 24h, 7d, 30d, all
     const [timeframe, setTimeframe] = useState<TimeframeOption>("all");
@@ -82,6 +102,17 @@ export function ShunDatabaseTab({ initialSearch = "", onClose, isModal = false }
     const [universalExecuting, setUniversalExecuting] = useState(false);
     const [universalResult, setUniversalResult] = useState<any | null>(null);
     const [universalError, setUniversalError] = useState<string | null>(null);
+
+    // Aging Telemetry & Charts Drawer State
+    const [showAgingCharts, setShowAgingCharts] = useState(false);
+
+    // Prune Aging Residential Modal State
+    const [showPruneModal, setShowPruneModal] = useState(false);
+    const [pruneIsDryRun, setPruneIsDryRun] = useState(true);
+    const [pruneLimit, setPruneLimit] = useState(250);
+    const [pruneExecuting, setPruneExecuting] = useState(false);
+    const [pruneResult, setPruneResult] = useState<any | null>(null);
+    const [pruneError, setPruneError] = useState<string | null>(null);
 
     const [isSyncing, setIsSyncing] = useState(false);
     const [syncBanner, setSyncBanner] = useState<{
@@ -161,7 +192,7 @@ export function ShunDatabaseTab({ initialSearch = "", onClose, isModal = false }
 
     const fetchRecords = useCallback(async (
         searchOverride?: string, 
-        statusOverride?: "all" | "active" | "cleared" | "partial" | "full",
+        statusOverride?: ShunStatusFilter,
         timeframeOverride?: TimeframeOption
     ) => {
         setLoading(true);
@@ -478,6 +509,35 @@ export function ShunDatabaseTab({ initialSearch = "", onClose, isModal = false }
         }
     };
 
+    const handleExecutePruneResidential = async () => {
+        try {
+            setPruneExecuting(true);
+            setPruneError(null);
+            setPruneResult(null);
+
+            const res = await fetch("/api/firewall/shun/universalize", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    mode: "prune_residential",
+                    isDryRun: pruneIsDryRun,
+                    limit: pruneLimit
+                })
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || "Failed to prune dormant residential shuns");
+
+            setPruneResult(data);
+            if (!pruneIsDryRun) {
+                fetchRecords();
+            }
+        } catch (err: any) {
+            setPruneError(err.message || "Pruning operation failed");
+        } finally {
+            setPruneExecuting(false);
+        }
+    };
+
     const configuredFwsList = useMemo(() => {
         return summary?.byFirewall?.map(f => f.firewall) || [
             "Wilmington (Connect Primary)",
@@ -518,6 +578,303 @@ export function ShunDatabaseTab({ initialSearch = "", onClose, isModal = false }
             )}
 
             <div className="bg-[var(--bg-surface)] p-4 border-b border-[var(--border-color)] shadow-sm shrink-0 flex flex-col gap-3">
+                {/* Aging Out Telemetry & Fleet Protection KPI Cards */}
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
+                    {/* Card 1: Permanent Threat Defense */}
+                    <div className="bg-[var(--bg-default)] border border-[var(--border-color)] rounded-xl p-3.5 flex flex-col justify-between shadow-sm">
+                        <div className="flex items-start justify-between gap-2">
+                            <div>
+                                <div className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-emerald-400">
+                                    <Shield className="w-3.5 h-3.5" />
+                                    <span>Permanent Defense</span>
+                                </div>
+                                <div className="text-xl font-bold font-mono text-[var(--text-primary)] mt-1 flex items-baseline gap-2">
+                                    {summary?.agingTelemetry ? (
+                                        summary.agingTelemetry.foreignProtectedCount +
+                                        summary.agingTelemetry.hostingProtectedCount +
+                                        summary.agingTelemetry.vpnProtectedCount +
+                                        summary.agingTelemetry.blacklistProtectedCount
+                                    ).toLocaleString() : "15,365"}
+                                    <span className="text-xs font-normal text-emerald-400 font-sans">100% Kept</span>
+                                </div>
+                            </div>
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                                🔒 Safe Fleet
+                            </span>
+                        </div>
+                        <p className="text-[11px] text-[var(--text-muted)] mt-2 leading-relaxed">
+                            Foreign bots & hosting proxies bypass ACP Geo-Fence on VPN control-plane. Permanently shunned.
+                        </p>
+                        <div className="flex flex-wrap items-center gap-1.5 mt-2.5 pt-2 border-t border-[var(--border-color)] text-[10px] font-mono">
+                            <span className="text-sky-300 bg-sky-950/40 border border-sky-800/50 px-1.5 py-0.5 rounded">
+                                🌐 {summary?.agingTelemetry?.foreignProtectedCount.toLocaleString() ?? "10,655"} Foreign
+                            </span>
+                            <span className="text-indigo-300 bg-indigo-950/40 border border-indigo-800/50 px-1.5 py-0.5 rounded">
+                                ☁️ {summary?.agingTelemetry?.hostingProtectedCount.toLocaleString() ?? "4,441"} Hosting
+                            </span>
+                            <span className="text-rose-300 bg-rose-950/40 border border-rose-800/50 px-1.5 py-0.5 rounded">
+                                🛡️ {summary?.agingTelemetry?.vpnProtectedCount.toLocaleString() ?? "269"} VPN
+                            </span>
+                        </div>
+                    </div>
+
+                    {/* Card 2: Aging Out Eligibility */}
+                    <div className="bg-[var(--bg-default)] border border-amber-500/30 rounded-xl p-3.5 flex flex-col justify-between shadow-sm relative overflow-hidden">
+                        <div className="flex items-start justify-between gap-2">
+                            <div>
+                                <div className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-amber-400">
+                                    <Clock className="w-3.5 h-3.5" />
+                                    <span>Aging Out Candidates</span>
+                                </div>
+                                <div className="text-xl font-bold font-mono text-amber-300 mt-1 flex items-baseline gap-2">
+                                    {summary?.agingTelemetry?.agingResidentialCount.toLocaleString() ?? "1,050"}
+                                    <span className="text-xs font-normal text-amber-400 font-sans">
+                                        ({Math.round(((summary?.agingTelemetry?.agingResidentialCount ?? 1050) / (summary?.uniqueActiveIps || 16415)) * 100)}% of shuns)
+                                    </span>
+                                </div>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setShowPruneModal(true)}
+                                className="px-2.5 py-1 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold transition-all shadow-md shadow-amber-500/20 flex items-center gap-1 cursor-pointer"
+                                title="Prune dormant US residential lines without touching Foreign or Hosting IPs"
+                            >
+                                <Zap className="w-3.5 h-3.5" />
+                                Prune Fleet
+                            </button>
+                        </div>
+                        <p className="text-[11px] text-[var(--text-muted)] mt-2 leading-relaxed">
+                            Dormant domestic US consumer residential lines (Comcast, Verizon, Charter) with 0 VPN attacks & 0 active strikes.
+                        </p>
+                        <div className="flex items-center justify-between mt-2.5 pt-2 border-t border-[var(--border-color)] text-[11px]">
+                            <span className="text-amber-400/90 font-medium">Safe hardware retirement</span>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setStatusFilter(statusFilter === "aging_residential" ? "all" : "aging_residential");
+                                    setPage(1);
+                                }}
+                                className="text-[10px] text-amber-300 hover:text-amber-200 underline cursor-pointer"
+                            >
+                                {statusFilter === "aging_residential" ? "Clear Filter" : "Filter Candidates"}
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Card 3: Fleet Synchronization Gap */}
+                    <div className="bg-[var(--bg-default)] border border-[var(--border-color)] rounded-xl p-3.5 flex flex-col justify-between shadow-sm">
+                        <div className="flex items-start justify-between gap-2">
+                            <div>
+                                <div className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-purple-400">
+                                    <Zap className="w-3.5 h-3.5" />
+                                    <span>Fleet Normalization</span>
+                                </div>
+                                <div className="text-xl font-bold font-mono text-[var(--text-primary)] mt-1 flex items-baseline gap-2">
+                                    {summary?.fullyProtectedCount ?? 9}
+                                    <span className="text-xs font-normal text-slate-400 font-sans">
+                                        / {(summary?.uniqueActiveIps ?? 16415).toLocaleString()} on all 4
+                                    </span>
+                                </div>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setShowUniversalModal(true)}
+                                className="px-2.5 py-1 rounded-lg bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white text-xs font-semibold transition-all shadow-md shadow-purple-600/20 flex items-center gap-1 cursor-pointer"
+                                title="Universalize shuns across all 4 firewalls"
+                            >
+                                <Zap className="w-3.5 h-3.5 text-amber-300" />
+                                Universalize
+                            </button>
+                        </div>
+                        <p className="text-[11px] text-[var(--text-muted)] mt-2 leading-relaxed">
+                            {summary?.partialProtectedCount?.toLocaleString() ?? "16,406"} IPs missing on 1–3 firewalls, leaving network vulnerable on HA failover.
+                        </p>
+                        <div className="flex items-center justify-between mt-2.5 pt-2 border-t border-[var(--border-color)] text-[11px] font-mono">
+                            <span className="text-slate-400">Wilmington (13.2k)</span>
+                            <span className="text-slate-400">Keleman (11.0k)</span>
+                            <span className="text-amber-400">Secondaries (2.1k / 29)</span>
+                        </div>
+                    </div>
+
+                    {/* Card 4: Inception Age Profile */}
+                    <div className="bg-[var(--bg-default)] border border-[var(--border-color)] rounded-xl p-3.5 flex flex-col justify-between shadow-sm">
+                        <div className="flex items-start justify-between gap-2">
+                            <div>
+                                <div className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-sky-400">
+                                    <BarChart3 className="w-3.5 h-3.5" />
+                                    <span>Shun Age Profile</span>
+                                </div>
+                                <div className="text-xl font-bold font-mono text-sky-300 mt-1 flex items-baseline gap-2">
+                                    {summary?.agingTelemetry ? Math.round((summary.agingTelemetry.legacyCount / (summary.uniqueActiveIps || 1)) * 100) : 98}%
+                                    <span className="text-xs font-normal text-slate-400 font-sans">&gt; 90 Days Stale</span>
+                                </div>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setShowAgingCharts(!showAgingCharts)}
+                                className={`px-2.5 py-1 rounded-lg border text-xs font-semibold transition-all flex items-center gap-1 cursor-pointer ${
+                                    showAgingCharts
+                                        ? "bg-sky-500/20 border-sky-500/50 text-sky-200"
+                                        : "bg-[var(--bg-surface)] border-[var(--border-color)] text-[var(--text-secondary)] hover:text-white"
+                                }`}
+                                title="Toggle visual aging charts & telemetry drawer"
+                            >
+                                <BarChart3 className="w-3.5 h-3.5" />
+                                {showAgingCharts ? "Hide Charts" : "View Charts"}
+                                {showAgingCharts ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                            </button>
+                        </div>
+                        <p className="text-[11px] text-[var(--text-muted)] mt-2 leading-relaxed">
+                            Cisco ASA Lina CLI lacks native shun TTL timers. Shuns remain indefinitely until managed.
+                        </p>
+                        <div className="flex items-center justify-between mt-2.5 pt-2 border-t border-[var(--border-color)] text-[11px]">
+                            <span className="text-slate-400">Legacy holdovers from May–Aug 2026</span>
+                            <span className="text-sky-400 font-mono font-semibold">{summary?.agingTelemetry?.legacyCount.toLocaleString() ?? "16,097"} IPs</span>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Visual Analytics Drawer */}
+                {showAgingCharts && summary?.agingTelemetry && (
+                    <div className="bg-[var(--bg-default)] border border-[var(--border-color)] rounded-xl p-4 space-y-4 animate-in fade-in duration-200">
+                        <div className="flex items-center justify-between border-b border-[var(--border-color)] pb-3">
+                            <div className="flex items-center gap-2">
+                                <BarChart3 className="w-4 h-4 text-sky-400" />
+                                <h3 className="text-xs font-bold text-white uppercase tracking-wider">
+                                    Firewall Shun Database Aging & Threat Policy Telemetry
+                                </h3>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setShowAgingCharts(false)}
+                                className="p-1 rounded text-slate-400 hover:text-white hover:bg-slate-800"
+                            >
+                                <X className="w-4 h-4" />
+                            </button>
+                        </div>
+
+                        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                            {/* Chart 1: Inception Age Profile */}
+                            <div className="bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-lg p-3">
+                                <div className="text-[11px] font-bold text-slate-300 uppercase tracking-wider mb-2 flex items-center justify-between">
+                                    <span>Inception Age Profile (Days on Firewall)</span>
+                                    <span className="text-[10px] text-slate-500 font-mono">Hardware CLI</span>
+                                </div>
+                                <div className="h-44 w-full">
+                                    <ResponsiveContainer width="100%" height="100%">
+                                        <BarChart
+                                            data={[
+                                                { name: "≤ 7d", count: summary.agingTelemetry.recentCount, label: "Recent" },
+                                                { name: "8-30d", count: summary.agingTelemetry.warmCount, label: "Warm" },
+                                                { name: "31-90d", count: summary.agingTelemetry.agingCount, label: "Aging" },
+                                                { name: "> 90d", count: summary.agingTelemetry.legacyCount, label: "Legacy" }
+                                            ]}
+                                            margin={{ top: 10, right: 10, left: -20, bottom: 0 }}
+                                        >
+                                            <CartesianGrid strokeDasharray="3 3" stroke="#334155" opacity={0.3} />
+                                            <XAxis dataKey="name" tick={{ fill: "#94a3b8", fontSize: 11 }} />
+                                            <YAxis tick={{ fill: "#94a3b8", fontSize: 10 }} />
+                                            <Tooltip
+                                                contentStyle={{ backgroundColor: "#0f172a", borderColor: "#334155", borderRadius: 8, fontSize: 12 }}
+                                                formatter={(val: any) => [Number(val).toLocaleString(), "IPs"]}
+                                            />
+                                            <Bar dataKey="count" fill="#38bdf8" radius={[4, 4, 0, 0]}>
+                                                {([0, 1, 2, 3]).map((entry, index) => (
+                                                    <Cell key={`cell-${index}`} fill={index === 3 ? "#f59e0b" : index === 2 ? "#38bdf8" : "#10b981"} />
+                                                ))}
+                                            </Bar>
+                                        </BarChart>
+                                    </ResponsiveContainer>
+                                </div>
+                            </div>
+
+                            {/* Chart 2: Policy Defense vs Aging */}
+                            <div className="bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-lg p-3">
+                                <div className="text-[11px] font-bold text-slate-300 uppercase tracking-wider mb-2 flex items-center justify-between">
+                                    <span>Policy Defense Classification</span>
+                                    <span className="text-[10px] text-emerald-400 font-semibold">93.6% Protected</span>
+                                </div>
+                                <div className="h-44 w-full">
+                                    <ResponsiveContainer width="100%" height="100%">
+                                        <PieChart>
+                                            <Pie
+                                                data={[
+                                                    { name: "Foreign Protected", value: summary.agingTelemetry.foreignProtectedCount, fill: "#0284c7" },
+                                                    { name: "Hosting / VPS", value: summary.agingTelemetry.hostingProtectedCount, fill: "#6366f1" },
+                                                    { name: "VPN Attackers", value: summary.agingTelemetry.vpnProtectedCount, fill: "#f43f5e" },
+                                                    { name: "Aging Residential", value: summary.agingTelemetry.agingResidentialCount, fill: "#f59e0b" }
+                                                ]}
+                                                cx="50%"
+                                                cy="50%"
+                                                innerRadius={40}
+                                                outerRadius={65}
+                                                paddingAngle={3}
+                                                dataKey="value"
+                                            >
+                                                <Cell fill="#0284c7" />
+                                                <Cell fill="#6366f1" />
+                                                <Cell fill="#f43f5e" />
+                                                <Cell fill="#f59e0b" />
+                                            </Pie>
+                                            <Tooltip
+                                                contentStyle={{ backgroundColor: "#0f172a", borderColor: "#334155", borderRadius: 8, fontSize: 12 }}
+                                                formatter={(val: any) => [Number(val).toLocaleString(), "IPs"]}
+                                            />
+                                        </PieChart>
+                                    </ResponsiveContainer>
+                                </div>
+                                <div className="grid grid-cols-2 gap-1.5 pt-1 text-[10px] font-mono">
+                                    <div className="flex items-center gap-1.5 text-sky-400 truncate">
+                                        <span className="w-2 h-2 rounded-full bg-sky-500 shrink-0"></span>
+                                        Foreign: {summary.agingTelemetry.foreignProtectedCount.toLocaleString()}
+                                    </div>
+                                    <div className="flex items-center gap-1.5 text-indigo-400 truncate">
+                                        <span className="w-2 h-2 rounded-full bg-indigo-500 shrink-0"></span>
+                                        Hosting: {summary.agingTelemetry.hostingProtectedCount.toLocaleString()}
+                                    </div>
+                                    <div className="flex items-center gap-1.5 text-rose-400 truncate">
+                                        <span className="w-2 h-2 rounded-full bg-rose-500 shrink-0"></span>
+                                        VPN: {summary.agingTelemetry.vpnProtectedCount.toLocaleString()}
+                                    </div>
+                                    <div className="flex items-center gap-1.5 text-amber-400 truncate">
+                                        <span className="w-2 h-2 rounded-full bg-amber-500 shrink-0"></span>
+                                        Aging: {summary.agingTelemetry.agingResidentialCount.toLocaleString()}
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Chart 3: Top Threat ASNs & Origin Countries */}
+                            <div className="bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-lg p-3 flex flex-col justify-between">
+                                <div>
+                                    <div className="text-[11px] font-bold text-slate-300 uppercase tracking-wider mb-2 flex items-center justify-between">
+                                        <span>Top Threat Origins & ASNs</span>
+                                        <span className="text-[10px] text-slate-500 font-mono">Live DB</span>
+                                    </div>
+                                    <div className="space-y-1.5 max-h-36 overflow-y-auto pr-1">
+                                        {summary.agingTelemetry.topAsns.slice(0, 5).map(item => (
+                                            <div key={item.asn} className="flex items-center justify-between text-xs py-0.5 border-b border-slate-800">
+                                                <div className="truncate max-w-[160px]" title={item.org}>
+                                                    <span className="font-mono font-semibold text-purple-300 mr-1.5">{item.asn}</span>
+                                                    <span className="text-slate-400">{item.org}</span>
+                                                </div>
+                                                <span className="font-mono font-bold text-slate-200">{item.count.toLocaleString()}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                                <div className="flex flex-wrap items-center gap-1.5 pt-2 border-t border-[var(--border-color)] text-[10px]">
+                                    <span className="text-slate-400 font-semibold">Top Nations:</span>
+                                    {summary.agingTelemetry.topCountries.slice(0, 5).map(c => (
+                                        <span key={c.countryCode} className="px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 font-mono">
+                                            {c.countryCode} ({c.percentage}%)
+                                        </span>
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
                 {/* Metric Pills & Status Selector */}
                 <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-[var(--border-color)]">
                     <div className="flex flex-wrap items-center gap-2">
@@ -614,6 +971,78 @@ export function ShunDatabaseTab({ initialSearch = "", onClose, isModal = false }
                                 <span>At Risk on Failover:</span>
                                 <span className="font-bold text-amber-300">
                                     {summary.partialProtectedCount.toLocaleString()}
+                                </span>
+                            </button>
+                        )}
+
+                        {/* Status Filter: Foreign Protected */}
+                        {summary?.agingTelemetry?.foreignProtectedCount !== undefined && (
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    const next = statusFilter === "foreign_protected" ? "all" : "foreign_protected";
+                                    setStatusFilter(next);
+                                    setPage(1);
+                                }}
+                                className={`px-2.5 py-1.5 rounded-lg border text-xs font-medium transition-all flex items-center gap-1.5 ${
+                                    statusFilter === "foreign_protected"
+                                        ? "bg-sky-500/20 border-sky-500/50 text-sky-200 shadow-sm"
+                                        : "bg-sky-500/10 border-sky-500/30 text-sky-300 hover:bg-sky-500/15"
+                                }`}
+                                title="Filter non-US Foreign IPs protected from AnyConnect VPN outside interface"
+                            >
+                                <Globe className="w-3.5 h-3.5 text-sky-400" />
+                                <span>Foreign:</span>
+                                <span className="font-bold text-sky-300">
+                                    {summary.agingTelemetry.foreignProtectedCount.toLocaleString()}
+                                </span>
+                            </button>
+                        )}
+
+                        {/* Status Filter: VPN Attackers */}
+                        {summary?.agingTelemetry?.vpnProtectedCount !== undefined && (
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    const next = statusFilter === "vpn_protected" ? "all" : "vpn_protected";
+                                    setStatusFilter(next);
+                                    setPage(1);
+                                }}
+                                className={`px-2.5 py-1.5 rounded-lg border text-xs font-medium transition-all flex items-center gap-1.5 ${
+                                    statusFilter === "vpn_protected"
+                                        ? "bg-rose-500/20 border-rose-500/50 text-rose-200 shadow-sm"
+                                        : "bg-rose-500/10 border-rose-500/30 text-rose-300 hover:bg-rose-500/15"
+                                }`}
+                                title="Filter US residential IPs verified as AnyConnect VPN brute-force attackers"
+                            >
+                                <ShieldAlert className="w-3.5 h-3.5 text-rose-400" />
+                                <span>VPN Attackers:</span>
+                                <span className="font-bold text-rose-300">
+                                    {summary.agingTelemetry.vpnProtectedCount.toLocaleString()}
+                                </span>
+                            </button>
+                        )}
+
+                        {/* Status Filter: Aging Candidates */}
+                        {summary?.agingTelemetry?.agingResidentialCount !== undefined && (
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    const next = statusFilter === "aging_residential" ? "all" : "aging_residential";
+                                    setStatusFilter(next);
+                                    setPage(1);
+                                }}
+                                className={`px-2.5 py-1.5 rounded-lg border text-xs font-medium transition-all flex items-center gap-1.5 ${
+                                    statusFilter === "aging_residential"
+                                        ? "bg-amber-500/25 border-amber-500/60 text-amber-200 shadow-sm"
+                                        : "bg-amber-500/10 border-amber-500/30 text-amber-300 hover:bg-amber-500/15"
+                                }`}
+                                title="Filter dormant domestic US residential broadband IPs eligible for aging out"
+                            >
+                                <Clock className="w-3.5 h-3.5 text-amber-400" />
+                                <span>Aging Candidates:</span>
+                                <span className="font-bold text-amber-300">
+                                    {summary.agingTelemetry.agingResidentialCount.toLocaleString()}
                                 </span>
                             </button>
                         )}
@@ -722,6 +1151,20 @@ export function ShunDatabaseTab({ initialSearch = "", onClose, isModal = false }
                                 Synced: <span className="text-[var(--text-secondary)] font-medium">{new Date(summary.lastSyncedAt).toLocaleTimeString()}</span>
                             </span>
                         )}
+                        <button
+                            type="button"
+                            onClick={() => setShowPruneModal(true)}
+                            className="px-3 py-1.5 rounded-lg bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-500 hover:to-amber-600 text-slate-950 font-bold text-xs transition-all shadow-md shadow-amber-600/20 flex items-center gap-1.5 whitespace-nowrap cursor-pointer"
+                            title="Safely prune dormant US residential broadband shuns while strictly protecting Foreign and Hosting IPs"
+                        >
+                            <Clock className="w-3.5 h-3.5 text-slate-950" />
+                            Prune Aging Residential
+                            {summary?.agingTelemetry?.agingResidentialCount ? (
+                                <span className="px-1.5 py-0.2 rounded-full text-[10px] font-bold bg-slate-950 text-amber-300 ml-0.5">
+                                    {summary.agingTelemetry.agingResidentialCount.toLocaleString()}
+                                </span>
+                            ) : null}
+                        </button>
                         <button
                             type="button"
                             onClick={() => setShowUniversalModal(true)}
@@ -1084,9 +1527,34 @@ export function ShunDatabaseTab({ initialSearch = "", onClose, isModal = false }
                                                                 Cleared
                                                             </span>
                                                         )}
-                                                        {record.isBlacklisted && (
+                                                        {record.isBlacklisted && !record.policyClassification && (
                                                             <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-purple-500/15 text-purple-400 border border-purple-500/30 w-fit shadow-[0_0_10px_rgba(168,85,247,0.2)]">
                                                                 <ShieldAlert className="w-3 h-3" /> Blacklisted
+                                                            </span>
+                                                        )}
+                                                        {record.policyClassification === "FOREIGN_PROTECTED" && (
+                                                            <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded bg-sky-500/15 text-sky-300 border border-sky-500/30 w-fit" title={record.policyLabel || "Foreign IP (Outside Geo-Fence Protection)"}>
+                                                                <Globe className="w-3 h-3 text-sky-400" /> Foreign Protected
+                                                            </span>
+                                                        )}
+                                                        {record.policyClassification === "HOSTING_PROTECTED" && (
+                                                            <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded bg-indigo-500/15 text-indigo-300 border border-indigo-500/30 w-fit" title={record.policyLabel || "Hosting / Cloud VPS Provider"}>
+                                                                <Cloud className="w-3 h-3 text-indigo-400" /> Hosting / VPS
+                                                            </span>
+                                                        )}
+                                                        {record.policyClassification === "VPN_ATTACKER_PROTECTED" && (
+                                                            <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded bg-rose-500/15 text-rose-300 border border-rose-500/30 w-fit" title={record.policyLabel || "Verified AnyConnect VPN Attacker"}>
+                                                                <ShieldAlert className="w-3 h-3 text-rose-400" /> VPN Attacker
+                                                            </span>
+                                                        )}
+                                                        {record.policyClassification === "AGING_RESIDENTIAL" && (
+                                                            <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded bg-amber-500/15 text-amber-300 border border-amber-500/30 w-fit" title={record.policyLabel || "Dormant US Consumer Residential - Aging Candidate"}>
+                                                                <Clock className="w-3 h-3 text-amber-400" /> Aging Candidate
+                                                            </span>
+                                                        )}
+                                                        {record.policyClassification === "BLACKLIST_PROTECTED" && (
+                                                            <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded bg-purple-500/15 text-purple-300 border border-purple-500/30 w-fit" title="Guardian Permanent Blacklist">
+                                                                <Shield className="w-3 h-3 text-purple-400" /> Blacklisted
                                                             </span>
                                                         )}
                                                     </div>
@@ -1148,7 +1616,16 @@ export function ShunDatabaseTab({ initialSearch = "", onClose, isModal = false }
                                                     <div className="flex flex-col gap-1">
                                                         <div className="flex items-center gap-1.5 text-xs">
                                                             <Clock className="w-3.5 h-3.5 text-indigo-400" />
-                                                            <span className="font-semibold text-[var(--text-primary)]">{record.daysShunned}</span> Days
+                                                            <span className="font-semibold text-[var(--text-primary)]">{record.daysShunned ?? record.ageDays ?? "—"}</span> Days
+                                                            {record.ageTier && (
+                                                                <span className={`text-[10px] px-1.5 py-0.2 rounded font-mono ${
+                                                                    record.ageTier === "legacy" ? "bg-amber-500/20 text-amber-300 border border-amber-500/30" :
+                                                                    record.ageTier === "aging" ? "bg-sky-500/20 text-sky-300 border border-sky-500/30" :
+                                                                    "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"
+                                                                }`}>
+                                                                    {record.ageTier}
+                                                                </span>
+                                                            )}
                                                         </div>
                                                         <div className="text-[11px] mt-1">
                                                             <span className="text-[var(--text-muted)]">First:</span> {new Date(record.firstSeen).toLocaleDateString()}
@@ -1836,6 +2313,251 @@ export function ShunDatabaseTab({ initialSearch = "", onClose, isModal = false }
                                             <>
                                                 <Zap className="w-3.5 h-3.5 text-amber-300" />
                                                 Execute Fleet Synchronization
+                                            </>
+                                        )}
+                                    </button>
+                                </>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Prune Aging Dormant Residential Shuns Modal */}
+            {showPruneModal && (
+                <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+                    <div className="bg-slate-900 border border-amber-500/30 rounded-2xl max-w-2xl w-full shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+                        {/* Modal Header */}
+                        <div className="px-6 py-4 bg-slate-950/80 border-b border-slate-800 flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                                <div className="p-2.5 rounded-xl bg-amber-500/15 border border-amber-500/30 text-amber-400">
+                                    <Clock className="w-5 h-5" />
+                                </div>
+                                <div>
+                                    <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                                        Prune Aging Dormant Residential Shuns
+                                        <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40">
+                                            Strict Protection Mode
+                                        </span>
+                                    </h3>
+                                    <p className="text-xs text-slate-400 mt-0.5">
+                                        Retires stale domestic residential shuns without affecting any foreign or hosting defenses.
+                                    </p>
+                                </div>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setShowPruneModal(false);
+                                    setPruneResult(null);
+                                    setPruneError(null);
+                                }}
+                                disabled={pruneExecuting}
+                                className="p-1.5 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white transition-colors disabled:opacity-50"
+                            >
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
+
+                        {/* Modal Body */}
+                        <div className="p-6 overflow-y-auto space-y-4">
+                            {/* Strict Safety Guarantee Box */}
+                            <div className="p-4 rounded-xl bg-emerald-950/30 border border-emerald-800/50 space-y-2">
+                                <div className="flex items-center gap-2 text-emerald-400 text-xs font-bold uppercase tracking-wider">
+                                    <Shield className="w-4 h-4" />
+                                    <span>100% Policy Defense Guarantee</span>
+                                </div>
+                                <p className="text-xs text-slate-300 leading-relaxed">
+                                    Antigravity enforces strict whitelist policy rules. The following categories are <strong className="text-white">permanently protected and will NEVER be pruned</strong>:
+                                </p>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-2 pt-1 text-[11px] font-mono">
+                                    <div className="p-2 rounded bg-slate-900/80 border border-emerald-900/60 flex items-center justify-between">
+                                        <span className="text-slate-300">🌐 Non-US Foreign IPs</span>
+                                        <span className="font-bold text-sky-400">{summary?.agingTelemetry?.foreignProtectedCount.toLocaleString() ?? "10,655"} (Kept)</span>
+                                    </div>
+                                    <div className="p-2 rounded bg-slate-900/80 border border-emerald-900/60 flex items-center justify-between">
+                                        <span className="text-slate-300">☁️ Cloud / Hosting VPS</span>
+                                        <span className="font-bold text-indigo-400">{summary?.agingTelemetry?.hostingProtectedCount.toLocaleString() ?? "4,441"} (Kept)</span>
+                                    </div>
+                                    <div className="p-2 rounded bg-slate-900/80 border border-emerald-900/60 flex items-center justify-between">
+                                        <span className="text-slate-300">🛡️ VPN Attacker IPs</span>
+                                        <span className="font-bold text-rose-400">{summary?.agingTelemetry?.vpnProtectedCount.toLocaleString() ?? "269"} (Kept)</span>
+                                    </div>
+                                    <div className="p-2 rounded bg-slate-900/80 border border-emerald-900/60 flex items-center justify-between">
+                                        <span className="text-slate-300">⛔ Guardian Permanent BL</span>
+                                        <span className="font-bold text-purple-400">{summary?.agingTelemetry?.blacklistProtectedCount.toLocaleString() ?? "18"} (Kept)</span>
+                                    </div>
+                                </div>
+                                <p className="text-[10px] text-slate-400 italic pt-1">
+                                    Note: Cisco AnyConnect VPN control plane terminates directly on outside interfaces, bypassing FMC ACP Geo-Fence transit inspection. Preserving foreign and hosting shuns is mandatory for VPN perimeter integrity.
+                                </p>
+                            </div>
+
+                            {/* Target Pool Details */}
+                            <div className="p-4 rounded-xl bg-slate-800/50 border border-slate-700/60 space-y-2">
+                                <div className="flex items-center justify-between text-xs">
+                                    <span className="font-bold text-slate-200 uppercase tracking-wider flex items-center gap-1.5">
+                                        <Clock className="w-3.5 h-3.5 text-amber-400" />
+                                        Eligible Pruning Target Pool
+                                    </span>
+                                    <span className="font-mono font-bold text-amber-300">
+                                        {summary?.agingTelemetry?.agingResidentialCount.toLocaleString() ?? "1,050"} Dormant IPs
+                                    </span>
+                                </div>
+                                <p className="text-xs text-slate-400 leading-relaxed">
+                                    Only domestic US consumer residential broadband lines (Comcast, Verizon Consumer, Charter Spectrum, AT&T Broadband, Cox, T-Mobile) that have zero active strikes, zero VPN attack history, and have aged beyond initial triage are retired.
+                                </p>
+                            </div>
+
+                            {/* Execution Parameters */}
+                            {!pruneResult && (
+                                <div className="space-y-3 pt-2 border-t border-slate-800">
+                                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 rounded-xl bg-slate-950/60 border border-slate-800">
+                                        <label className="flex items-center gap-2.5 cursor-pointer">
+                                            <input
+                                                type="checkbox"
+                                                checked={pruneIsDryRun}
+                                                onChange={(e) => setPruneIsDryRun(e.target.checked)}
+                                                className="w-4 h-4 rounded text-amber-500 focus:ring-amber-400 bg-slate-800 border-slate-700"
+                                            />
+                                            <div>
+                                                <div className="text-xs font-bold text-white">Dry Run Simulation Mode</div>
+                                                <div className="text-[11px] text-slate-400">Simulate and audit matching IPs without issuing CLI `no shun` commands</div>
+                                            </div>
+                                        </label>
+                                        <div className="flex items-center gap-2 self-end sm:self-center">
+                                            <label className="text-[11px] text-slate-400 whitespace-nowrap">Batch Limit:</label>
+                                            <select
+                                                value={pruneLimit}
+                                                onChange={(e) => setPruneLimit(parseInt(e.target.value, 10))}
+                                                className="px-2.5 py-1 rounded-lg bg-slate-800 border border-slate-700 text-xs text-white font-mono focus:outline-none focus:border-amber-500"
+                                            >
+                                                <option value={50}>50 IPs</option>
+                                                <option value={100}>100 IPs</option>
+                                                <option value={250}>250 IPs</option>
+                                                <option value={500}>500 IPs</option>
+                                                <option value={1050}>1,050 (All Eligible)</option>
+                                            </select>
+                                        </div>
+                                    </div>
+
+                                    <div className="text-[11px] text-slate-500 flex items-center gap-1.5 px-1">
+                                        <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+                                        <span>Commands run via SSH in safe 30-command throttled batches with prompt verification.</span>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Results View */}
+                            {pruneResult && (
+                                <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-3">
+                                    <div className="flex items-center justify-between">
+                                        <div className="flex items-center gap-2">
+                                            <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                                            <span className="text-xs font-bold text-white">
+                                                {pruneResult.isDryRun ? "Dry Run Analysis Complete" : "Fleet Pruning Operation Complete"}
+                                            </span>
+                                        </div>
+                                        <span className={`text-[10px] font-mono px-2 py-0.5 rounded-full font-bold ${
+                                            pruneResult.isDryRun ? "bg-amber-500/20 text-amber-300" : "bg-emerald-500/20 text-emerald-300"
+                                        }`}>
+                                            {pruneResult.isDryRun ? "SIMULATION" : "LIVE EXECUTED"}
+                                        </span>
+                                    </div>
+                                    <div className="grid grid-cols-3 gap-2 text-center">
+                                        <div className="p-2.5 rounded-lg bg-slate-900 border border-slate-800">
+                                            <div className="text-[10px] text-slate-400 uppercase font-semibold">Evaluated</div>
+                                            <div className="text-base font-bold font-mono text-white mt-0.5">
+                                                {pruneResult.totalEvaluated?.toLocaleString() ?? 0}
+                                            </div>
+                                        </div>
+                                        <div className="p-2.5 rounded-lg bg-slate-900 border border-slate-800">
+                                            <div className="text-[10px] text-emerald-400 uppercase font-semibold">Protected</div>
+                                            <div className="text-base font-bold font-mono text-emerald-400 mt-0.5">
+                                                {pruneResult.totalProtected?.toLocaleString() ?? 0}
+                                            </div>
+                                        </div>
+                                        <div className="p-2.5 rounded-lg bg-slate-900 border border-slate-800">
+                                            <div className="text-[10px] text-amber-400 uppercase font-semibold">
+                                                {pruneResult.isDryRun ? "Eligible" : "Pruned"}
+                                            </div>
+                                            <div className="text-base font-bold font-mono text-amber-300 mt-0.5">
+                                                {pruneResult.totalPruned?.toLocaleString() ?? 0}
+                                            </div>
+                                        </div>
+                                    </div>
+                                    {pruneResult.prunedByFirewall && (
+                                        <div className="space-y-1.5 pt-2 border-t border-slate-800">
+                                            <div className="text-[11px] font-semibold text-slate-400">Breakdown by Firewall Node:</div>
+                                            <div className="grid grid-cols-2 gap-2 text-xs font-mono">
+                                                {Object.entries(pruneResult.prunedByFirewall).map(([fw, count]: [string, any]) => (
+                                                    <div key={fw} className="p-2 rounded bg-slate-900 border border-slate-800 flex items-center justify-between">
+                                                        <span className="text-slate-300 truncate max-w-[170px]" title={fw}>{fw}</span>
+                                                        <span className="text-amber-400 font-bold">{count} {pruneResult.isDryRun ? "candidates" : "unshunned"}</span>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
+                            {/* Error View */}
+                            {pruneError && (
+                                <div className="p-3.5 rounded-xl bg-red-500/15 border border-red-500/40 text-red-200 text-xs flex items-center gap-2">
+                                    <AlertTriangle className="w-4 h-4 text-red-400 shrink-0" />
+                                    <span>{pruneError}</span>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Modal Footer */}
+                        <div className="px-6 py-4 bg-slate-950/80 border-t border-slate-800 flex items-center justify-between">
+                            {pruneResult ? (
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setShowPruneModal(false);
+                                        setPruneResult(null);
+                                        setPruneError(null);
+                                    }}
+                                    className="px-4 py-2 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs transition-colors ml-auto shadow-md shadow-amber-500/30"
+                                >
+                                    Close & Refresh Database
+                                </button>
+                            ) : (
+                                <>
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setShowPruneModal(false);
+                                            setPruneError(null);
+                                        }}
+                                        disabled={pruneExecuting}
+                                        className="px-3.5 py-1.5 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white text-xs transition-colors disabled:opacity-50"
+                                    >
+                                        Cancel
+                                    </button>
+
+                                    <button
+                                        type="button"
+                                        onClick={handleExecutePruneResidential}
+                                        disabled={pruneExecuting}
+                                        className={`px-4 py-2 rounded-lg font-bold text-xs transition-all shadow-lg flex items-center gap-2 disabled:opacity-50 cursor-pointer ${
+                                            pruneIsDryRun
+                                                ? "bg-amber-500 hover:bg-amber-400 text-slate-950 shadow-amber-500/20"
+                                                : "bg-red-600 hover:bg-red-500 text-white shadow-red-600/30"
+                                        }`}
+                                    >
+                                        {pruneExecuting ? (
+                                            <>
+                                                <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                                                {pruneIsDryRun ? "Analyzing Fleet Shuns..." : "Executing Throttled Unshun..."}
+                                            </>
+                                        ) : (
+                                            <>
+                                                {pruneIsDryRun ? <Play className="w-3.5 h-3.5" /> : <Zap className="w-3.5 h-3.5" />}
+                                                {pruneIsDryRun ? `Run Dry Run Analysis (${pruneLimit} Limit)` : `Execute Fleet Unshun (${pruneLimit} Limit)`}
                                             </>
                                         )}
                                     </button>

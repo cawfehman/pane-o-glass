@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { hasPermission } from "@/app/actions/permissions";
-import { replicateShunToFleet, replicateBatchToFleet, getFleetShunCoverage } from "@/lib/universal-shun-sync";
+import { replicateShunToFleet, replicateBatchToFleet, getFleetShunCoverage, pruneDormantResidentialShuns } from "@/lib/universal-shun-sync";
 
 export async function GET(req: Request) {
     try {
@@ -95,7 +95,18 @@ export async function POST(req: Request) {
             return NextResponse.json(result);
         }
 
-        return new NextResponse("Invalid mode. Must be 'single', 'list', 'blacklist', or 'all_partial'", { status: 400 });
+        if (mode === "prune_residential") {
+            const isDryRun = Boolean(body.isDryRun !== false);
+            const result = await pruneDormantResidentialShuns({
+                isDryRun,
+                limit: limit || 1500,
+                userId,
+                clientIp
+            });
+            return NextResponse.json(result);
+        }
+
+        return new NextResponse("Invalid mode. Must be 'single', 'list', 'blacklist', 'all_partial', or 'prune_residential'", { status: 400 });
 
     } catch (error: any) {
         console.error("Universalize API error:", error);
