@@ -109,7 +109,7 @@ export function ShunDatabaseTab({ initialSearch = "", onClose, isModal = false }
     // Prune Aging Residential Modal State
     const [showPruneModal, setShowPruneModal] = useState(false);
     const [pruneIsDryRun, setPruneIsDryRun] = useState(true);
-    const [pruneLimit, setPruneLimit] = useState(250);
+    const [pruneLimit, setPruneLimit] = useState(0);
     const [pruneExecuting, setPruneExecuting] = useState(false);
     const [pruneResult, setPruneResult] = useState<any | null>(null);
     const [pruneError, setPruneError] = useState<string | null>(null);
@@ -2439,13 +2439,14 @@ export function ShunDatabaseTab({ initialSearch = "", onClose, isModal = false }
                                             <select
                                                 value={pruneLimit}
                                                 onChange={(e) => setPruneLimit(parseInt(e.target.value, 10))}
-                                                className="px-2.5 py-1 rounded-lg bg-slate-800 border border-slate-700 text-xs text-white font-mono focus:outline-none focus:border-amber-500"
+                                                className="px-2.5 py-1 rounded-lg bg-slate-800 border border-slate-700 text-xs text-white font-mono focus:outline-none focus:border-amber-500 cursor-pointer"
                                             >
-                                                <option value={50}>50 IPs</option>
-                                                <option value={100}>100 IPs</option>
-                                                <option value={250}>250 IPs</option>
+                                                <option value={0}>All Eligible ({summary?.agingTelemetry?.agingResidentialCount?.toLocaleString() ?? "20,808"} IPs)</option>
                                                 <option value={500}>500 IPs</option>
-                                                <option value={1050}>1,050 (All Eligible)</option>
+                                                <option value={1000}>1,000 IPs</option>
+                                                <option value={2500}>2,500 IPs</option>
+                                                <option value={5000}>5,000 IPs</option>
+                                                <option value={10000}>10,000 IPs</option>
                                             </select>
                                         </div>
                                     </div>
@@ -2566,7 +2567,9 @@ export function ShunDatabaseTab({ initialSearch = "", onClose, isModal = false }
                                         ) : (
                                             <>
                                                 {pruneIsDryRun ? <Play className="w-3.5 h-3.5" /> : <Zap className="w-3.5 h-3.5" />}
-                                                {pruneIsDryRun ? `Run Dry Run Analysis (${pruneLimit} Limit)` : `Execute Fleet Unshun (${pruneLimit} Limit)`}
+                                                {pruneIsDryRun
+                                                    ? `Run Dry Run Analysis (${pruneLimit === 0 ? "All Eligible" : `${pruneLimit.toLocaleString()} Limit`})`
+                                                    : `Execute Fleet Unshun (${pruneLimit === 0 ? "All Eligible" : `${pruneLimit.toLocaleString()} Limit`})`}
                                             </>
                                         )}
                                     </button>

@@ -525,7 +525,7 @@ export async function pruneDormantResidentialShuns(options?: {
 }): Promise<PruneDormantResult> {
     const startTime = Date.now();
     const isDryRun = Boolean(options?.isDryRun ?? true);
-    const limit = options?.limit || 1500;
+    const limit = typeof options?.limit === "number" ? options.limit : 0;
     const errors: string[] = [];
 
     // 1. Fetch active shuns
@@ -594,7 +594,7 @@ export async function pruneDormantResidentialShuns(options?: {
     const fleet = getFleetFirewalls();
     for (const fw of fleet) prunedByFirewall[fw.name] = 0;
 
-    const targetsToPrune = eligibleIps.slice(0, limit);
+    const targetsToPrune = (limit > 0) ? eligibleIps.slice(0, limit) : eligibleIps;
     const targetSet = new Set(targetsToPrune);
     for (const stat of activeStats) {
         if (targetSet.has(stat.ip)) {

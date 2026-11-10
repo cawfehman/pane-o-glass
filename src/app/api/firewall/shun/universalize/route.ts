@@ -97,9 +97,10 @@ export async function POST(req: Request) {
 
         if (mode === "prune_residential") {
             const isDryRun = Boolean(body.isDryRun !== false);
+            const pruneLimit = typeof limit === "number" ? limit : 0;
             const result = await pruneDormantResidentialShuns({
                 isDryRun,
-                limit: limit || 1500,
+                limit: pruneLimit,
                 userId,
                 clientIp
             });
