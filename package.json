@@ -45,7 +45,7 @@
     "dotenv": "^17.3.1",
     "ldapts": "^8.1.7",
     "lucide-react": "^0.473.0",
-    "next": "16.4.2",
+    "next": "16.4.6",
     "next-auth": "^5.0.0-beta.32",
     "node-ssh": "^13.2.1",
     "nodemailer": "^10.2.0",
@@ -70,7 +70,7 @@
     "@types/react-dom": "^19",
     "@types/xml2js": "^0.4.14",
     "eslint": "^9",
-    "eslint-config-next": "16.4.2",
+    "eslint-config-next": "16.4.6",
     "rimraf": "^6.1.3",
     "ts-node": "^10.9.2",
     "typescript": "^5"
