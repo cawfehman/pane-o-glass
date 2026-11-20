@@ -379,7 +379,7 @@ export default function ApiKeysPage() {
                     <span>How to Use with Graylog, Python, or cURL</span>
                 </div>
                 <p className="text-xs text-slate-300 leading-relaxed font-sans">
-                    Call <code className="text-indigo-300 font-mono">/api/v1/shun-lookup</code> passing the credential in the <code className="text-indigo-300 font-mono">X-API-Key</code> or <code className="text-indigo-300 font-mono">Authorization: Bearer</code> header:
+                    Call <code className="text-indigo-300 font-mono">/api/v1/ip-metadata</code> (or <code className="text-indigo-300 font-mono">/api/v1/ip-intel</code>) passing the credential in the <code className="text-indigo-300 font-mono">X-API-Key</code> or <code className="text-indigo-300 font-mono">Authorization: Bearer</code> header:
                 </p>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs font-mono">
@@ -387,7 +387,7 @@ export default function ApiKeysPage() {
                         <div className="text-[11px] text-slate-400 font-bold uppercase">1. Single IP Lookup (GET)</div>
                         <pre className="text-slate-300 text-[11px] overflow-x-auto whitespace-pre-wrap select-all">
 {`curl -H "X-API-Key: YOUR_KEY" \\
-  "https://your-server/api/v1/shun-lookup?ip=203.0.113.5"`}
+  "https://infosectools.cooperhealth.edu/api/v1/ip-metadata?ip=203.0.113.5"`}
                         </pre>
                     </div>
 
@@ -397,7 +397,7 @@ export default function ApiKeysPage() {
 {`curl -X POST -H "X-API-Key: YOUR_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{"ips": ["203.0.113.5", "198.51.100.2"]}' \\
-  "https://your-server/api/v1/shun-lookup"`}
+  "https://infosectools.cooperhealth.edu/api/v1/ip-metadata"`}
                         </pre>
                     </div>
                 </div>
