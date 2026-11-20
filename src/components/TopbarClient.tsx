@@ -31,6 +31,7 @@ export default function TopbarClient({ userName }: { userName: string }) {
         if (path.startsWith("/users/health")) return "Admin / System Health";
         if (path.startsWith("/users")) return "Admin / Local Accounts";
         if (path.startsWith("/admin/feedback")) return "Admin / User Feedback";
+        if (path.startsWith("/admin/api-keys")) return "Admin / API Credentials";
         if (path.startsWith("/admin/vectra")) return "Admin / Vectra Time Machine";
         if (path.startsWith("/profile")) return "Settings / My Profile";
         return "InfoSec Tools";

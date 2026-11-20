@@ -27,6 +27,7 @@ model User {
   firewallQueries FirewallQueryHistory[]
   feedback       Feedback[]
   toolOverrides  UserToolOverride[]
+  apiKeys        ApiKey[]
 }
 
 model FirewallQueryHistory {
@@ -822,5 +823,37 @@ model CitrixLoginAnomaly {
   @@index([severity])
   @@index([currentDecision])
 }
+
+enum ApiKeyType {
+  SERVICE
+  PERSONAL
+}
+
+model ApiKey {
+  id          String     @id @default(cuid())
+  name        String
+  type        ApiKeyType @default(SERVICE)
+  
+  keyHash     String     @unique
+  keyPrefix   String     // e.g. "pog_live_a1b2..."
+  
+  scopes      String[]   // e.g. ["shun:read"]
+  allowedIps  String?    // Optional CIDR IP ACL
+  
+  userId      String?
+  user        User?      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdBy   String
+  
+  isActive    Boolean    @default(true)
+  lastUsedAt  DateTime?
+  expiresAt   DateTime?
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  @@index([keyHash])
+  @@index([userId])
+  @@index([isActive])
+}
+
 
 

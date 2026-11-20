@@ -375,6 +375,15 @@ export default function SidebarClient({ role, permissions = [] }: { role: string
                                 <Archive size={20} className="shrink-0 text-red-400" />
                                 <span className="nav-text">Incident Archive</span>
                             </Link>
+                            <Link 
+                                href="/admin/api-keys" 
+                                onClick={closeMobile} 
+                                title={isCollapsed ? "API Credentials" : undefined}
+                                className={`nav-link ${pathname === "/admin/api-keys" ? "active" : ""}`}
+                            >
+                                <Key size={20} className="shrink-0 text-indigo-400" />
+                                <span className="nav-text">API Credentials</span>
+                            </Link>
                         </>
                     )}
                 </nav>
