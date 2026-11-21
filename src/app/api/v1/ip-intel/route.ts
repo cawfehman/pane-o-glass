@@ -63,8 +63,8 @@ async function authenticateCaller(req: Request): Promise<{
     // 1. Check if caller provided an API Key header
     const hasApiKeyHeader = Boolean(req.headers.get("x-api-key") || req.headers.get("authorization"));
     if (hasApiKeyHeader) {
-        // Accept either "shun:read" or "intel:read" or generic read
-        const keyResult = await validateApiKeyRequest(req, "shun:read");
+        // Accept either "intel:read" or legacy "shun:read"
+        const keyResult = await validateApiKeyRequest(req, "intel:read");
         if (!keyResult.authorized) {
             return {
                 authorized: false,

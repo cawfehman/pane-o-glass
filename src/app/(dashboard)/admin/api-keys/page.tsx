@@ -46,7 +46,7 @@ export default function ApiKeysPage() {
 
     const [formName, setFormName] = useState("");
     const [formType, setFormType] = useState<"SERVICE" | "PERSONAL">("SERVICE");
-    const [formScopes, setFormScopes] = useState<string[]>(["shun:read"]);
+    const [formScopes, setFormScopes] = useState<string[]>(["intel:read"]);
     const [formAllowedIps, setFormAllowedIps] = useState("");
     const [formExpiresInDays, setFormExpiresInDays] = useState<number>(0);
 
@@ -127,7 +127,7 @@ export default function ApiKeysPage() {
             setNewlyCreatedKey(data.key);
             setShowCreateModal(false);
             setFormName("");
-            setFormScopes(["shun:read"]);
+            setFormScopes(["intel:read"]);
             setFormAllowedIps("");
             setFormExpiresInDays(0);
             fetchKeys();
@@ -431,7 +431,7 @@ export default function ApiKeysPage() {
                                     type="text"
                                     value={formName}
                                     onChange={(e) => setFormName(e.target.value)}
-                                    placeholder="e.g. Graylog Prod - Shun Lookup"
+                                    placeholder="e.g. Graylog Prod - IP Intel Lookup"
                                     className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 font-sans"
                                     required
                                 />

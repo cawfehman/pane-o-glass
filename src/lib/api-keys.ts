@@ -4,39 +4,39 @@ import { isIpInSubnet } from "@/lib/ip-subnet";
 
 export const API_SCOPES = [
     {
-        id: "shun:read",
-        label: "Shun Database Read",
-        description: "Lookup IP shun status, perimeter coverage, and threat enrichment"
+        id: "intel:read",
+        label: "IP Intelligence (Read)",
+        description: "Query geolocation, BGP routing/ASN, reputation, and security observations for single or batch IPs"
     },
     {
-        id: "shun:write",
-        label: "Shun Database Manage",
-        description: "Trigger new shuns or unshun operations across perimeter firewalls"
+        id: "intel:track",
+        label: "IP Tracking & Ingestion (Write)",
+        description: "Submit external IPs to start lifecycle tracking and data enrichment. Does NOT push firewall blocks/shuns."
     },
     {
         id: "guardian:read",
-        label: "Citrix Guardian Read",
-        description: "Query Citrix Guardian watchlist, strike counts, and permanent blacklists"
+        label: "Citrix Guardian (Read)",
+        description: "Query Citrix Guardian intelligence—including watchlists, strike counts, and persistent blacklists"
     },
     {
         id: "vpn:read",
-        label: "VPN Telemetry Read",
-        description: "Query active AnyConnect VPN sessions and S2S tunnel diagnostics"
+        label: "VPN Telemetry (Read)",
+        description: "Query Cisco AnyConnect active sessions, geographic distributions, and tunnel telemetry"
     },
     {
         id: "ise:read",
-        label: "Cisco ISE Read",
-        description: "Query Cisco ISE authentication records, live sessions, and TACACS+ logs"
+        label: "Cisco ISE (Read)",
+        description: "Query Cisco ISE RADIUS/TACACS+ authentications, network sessions, and endpoint profiling"
     },
     {
         id: "crawler:read",
-        label: "NetCrawl Topology Read",
-        description: "Query Cisco IOS network topology, VLANs, and hop-by-hop path traces"
+        label: "NetCrawl Topology (Read)",
+        description: "Query network device topology, switch/router hops, and VLAN port maps"
     },
     {
         id: "audit:read",
-        label: "Audit Logs Read",
-        description: "Query immutable audit logs and security operation reports"
+        label: "Audit Logs (Read)",
+        description: "Query immutable audit logs and security operational reports"
     }
 ] as const;
 
@@ -212,7 +212,14 @@ export async function validateApiKeyRequest(
 
     // 6. Check Scope / Permission
     if (requiredScope) {
-        const hasScope = keyRecord.scopes.includes(requiredScope) || keyRecord.scopes.includes("*");
+        // Support backward compatibility (e.g. legacy shun:read satisfies intel:read)
+        const compatibleScopes = [requiredScope, "*"];
+        if (requiredScope === "intel:read") compatibleScopes.push("shun:read");
+        if (requiredScope === "shun:read") compatibleScopes.push("intel:read");
+        if (requiredScope === "intel:track") compatibleScopes.push("intel:write", "shun:write");
+        if (requiredScope === "shun:write") compatibleScopes.push("intel:track", "intel:write");
+
+        const hasScope = keyRecord.scopes.some(s => compatibleScopes.includes(s));
         if (!hasScope) {
             return {
                 authorized: false,
