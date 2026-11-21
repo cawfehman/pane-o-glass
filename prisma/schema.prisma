@@ -172,6 +172,27 @@ model IpLookupCache {
   updatedAt   DateTime @updatedAt
 }
 
+model IpMetadataHistory {
+  id          String   @id @default(cuid())
+  ip          String
+  asn         String?
+  asnName     String?
+  asnRoute    String?
+  asnDomain   String?
+  org         String?
+  countryCode String?
+  country     String?
+  city        String?
+  subdivision String?
+  rawJson     String?  // Serialized raw JSON payload at time of observation
+  validFrom   DateTime // When this identity was first recorded/cached
+  validTo     DateTime @default(now()) // When this identity was superseded by a change
+  createdAt   DateTime @default(now())
+
+  @@index([ip])
+  @@index([validFrom, validTo])
+}
+
 model GuardianEvent {
   id              String   @id @default(uuid())
   ip              String

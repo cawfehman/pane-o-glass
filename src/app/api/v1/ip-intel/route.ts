@@ -47,6 +47,20 @@ export interface IpIntelResponseItem {
         lastSeen: string | null;
         daysTracked: number;
         lastEnriched: string | null;
+        metadataChanges: number;
+        history: {
+            validFrom: string;
+            validTo: string;
+            asn: string | null;
+            asnName: string | null;
+            asnRoute: string | null;
+            asnDomain: string | null;
+            org: string | null;
+            country: string | null;
+            countryCode: string | null;
+            city: string | null;
+            subdivision: string | null;
+        }[];
     };
 }
 
@@ -110,7 +124,7 @@ export async function resolveFullIpIntel(targetIps: string[]): Promise<Record<st
     if (cleanIps.length === 0) return results;
 
     // Parallel fetch across databases & caches
-    const [shunRecords, cacheRecords, guardianHits, cveHits, vpnHits] = await Promise.all([
+    const [shunRecords, cacheRecords, guardianHits, cveHits, vpnHits, historyRecords] = await Promise.all([
         prisma.shunDatabaseIp.findMany({
             where: { ip: { in: cleanIps } },
             include: { firewallStats: true }
@@ -130,6 +144,10 @@ export async function resolveFullIpIntel(targetIps: string[]): Promise<Record<st
             where: { sourceIp: { in: cleanIps } },
             select: { sourceIp: true },
             distinct: ["sourceIp"]
+        }),
+        prisma.ipMetadataHistory.findMany({
+            where: { ip: { in: cleanIps } },
+            orderBy: { validTo: "desc" }
         })
     ]);
 
@@ -138,6 +156,12 @@ export async function resolveFullIpIntel(targetIps: string[]): Promise<Record<st
     const guardianSet = new Set(guardianHits.map(h => h.ip));
     const cveSet = new Set(cveHits.map(h => h.ip));
     const vpnSet = new Set(vpnHits.map(h => h.sourceIp));
+    const historyMap = new Map<string, typeof historyRecords>();
+    for (const h of historyRecords) {
+        const arr = historyMap.get(h.ip) || [];
+        arr.push(h);
+        historyMap.set(h.ip, arr);
+    }
 
     for (const ip of cleanIps) {
         const isPriv = isPrivateIp(ip);
@@ -233,7 +257,21 @@ export async function resolveFullIpIntel(targetIps: string[]): Promise<Record<st
                 firstSeen: earliestFirstSeen ? earliestFirstSeen.toISOString() : null,
                 lastSeen: latestLastSeen ? latestLastSeen.toISOString() : null,
                 daysTracked: maxDaysShunned,
-                lastEnriched: shunRecord?.enrichedAt ? shunRecord.enrichedAt.toISOString() : (cacheRecord ? cacheRecord.updatedAt.toISOString() : null)
+                lastEnriched: shunRecord?.enrichedAt ? shunRecord.enrichedAt.toISOString() : (cacheRecord ? cacheRecord.updatedAt.toISOString() : null),
+                metadataChanges: (historyMap.get(ip) || []).length,
+                history: (historyMap.get(ip) || []).map(h => ({
+                    validFrom: h.validFrom.toISOString(),
+                    validTo: h.validTo.toISOString(),
+                    asn: h.asn,
+                    asnName: h.asnName,
+                    asnRoute: h.asnRoute,
+                    asnDomain: h.asnDomain,
+                    org: h.org,
+                    country: h.country,
+                    countryCode: h.countryCode,
+                    city: h.city,
+                    subdivision: h.subdivision
+                }))
             }
         };
     }

@@ -132,6 +132,106 @@ export function isStandardUsIsp(asnName: string | null | undefined): boolean {
 }
 
 /**
+ * Saves or updates an IP in IpLookupCache.
+ * Detects if critical metadata (ASN, Org, Country, City) has changed from existing cached data.
+ * If changed, automatically archives the prior state to IpMetadataHistory before updating!
+ */
+export async function saveIpLookupWithHistory(
+    ip: string,
+    newData: {
+        latitude?: number | null;
+        longitude?: number | null;
+        countryCode?: string | null;
+        country?: string | null;
+        city?: string | null;
+        subdivision?: string | null;
+        rawJson: string;
+    }
+): Promise<void> {
+    const cleanIp = ip.trim();
+    if (!cleanIp) return;
+
+    try {
+        const existing = await prisma.ipLookupCache.findUnique({
+            where: { ip: cleanIp }
+        });
+
+        if (existing && existing.rawJson) {
+            // Check if material change occurred
+            let oldParsed: any = {};
+            let newParsed: any = {};
+            try { oldParsed = JSON.parse(existing.rawJson); } catch {}
+            try { newParsed = JSON.parse(newData.rawJson); } catch {}
+
+            const oldAsn = oldParsed.asn?.asn || (typeof oldParsed.asn === "string" ? oldParsed.asn : null) || null;
+            const newAsn = newParsed.asn?.asn || (typeof newParsed.asn === "string" ? newParsed.asn : null) || null;
+
+            const oldOrg = oldParsed.org || oldParsed.company?.name || oldParsed.asn?.name || null;
+            const newOrg = newParsed.org || newParsed.company?.name || newParsed.asn?.name || null;
+
+            const oldCountry = oldParsed.country_code || existing.countryCode || null;
+            const newCountry = newParsed.country_code || newData.countryCode || null;
+
+            const oldCity = oldParsed.city || existing.city || null;
+            const newCity = newParsed.city || newData.city || null;
+
+            const hasChanged = 
+                (oldAsn && newAsn && String(oldAsn) !== String(newAsn)) ||
+                (oldOrg && newOrg && oldOrg.trim().toLowerCase() !== newOrg.trim().toLowerCase()) ||
+                (oldCountry && newCountry && oldCountry !== newCountry) ||
+                (oldCity && newCity && oldCity.trim().toLowerCase() !== newCity.trim().toLowerCase());
+
+            if (hasChanged && oldCountry !== "UNRESOLVED" && oldCountry !== "UNKNOWN" && !oldParsed.unresolved && !newParsed.unresolved) {
+                // Archive the superseded identity to IpMetadataHistory
+                await prisma.ipMetadataHistory.create({
+                    data: {
+                        ip: cleanIp,
+                        asn: oldAsn ? String(oldAsn) : null,
+                        asnName: oldParsed.asn?.name || oldParsed.company?.name || oldOrg,
+                        asnRoute: oldParsed.asn?.route || null,
+                        asnDomain: oldParsed.asn?.domain || oldParsed.company?.domain || null,
+                        org: oldOrg,
+                        countryCode: oldCountry,
+                        country: oldParsed.country || null,
+                        city: oldCity,
+                        subdivision: existing.subdivision || oldParsed.subdivision || null,
+                        rawJson: existing.rawJson,
+                        validFrom: existing.updatedAt || existing.createdAt,
+                        validTo: new Date()
+                    }
+                }).catch(err => {
+                    console.error(`[iplocate] Failed to archive history for ${cleanIp}:`, err);
+                });
+            }
+        }
+
+        // Upsert current record in cache
+        await prisma.ipLookupCache.upsert({
+            where: { ip: cleanIp },
+            create: {
+                ip: cleanIp,
+                latitude: newData.latitude ?? null,
+                longitude: newData.longitude ?? null,
+                countryCode: newData.countryCode ?? null,
+                city: newData.city ?? null,
+                subdivision: newData.subdivision ?? null,
+                rawJson: newData.rawJson
+            },
+            update: {
+                latitude: newData.latitude ?? null,
+                longitude: newData.longitude ?? null,
+                countryCode: newData.countryCode ?? null,
+                city: newData.city ?? null,
+                subdivision: newData.subdivision ?? null,
+                rawJson: newData.rawJson
+            }
+        });
+    } catch (err: any) {
+        console.error(`[iplocate] Failed to save cache for ${cleanIp}:`, err.message);
+    }
+}
+
+/**
  * Increment (or decrement if .255) an IPv4 address by 1 within its subnet
  */
 export function getNeighborIp(ip: string): string | null {
@@ -225,26 +325,14 @@ export async function fillMissingFieldsFromNeighbor(
                     neighborData = res.data;
 
                     // Cache the neighbor IP so it's directly available for future lookups
-                    await prisma.ipLookupCache.upsert({
-                        where: { ip: neighborIp },
-                        create: {
-                            ip: neighborIp,
-                            latitude: neighborData.latitude || null,
-                            longitude: neighborData.longitude || null,
-                            countryCode: neighborData.country_code || null,
-                            city: neighborData.city || null,
-                            subdivision: neighborData.subdivision || null,
-                            rawJson: JSON.stringify(neighborData)
-                        },
-                        update: {
-                            latitude: neighborData.latitude || null,
-                            longitude: neighborData.longitude || null,
-                            countryCode: neighborData.country_code || null,
-                            city: neighborData.city || null,
-                            subdivision: neighborData.subdivision || null,
-                            rawJson: JSON.stringify(neighborData)
-                        }
-                    }).catch(() => {});
+                    await saveIpLookupWithHistory(neighborIp, {
+                        latitude: neighborData.latitude || null,
+                        longitude: neighborData.longitude || null,
+                        countryCode: neighborData.country_code || null,
+                        city: neighborData.city || null,
+                        subdivision: neighborData.subdivision || null,
+                        rawJson: JSON.stringify(neighborData)
+                    });
                 }
             } catch {}
         }
@@ -267,26 +355,14 @@ export async function fillMissingFieldsFromNeighbor(
             inheritedFrom: neighborData.ip || "subnet-neighbor"
         };
 
-        await prisma.ipLookupCache.upsert({
-            where: { ip: cleanIp },
-            create: {
-                ip: cleanIp,
-                latitude: merged.latitude,
-                longitude: merged.longitude,
-                countryCode: merged.country_code,
-                city: merged.city,
-                subdivision: merged.subdivision,
-                rawJson: JSON.stringify(merged)
-            },
-            update: {
-                latitude: merged.latitude,
-                longitude: merged.longitude,
-                countryCode: merged.country_code,
-                city: merged.city,
-                subdivision: merged.subdivision,
-                rawJson: JSON.stringify(merged)
-            }
-        }).catch(() => {});
+        await saveIpLookupWithHistory(cleanIp, {
+            latitude: merged.latitude,
+            longitude: merged.longitude,
+            countryCode: merged.country_code,
+            city: merged.city,
+            subdivision: merged.subdivision,
+            rawJson: JSON.stringify(merged)
+        });
 
         return merged;
     }
@@ -414,25 +490,13 @@ export async function enrichIpsBatch(ips: string[], isAdHoc: boolean = false): P
                         await Promise.all(chunk.map(async (ip) => {
                             const info = data[ip];
                             if (info && info.country_code) {
-                                await prisma.ipLookupCache.upsert({
-                                    where: { ip },
-                                    create: {
-                                        ip,
-                                        latitude: info.latitude,
-                                        longitude: info.longitude,
-                                        countryCode: info.country_code,
-                                        city: info.city,
-                                        subdivision: info.subdivision,
-                                        rawJson: JSON.stringify(info)
-                                    },
-                                    update: {
-                                        latitude: info.latitude,
-                                        longitude: info.longitude,
-                                        countryCode: info.country_code,
-                                        city: info.city,
-                                        subdivision: info.subdivision,
-                                        rawJson: JSON.stringify(info)
-                                    }
+                                await saveIpLookupWithHistory(ip, {
+                                    latitude: info.latitude,
+                                    longitude: info.longitude,
+                                    countryCode: info.country_code,
+                                    city: info.city,
+                                    subdivision: info.subdivision,
+                                    rawJson: JSON.stringify(info)
                                 });
                                 results[ip] = info;
                             } else {
@@ -488,25 +552,13 @@ export async function enrichIpsBatch(ips: string[], isAdHoc: boolean = false): P
                                     updateCreditInfoFromHeaders(singleRes.headers).catch(() => {});
                                     const info = await singleRes.json();
                                     if (info && info.country_code) {
-                                        await prisma.ipLookupCache.upsert({
-                                            where: { ip },
-                                            create: {
-                                                ip,
-                                                latitude: info.latitude,
-                                                longitude: info.longitude,
-                                                countryCode: info.country_code,
-                                                city: info.city,
-                                                subdivision: info.subdivision,
-                                                rawJson: JSON.stringify(info)
-                                            },
-                                            update: {
-                                                latitude: info.latitude,
-                                                longitude: info.longitude,
-                                                countryCode: info.country_code,
-                                                city: info.city,
-                                                subdivision: info.subdivision,
-                                                rawJson: JSON.stringify(info)
-                                            }
+                                        await saveIpLookupWithHistory(ip, {
+                                            latitude: info.latitude,
+                                            longitude: info.longitude,
+                                            countryCode: info.country_code,
+                                            city: info.city,
+                                            subdivision: info.subdivision,
+                                            rawJson: JSON.stringify(info)
                                         });
                                         results[ip] = info;
                                     } else {
@@ -638,26 +690,14 @@ export async function getIpEnrichment(ip: string): Promise<IpEnrichmentResult | 
             const asName = data.company?.name || data.asn?.name || data.as_name || data.org || null;
             const asDomain = data.company?.domain || data.asn?.domain || data.as_domain || null;
 
-            await prisma.ipLookupCache.upsert({
-                where: { ip: cleanIp },
-                create: {
-                    ip: cleanIp,
-                    latitude: data.latitude || null,
-                    longitude: data.longitude || null,
-                    countryCode,
-                    city,
-                    subdivision: data.subdivision || null,
-                    rawJson: JSON.stringify(data)
-                },
-                update: {
-                    latitude: data.latitude || null,
-                    longitude: data.longitude || null,
-                    countryCode,
-                    city,
-                    subdivision: data.subdivision || null,
-                    rawJson: JSON.stringify(data)
-                }
-            }).catch(() => {});
+            await saveIpLookupWithHistory(cleanIp, {
+                latitude: data.latitude || null,
+                longitude: data.longitude || null,
+                countryCode,
+                city,
+                subdivision: data.subdivision || null,
+                rawJson: JSON.stringify(data)
+            });
 
             return {
                 ip: cleanIp,
