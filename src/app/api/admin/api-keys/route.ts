@@ -67,7 +67,7 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: "A valid name/label for the API Key is required." }, { status: 400 });
         }
 
-        const validScopes = Array.isArray(scopes) && scopes.length > 0 ? scopes : ["shun:read"];
+        const validScopes = Array.isArray(scopes) && scopes.length > 0 ? scopes : ["intel:read"];
         const keyType = type === "PERSONAL" ? "PERSONAL" : "SERVICE";
 
         const creator = (session?.user?.email || session?.user?.name || "Administrator") as string;

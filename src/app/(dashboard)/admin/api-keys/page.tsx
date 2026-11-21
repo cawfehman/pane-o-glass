@@ -103,6 +103,11 @@ export default function ApiKeysPage() {
             return;
         }
 
+        if (formScopes.length === 0) {
+            setCreateError("Please select at least one permission scope for this key.");
+            return;
+        }
+
         setCreateLoading(true);
         setCreateError(null);
 
@@ -168,6 +173,14 @@ export default function ApiKeysPage() {
         setFormScopes(prev => 
             prev.includes(scopeId) ? prev.filter(s => s !== scopeId) : [...prev, scopeId]
         );
+    };
+
+    const handleSelectAllScopes = () => {
+        setFormScopes(scopes.map(s => s.id));
+    };
+
+    const handleDeselectAllScopes = () => {
+        setFormScopes([]);
     };
 
     return (
@@ -483,28 +496,52 @@ export default function ApiKeysPage() {
 
                             {/* Scopes Selection */}
                             <div>
-                                <label className="block text-xs font-semibold text-slate-200 mb-1">
-                                    Granted Scopes (Principle of Least Privilege)
-                                </label>
-                                <div className="space-y-1.5 max-h-40 overflow-y-auto p-2 rounded-lg bg-slate-950 border border-slate-800">
+                                <div className="flex items-center justify-between mb-1.5">
+                                    <label className="block text-xs font-semibold text-slate-200">
+                                        Granted Scopes ({formScopes.length} of {scopes.length} selected)
+                                    </label>
+                                    <div className="flex items-center gap-2 text-[11px]">
+                                        <button
+                                            type="button"
+                                            onClick={handleSelectAllScopes}
+                                            className="text-indigo-400 hover:text-indigo-300 font-medium transition-colors cursor-pointer"
+                                        >
+                                            Select All
+                                        </button>
+                                        <span className="text-slate-600">|</span>
+                                        <button
+                                            type="button"
+                                            onClick={handleDeselectAllScopes}
+                                            className="text-slate-400 hover:text-slate-200 font-medium transition-colors cursor-pointer"
+                                        >
+                                            Deselect All
+                                        </button>
+                                    </div>
+                                </div>
+                                <div className="space-y-1.5 max-h-48 overflow-y-auto p-2 rounded-lg bg-slate-950 border border-slate-800">
                                     {scopes.map(s => {
                                         const isChecked = formScopes.includes(s.id);
                                         return (
                                             <label
                                                 key={s.id}
-                                                className={`flex items-start gap-2.5 p-2 rounded-md transition-colors cursor-pointer select-none ${
-                                                    isChecked ? "bg-indigo-950/40 text-slate-100" : "hover:bg-slate-900 text-slate-400"
+                                                className={`flex items-start gap-2.5 p-2 rounded-md transition-colors cursor-pointer select-none border ${
+                                                    isChecked 
+                                                        ? "bg-indigo-950/40 text-slate-100 border-indigo-500/30" 
+                                                        : "hover:bg-slate-900 text-slate-400 border-transparent"
                                                 }`}
                                             >
                                                 <input
                                                     type="checkbox"
                                                     checked={isChecked}
                                                     onChange={() => toggleScope(s.id)}
-                                                    className="mt-0.5 rounded text-indigo-600 focus:ring-indigo-500 bg-slate-800 border-slate-700"
+                                                    className="mt-0.5 rounded text-indigo-600 focus:ring-indigo-500 bg-slate-800 border-slate-700 cursor-pointer"
                                                 />
-                                                <div>
-                                                    <div className="text-xs font-bold font-mono">{s.id}</div>
-                                                    <div className="text-[10px] text-slate-400 font-sans">{s.description}</div>
+                                                <div className="flex-1 min-w-0">
+                                                    <div className="text-xs font-bold font-mono flex items-center justify-between">
+                                                        <span className={isChecked ? "text-indigo-300" : "text-slate-300"}>{s.id}</span>
+                                                        <span className="text-[10px] font-sans font-medium text-slate-400">{s.label}</span>
+                                                    </div>
+                                                    <div className="text-[10px] text-slate-400 font-sans mt-0.5 leading-snug">{s.description}</div>
                                                 </div>
                                             </label>
                                         );
