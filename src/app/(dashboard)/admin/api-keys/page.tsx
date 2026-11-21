@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { 
     Key, Shield, Plus, Trash2, Check, Copy, RefreshCw, 
     AlertTriangle, Server, User, Clock, CheckCircle2, 
-    X, ExternalLink, Network, FileCode2, ChevronRight, Ban, Power
+    X, ExternalLink, Network, FileCode2, ChevronRight, Ban, Power, Edit3
 } from "lucide-react";
 
 interface ApiKeyRecord {
@@ -61,6 +61,14 @@ export default function ApiKeysPage() {
     // Revoke Confirmation State
     const [keyToRevoke, setKeyToRevoke] = useState<ApiKeyRecord | null>(null);
     const [revokeLoading, setRevokeLoading] = useState(false);
+
+    // Edit Modal State
+    const [keyToEdit, setKeyToEdit] = useState<ApiKeyRecord | null>(null);
+    const [editName, setEditName] = useState("");
+    const [editAllowedIps, setEditAllowedIps] = useState("");
+    const [editScopes, setEditScopes] = useState<string[]>([]);
+    const [editLoading, setEditLoading] = useState(false);
+    const [editError, setEditError] = useState<string | null>(null);
 
     const fetchKeys = useCallback(async () => {
         setLoading(true);
@@ -207,6 +215,65 @@ export default function ApiKeysPage() {
 
     const handleDeselectAllScopes = () => {
         setFormScopes([]);
+    };
+
+    const handleOpenEdit = (key: ApiKeyRecord) => {
+        setKeyToEdit(key);
+        setEditName(key.name);
+        setEditAllowedIps(key.allowedIps || "");
+        setEditScopes([...key.scopes]);
+        setEditError(null);
+    };
+
+    const toggleEditScope = (scopeId: string) => {
+        setEditScopes(prev =>
+            prev.includes(scopeId) ? prev.filter(s => s !== scopeId) : [...prev, scopeId]
+        );
+    };
+
+    const handleSelectAllEditScopes = () => {
+        setEditScopes(scopes.map(s => s.id));
+    };
+
+    const handleDeselectAllEditScopes = () => {
+        setEditScopes([]);
+    };
+
+    const handleSaveEdit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!keyToEdit) return;
+        if (!editName.trim()) {
+            setEditError("Please enter a name for this key.");
+            return;
+        }
+        if (editScopes.length === 0) {
+            setEditError("Please select at least one permission scope for this key.");
+            return;
+        }
+
+        setEditLoading(true);
+        setEditError(null);
+        try {
+            const res = await fetch(`/api/admin/api-keys/${keyToEdit.id}`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    name: editName.trim(),
+                    allowedIps: editAllowedIps.trim() || null,
+                    scopes: editScopes
+                })
+            });
+            const data = await res.json();
+            if (!res.ok) {
+                throw new Error(data.error || "Failed to update API key.");
+            }
+            setKeys(prev => prev.map(k => k.id === keyToEdit.id ? { ...k, ...data.key } : k));
+            setKeyToEdit(null);
+        } catch (err: any) {
+            setEditError(err.message || "Failed to update API key.");
+        } finally {
+            setEditLoading(false);
+        }
     };
 
     return (
@@ -440,14 +507,24 @@ export default function ApiKeysPage() {
 
                                         {/* Actions */}
                                         <td className="px-5 py-3.5 text-right font-sans">
-                                            <button
-                                                type="button"
-                                                onClick={() => setKeyToRevoke(k)}
-                                                className="p-1.5 rounded-lg hover:bg-red-500/20 text-slate-400 hover:text-red-400 transition-colors"
-                                                title="Revoke and permanently delete key"
-                                            >
-                                                <Trash2 className="w-3.5 h-3.5" />
-                                            </button>
+                                            <div className="flex items-center justify-end gap-1">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleOpenEdit(k)}
+                                                    className="p-1.5 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-indigo-400 transition-colors cursor-pointer"
+                                                    title="Edit allowed source IPs, scopes, or label"
+                                                >
+                                                    <Edit3 className="w-3.5 h-3.5" />
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setKeyToRevoke(k)}
+                                                    className="p-1.5 rounded-lg hover:bg-red-500/20 text-slate-400 hover:text-red-400 transition-colors cursor-pointer"
+                                                    title="Revoke and permanently delete key"
+                                                >
+                                                    <Trash2 className="w-3.5 h-3.5" />
+                                                </button>
+                                            </div>
                                         </td>
                                     </tr>
                                 ))
@@ -724,6 +801,149 @@ export default function ApiKeysPage() {
                         >
                             I Have Safely Saved My Key
                         </button>
+                    </div>
+                </div>
+            )}
+
+            {/* Modal: Edit Key */}
+            {keyToEdit && (
+                <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+                    <div className="bg-slate-900 border border-indigo-500/30 rounded-2xl max-w-xl w-full shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+                        <div className="px-6 py-4 bg-slate-950 border-b border-slate-800 flex items-center justify-between">
+                            <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                                <Edit3 className="w-4 h-4 text-indigo-400" />
+                                Edit API Key: {keyToEdit.name}
+                            </h3>
+                            <button
+                                type="button"
+                                onClick={() => setKeyToEdit(null)}
+                                className="p-1 rounded-lg text-slate-400 hover:text-white cursor-pointer"
+                            >
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
+
+                        <form onSubmit={handleSaveEdit} className="p-6 overflow-y-auto space-y-4">
+                            {/* Key Prefix (Read only) */}
+                            <div>
+                                <label className="block text-xs font-semibold text-slate-200 mb-1">
+                                    Key Prefix (Identifier)
+                                </label>
+                                <div className="px-3 py-2 rounded-lg bg-slate-950 border border-slate-800 font-mono text-xs text-slate-400">
+                                    {keyToEdit.keyPrefix} ({keyToEdit.type} Credential)
+                                </div>
+                            </div>
+
+                            {/* Key Name */}
+                            <div>
+                                <label className="block text-xs font-semibold text-slate-200 mb-1">
+                                    Key Name / Application Label *
+                                </label>
+                                <input
+                                    type="text"
+                                    value={editName}
+                                    onChange={(e) => setEditName(e.target.value)}
+                                    className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 font-sans"
+                                    required
+                                />
+                            </div>
+
+                            {/* Source IP ACL */}
+                            <div>
+                                <label className="block text-xs font-semibold text-slate-200 mb-1">
+                                    Allowed Source IPs / Subnets (ACL)
+                                </label>
+                                <input
+                                    type="text"
+                                    value={editAllowedIps}
+                                    onChange={(e) => setEditAllowedIps(e.target.value)}
+                                    placeholder="e.g. 172.18.161.50, 10.20.30.0/24 (leave blank for any source IP)"
+                                    className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 font-mono"
+                                />
+                                <p className="text-[10px] text-slate-400 mt-1 font-sans">
+                                    Comma-separated IPs or CIDR blocks. Leave blank to allow connections from any authorized source IP.
+                                </p>
+                            </div>
+
+                            {/* Scopes Selection */}
+                            <div>
+                                <div className="flex items-center justify-between mb-1.5">
+                                    <label className="block text-xs font-semibold text-slate-200">
+                                        Granted Scopes ({editScopes.length} of {scopes.length} selected)
+                                    </label>
+                                    <div className="flex items-center gap-2 text-[11px]">
+                                        <button
+                                            type="button"
+                                            onClick={handleSelectAllEditScopes}
+                                            className="text-indigo-400 hover:text-indigo-300 font-medium transition-colors cursor-pointer"
+                                        >
+                                            Select All
+                                        </button>
+                                        <span className="text-slate-600">|</span>
+                                        <button
+                                            type="button"
+                                            onClick={handleDeselectAllEditScopes}
+                                            className="text-slate-400 hover:text-slate-200 font-medium transition-colors cursor-pointer"
+                                        >
+                                            Deselect All
+                                        </button>
+                                    </div>
+                                </div>
+                                <div className="space-y-1.5 max-h-48 overflow-y-auto p-2 rounded-lg bg-slate-950 border border-slate-800">
+                                    {scopes.map(s => {
+                                        const isChecked = editScopes.includes(s.id);
+                                        return (
+                                            <label
+                                                key={s.id}
+                                                className={`flex items-start gap-2.5 p-2 rounded-md transition-colors cursor-pointer select-none border ${
+                                                    isChecked 
+                                                        ? "bg-indigo-950/40 text-slate-100 border-indigo-500/30" 
+                                                        : "hover:bg-slate-900 text-slate-400 border-transparent"
+                                                }`}
+                                            >
+                                                <input
+                                                    type="checkbox"
+                                                    checked={isChecked}
+                                                    onChange={() => toggleEditScope(s.id)}
+                                                    className="mt-0.5 rounded text-indigo-600 focus:ring-indigo-500 bg-slate-800 border-slate-700 cursor-pointer"
+                                                />
+                                                <div className="flex-1 min-w-0">
+                                                    <div className="text-xs font-bold font-mono flex items-center justify-between">
+                                                        <span className={isChecked ? "text-indigo-300" : "text-slate-300"}>{s.id}</span>
+                                                        <span className="text-[10px] font-sans font-medium text-slate-400">{s.label}</span>
+                                                    </div>
+                                                    <div className="text-[10px] text-slate-400 font-sans mt-0.5 leading-snug">{s.description}</div>
+                                                </div>
+                                            </label>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+
+                            {editError && (
+                                <div className="p-3 rounded-lg bg-red-500/15 border border-red-500/30 text-xs text-red-300 font-sans">
+                                    {editError}
+                                </div>
+                            )}
+
+                            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-800">
+                                <button
+                                    type="button"
+                                    onClick={() => setKeyToEdit(null)}
+                                    className="px-4 py-2 rounded-lg text-xs font-semibold text-slate-400 hover:text-white transition-colors cursor-pointer"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    type="submit"
+                                    disabled={editLoading}
+                                    className="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs transition-colors shadow-lg shadow-indigo-600/30 flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                                >
+                                    {editLoading ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+                                    Save Changes
+                                </button>
+                            </div>
+                        </form>
                     </div>
                 </div>
             )}
