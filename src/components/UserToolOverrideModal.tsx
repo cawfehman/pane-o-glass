@@ -61,7 +61,8 @@ const TOOL_CATEGORIES: ToolCategory[] = [
         category: "Utilities & Analytics",
         tools: [
             { id: "graylog-exporter", name: "Graylog Bulk Exporter", description: "Large-scale asynchronous Elasticsearch log export engine" },
-            { id: "vectra", name: "Vectra Time Machine", description: "Network detection and response (NDR) behavioral forensics" }
+            { id: "vectra", name: "Vectra Time Machine", description: "Network detection and response (NDR) behavioral forensics" },
+            { id: "api-keys", name: "API Key Management", description: "Issue and manage scoped personal tokens for automation scripts and pipelines" }
         ]
     }
 ];

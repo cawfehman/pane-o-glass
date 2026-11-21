@@ -38,6 +38,7 @@ export default function ApiKeysPage() {
     const [scopes, setScopes] = useState<ScopeOption[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    const [isAdminUser, setIsAdminUser] = useState<boolean>(true);
 
     // Global Master API Toggle State
     const [apiGloballyEnabled, setApiGloballyEnabledState] = useState<boolean>(true);
@@ -82,6 +83,12 @@ export default function ApiKeysPage() {
             const data = await res.json();
             setKeys(data.keys || []);
             setScopes(data.availableScopes || []);
+            if (typeof data.isAdmin === "boolean") {
+                setIsAdminUser(data.isAdmin);
+                if (!data.isAdmin) {
+                    setFormType("PERSONAL");
+                }
+            }
             if (typeof data.apiGloballyEnabled === "boolean") {
                 setApiGloballyEnabledState(data.apiGloballyEnabled);
             }
@@ -291,25 +298,27 @@ export default function ApiKeysPage() {
                 </div>
 
                 <div className="flex items-center gap-2">
-                    {/* Master Global API Toggle */}
-                    <button
-                        type="button"
-                        onClick={handleToggleGlobalApi}
-                        disabled={globalToggleLoading}
-                        title={apiGloballyEnabled ? "Click to temporarily pause all external API access globally" : "Click to resume external API access globally"}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-2 border transition-all cursor-pointer ${
-                            apiGloballyEnabled
-                                ? "bg-emerald-500/10 border-emerald-500/40 text-emerald-300 hover:bg-emerald-500/20"
-                                : "bg-amber-500/20 border-amber-500/50 text-amber-200 hover:bg-amber-500/30 shadow-md shadow-amber-500/10"
-                        }`}
-                    >
-                        {globalToggleLoading ? (
-                            <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                        ) : (
-                            <Power className="w-3.5 h-3.5" />
-                        )}
-                        <span>{apiGloballyEnabled ? "API Active" : "API Paused"}</span>
-                    </button>
+                    {/* Master Global API Toggle (Admins Only) */}
+                    {isAdminUser && (
+                        <button
+                            type="button"
+                            onClick={handleToggleGlobalApi}
+                            disabled={globalToggleLoading}
+                            title={apiGloballyEnabled ? "Click to temporarily pause all external API access globally" : "Click to resume external API access globally"}
+                            className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-2 border transition-all cursor-pointer ${
+                                apiGloballyEnabled
+                                    ? "bg-emerald-500/10 border-emerald-500/40 text-emerald-300 hover:bg-emerald-500/20"
+                                    : "bg-amber-500/20 border-amber-500/50 text-amber-200 hover:bg-amber-500/30 shadow-md shadow-amber-500/10"
+                            }`}
+                        >
+                            {globalToggleLoading ? (
+                                <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                            ) : (
+                                <Power className="w-3.5 h-3.5" />
+                            )}
+                            <span>{apiGloballyEnabled ? "API Active" : "API Paused"}</span>
+                        </button>
+                    )}
 
                     <button
                         type="button"
@@ -600,48 +609,55 @@ export default function ApiKeysPage() {
                             </div>
 
                             {/* Key Type Selector */}
-                            <div>
-                                <label className="block text-xs font-semibold text-slate-200 mb-1">
-                                    Credential Type
-                                </label>
-                                <div className="grid grid-cols-2 gap-2">
-                                    <button
-                                        type="button"
-                                        onClick={() => setFormType("SERVICE")}
-                                        className={`p-3 rounded-lg border text-left transition-all cursor-pointer ${
-                                            formType === "SERVICE"
-                                                ? "bg-indigo-600/15 border-indigo-500 text-white"
-                                                : "bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700"
-                                        }`}
-                                    >
-                                        <div className="text-xs font-bold flex items-center gap-1.5">
-                                            <Server className="w-3.5 h-3.5 text-indigo-400" />
-                                            Service Key (Machine)
-                                        </div>
-                                        <div className="text-[11px] text-slate-400 mt-1 font-sans">
-                                            For Graylog, SOAR, or servers. Permanent; survives personnel changes.
-                                        </div>
-                                    </button>
+                            {isAdminUser ? (
+                                <div>
+                                    <label className="block text-xs font-semibold text-slate-200 mb-1">
+                                        Credential Type
+                                    </label>
+                                    <div className="grid grid-cols-2 gap-2">
+                                        <button
+                                            type="button"
+                                            onClick={() => setFormType("SERVICE")}
+                                            className={`p-3 rounded-lg border text-left transition-all cursor-pointer ${
+                                                formType === "SERVICE"
+                                                    ? "bg-indigo-600/15 border-indigo-500 text-white"
+                                                    : "bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700"
+                                            }`}
+                                        >
+                                            <div className="text-xs font-bold flex items-center gap-1.5">
+                                                <Server className="w-3.5 h-3.5 text-indigo-400" />
+                                                Service Key (Machine)
+                                            </div>
+                                            <div className="text-[11px] text-slate-400 mt-1 font-sans">
+                                                For Graylog, SOAR, or servers. Permanent; survives personnel changes.
+                                            </div>
+                                        </button>
 
-                                    <button
-                                        type="button"
-                                        onClick={() => setFormType("PERSONAL")}
-                                        className={`p-3 rounded-lg border text-left transition-all cursor-pointer ${
-                                            formType === "PERSONAL"
-                                                ? "bg-amber-600/15 border-amber-500 text-white"
-                                                : "bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700"
-                                        }`}
-                                    >
-                                        <div className="text-xs font-bold flex items-center gap-1.5">
-                                            <User className="w-3.5 h-3.5 text-amber-400" />
-                                            Personal Token
-                                        </div>
-                                        <div className="text-[11px] text-slate-400 mt-1 font-sans">
-                                            For your own scripts or tools. Linked directly to your account.
-                                        </div>
-                                    </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => setFormType("PERSONAL")}
+                                            className={`p-3 rounded-lg border text-left transition-all cursor-pointer ${
+                                                formType === "PERSONAL"
+                                                    ? "bg-amber-600/15 border-amber-500 text-white"
+                                                    : "bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700"
+                                            }`}
+                                        >
+                                            <div className="text-xs font-bold flex items-center gap-1.5">
+                                                <User className="w-3.5 h-3.5 text-amber-400" />
+                                                Personal Token
+                                            </div>
+                                            <div className="text-[11px] text-slate-400 mt-1 font-sans">
+                                                For your own scripts or tools. Linked directly to your account.
+                                            </div>
+                                        </button>
+                                    </div>
                                 </div>
-                            </div>
+                            ) : (
+                                <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/30 flex items-center gap-2 text-xs text-amber-300 font-sans">
+                                    <User className="w-4 h-4 shrink-0" />
+                                    <span>This will generate a <strong>Personal Token</strong> linked directly to your account.</span>
+                                </div>
+                            )}
 
                             {/* Scopes Selection */}
                             <div>

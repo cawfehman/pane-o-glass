@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { logAudit } from "@/lib/audit";
+import { hasPermission } from "@/app/actions/permissions";
 
 export const dynamic = "force-dynamic";
 
@@ -13,8 +14,12 @@ export async function PATCH(
     try {
         const session = await auth();
         const role = String((session?.user as any)?.role || "").toUpperCase();
-        if (role !== "ADMIN") {
-            return NextResponse.json({ error: "Access Denied: Administrator role required." }, { status: 403 });
+        const userId = session?.user?.id;
+        const isAdmin = role === "ADMIN";
+        const hasAccess = isAdmin || (userId ? await hasPermission(role, "api-keys", userId) : false);
+
+        if (!hasAccess) {
+            return NextResponse.json({ error: "Access Denied: Missing api-keys permission." }, { status: 403 });
         }
 
         const { id } = await context.params;
@@ -24,6 +29,11 @@ export async function PATCH(
         const existing = await prisma.apiKey.findUnique({ where: { id } });
         if (!existing) {
             return NextResponse.json({ error: "API Key not found." }, { status: 404 });
+        }
+
+        // Non-admin users can ONLY edit their own personal keys
+        if (!isAdmin && existing.userId !== userId) {
+            return NextResponse.json({ error: "Forbidden: You can only edit your own personal tokens." }, { status: 403 });
         }
 
         const data: any = {};
@@ -72,8 +82,12 @@ export async function DELETE(
     try {
         const session = await auth();
         const role = String((session?.user as any)?.role || "").toUpperCase();
-        if (role !== "ADMIN") {
-            return NextResponse.json({ error: "Access Denied: Administrator role required." }, { status: 403 });
+        const userId = session?.user?.id;
+        const isAdmin = role === "ADMIN";
+        const hasAccess = isAdmin || (userId ? await hasPermission(role, "api-keys", userId) : false);
+
+        if (!hasAccess) {
+            return NextResponse.json({ error: "Access Denied: Missing api-keys permission." }, { status: 403 });
         }
 
         const { id } = await context.params;
@@ -81,6 +95,11 @@ export async function DELETE(
         const existing = await prisma.apiKey.findUnique({ where: { id } });
         if (!existing) {
             return NextResponse.json({ error: "API Key not found." }, { status: 404 });
+        }
+
+        // Non-admin users can ONLY delete their own personal keys
+        if (!isAdmin && existing.userId !== userId) {
+            return NextResponse.json({ error: "Forbidden: You can only revoke your own personal tokens." }, { status: 403 });
         }
 
         await prisma.apiKey.delete({ where: { id } });
