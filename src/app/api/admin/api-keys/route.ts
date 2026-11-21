@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { createApiKey, API_SCOPES } from "@/lib/api-keys";
+import { createApiKey, API_SCOPES, isApiGloballyEnabled, setApiGloballyEnabled } from "@/lib/api-keys";
 import { logAudit } from "@/lib/audit";
 
 export const dynamic = "force-dynamic";
@@ -15,33 +15,37 @@ export async function GET(req: NextRequest) {
             return NextResponse.json({ error: "Access Denied: Administrator role required." }, { status: 403 });
         }
 
-        const keys = await prisma.apiKey.findMany({
-            orderBy: { createdAt: "desc" },
-            select: {
-                id: true,
-                name: true,
-                type: true,
-                keyPrefix: true,
-                scopes: true,
-                allowedIps: true,
-                isActive: true,
-                lastUsedAt: true,
-                expiresAt: true,
-                createdBy: true,
-                createdAt: true,
-                user: {
-                    select: {
-                        id: true,
-                        username: true,
-                        firstName: true,
-                        lastName: true
+        const [keys, apiGloballyEnabled] = await Promise.all([
+            prisma.apiKey.findMany({
+                orderBy: { createdAt: "desc" },
+                select: {
+                    id: true,
+                    name: true,
+                    type: true,
+                    keyPrefix: true,
+                    scopes: true,
+                    allowedIps: true,
+                    isActive: true,
+                    lastUsedAt: true,
+                    expiresAt: true,
+                    createdBy: true,
+                    createdAt: true,
+                    user: {
+                        select: {
+                            id: true,
+                            username: true,
+                            firstName: true,
+                            lastName: true
+                        }
                     }
                 }
-            }
-        });
+            }),
+            isApiGloballyEnabled()
+        ]);
 
         return NextResponse.json({
             success: true,
+            apiGloballyEnabled,
             availableScopes: API_SCOPES,
             keys
         });
@@ -96,5 +100,41 @@ export async function POST(req: NextRequest) {
     } catch (error: any) {
         console.error("Failed to create API key:", error);
         return NextResponse.json({ error: error?.message || "Failed to generate API key." }, { status: 500 });
+    }
+}
+
+// PUT /api/admin/api-keys - Master toggle for global API access
+export async function PUT(req: NextRequest) {
+    try {
+        const session = await auth();
+        const role = String((session?.user as any)?.role || "").toUpperCase();
+        if (role !== "ADMIN") {
+            return NextResponse.json({ error: "Access Denied: Administrator role required." }, { status: 403 });
+        }
+
+        const body = await req.json();
+        const { apiGloballyEnabled } = body;
+
+        if (typeof apiGloballyEnabled !== "boolean") {
+            return NextResponse.json({ error: "Missing or invalid 'apiGloballyEnabled' boolean flag." }, { status: 400 });
+        }
+
+        const creator = (session?.user?.email || session?.user?.name || "Administrator") as string;
+        await setApiGloballyEnabled(apiGloballyEnabled, creator);
+
+        await logAudit(
+            "GLOBAL_API_TOGGLE",
+            `Administrator ${creator} changed Global API Access state to ${apiGloballyEnabled ? "ENABLED" : "PAUSED"}`,
+            creator,
+            "dashboard"
+        ).catch(() => {});
+
+        return NextResponse.json({
+            success: true,
+            apiGloballyEnabled
+        });
+    } catch (error: any) {
+        console.error("Failed to update global API access toggle:", error);
+        return NextResponse.json({ error: error?.message || "Failed to update global API access." }, { status: 500 });
     }
 }

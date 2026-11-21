@@ -128,6 +128,40 @@ export function getClientIp(req: Request): string {
 /**
  * Validate incoming API request against API key, IP ACL, expiration, and required scope.
  */
+/**
+ * Check if the external API subsystem is globally enabled.
+ * Defaults to true if no record exists.
+ */
+export async function isApiGloballyEnabled(): Promise<boolean> {
+    try {
+        const setting = await prisma.systemSetting.findUnique({
+            where: { key: "api_access_enabled" }
+        });
+        return setting ? setting.value !== "false" : true;
+    } catch {
+        return true;
+    }
+}
+
+/**
+ * Update the global API subsystem status.
+ */
+export async function setApiGloballyEnabled(enabled: boolean, updatedBy: string): Promise<boolean> {
+    await prisma.systemSetting.upsert({
+        where: { key: "api_access_enabled" },
+        create: {
+            key: "api_access_enabled",
+            value: String(enabled),
+            updatedBy
+        },
+        update: {
+            value: String(enabled),
+            updatedBy
+        }
+    });
+    return enabled;
+}
+
 export async function validateApiKeyRequest(
     req: Request,
     requiredScope?: string
@@ -138,6 +172,16 @@ export async function validateApiKeyRequest(
     error?: string;
     status?: number;
 }> {
+    // 0. Check Global API Master Kill Switch
+    const globallyEnabled = await isApiGloballyEnabled();
+    if (!globallyEnabled) {
+        return {
+            authorized: false,
+            status: 503,
+            error: "Service Unavailable: External API access has been temporarily paused by an administrator."
+        };
+    }
+
     // 1. Extract API key from X-API-Key or Authorization: Bearer
     const headerValue = req.headers.get("x-api-key") || req.headers.get("authorization");
     if (!headerValue) {

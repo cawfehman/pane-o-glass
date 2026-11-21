@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { 
     Key, Shield, Plus, Trash2, Check, Copy, RefreshCw, 
     AlertTriangle, Server, User, Clock, CheckCircle2, 
-    X, ExternalLink, Network, FileCode2, ChevronRight, Ban
+    X, ExternalLink, Network, FileCode2, ChevronRight, Ban, Power
 } from "lucide-react";
 
 interface ApiKeyRecord {
@@ -39,6 +39,10 @@ export default function ApiKeysPage() {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
+    // Global Master API Toggle State
+    const [apiGloballyEnabled, setApiGloballyEnabledState] = useState<boolean>(true);
+    const [globalToggleLoading, setGlobalToggleLoading] = useState<boolean>(false);
+
     // Create Modal State
     const [showCreateModal, setShowCreateModal] = useState(false);
     const [createLoading, setCreateLoading] = useState(false);
@@ -70,6 +74,9 @@ export default function ApiKeysPage() {
             const data = await res.json();
             setKeys(data.keys || []);
             setScopes(data.availableScopes || []);
+            if (typeof data.apiGloballyEnabled === "boolean") {
+                setApiGloballyEnabledState(data.apiGloballyEnabled);
+            }
         } catch (err: any) {
             setError(err.message || "Failed to load API keys.");
         } finally {
@@ -93,6 +100,25 @@ export default function ApiKeysPage() {
             }
         } catch (err) {
             console.error("Failed to toggle key status:", err);
+        }
+    };
+
+    const handleToggleGlobalApi = async () => {
+        const nextState = !apiGloballyEnabled;
+        setGlobalToggleLoading(true);
+        try {
+            const res = await fetch("/api/admin/api-keys", {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ apiGloballyEnabled: nextState })
+            });
+            if (res.ok) {
+                setApiGloballyEnabledState(nextState);
+            }
+        } catch (err) {
+            console.error("Failed to toggle global API access:", err);
+        } finally {
+            setGlobalToggleLoading(false);
         }
     };
 
@@ -198,6 +224,26 @@ export default function ApiKeysPage() {
                 </div>
 
                 <div className="flex items-center gap-2">
+                    {/* Master Global API Toggle */}
+                    <button
+                        type="button"
+                        onClick={handleToggleGlobalApi}
+                        disabled={globalToggleLoading}
+                        title={apiGloballyEnabled ? "Click to temporarily pause all external API access globally" : "Click to resume external API access globally"}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-2 border transition-all cursor-pointer ${
+                            apiGloballyEnabled
+                                ? "bg-emerald-500/10 border-emerald-500/40 text-emerald-300 hover:bg-emerald-500/20"
+                                : "bg-amber-500/20 border-amber-500/50 text-amber-200 hover:bg-amber-500/30 shadow-md shadow-amber-500/10"
+                        }`}
+                    >
+                        {globalToggleLoading ? (
+                            <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                        ) : (
+                            <Power className="w-3.5 h-3.5" />
+                        )}
+                        <span>{apiGloballyEnabled ? "API Active" : "API Paused"}</span>
+                    </button>
+
                     <button
                         type="button"
                         onClick={fetchKeys}
@@ -217,6 +263,32 @@ export default function ApiKeysPage() {
                     </button>
                 </div>
             </div>
+
+            {/* Global API Pause Alert Banner */}
+            {!apiGloballyEnabled && (
+                <div className="p-4 rounded-xl bg-amber-950/40 border border-amber-500/40 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-lg">
+                    <div className="flex items-start sm:items-center gap-3">
+                        <div className="p-2 rounded-lg bg-amber-500/20 text-amber-400 border border-amber-500/30 shrink-0">
+                            <AlertTriangle className="w-5 h-5" />
+                        </div>
+                        <div>
+                            <h4 className="text-xs font-bold text-amber-200">Global API Access is Currently Paused</h4>
+                            <p className="text-[11px] text-amber-300/80 font-sans mt-0.5">
+                                All external queries (Graylog, SOAR, scripts) are blocked at the perimeter (HTTP 503). Your keys remain configured and will immediately resume working once re-enabled.
+                            </p>
+                        </div>
+                    </div>
+                    <button
+                        type="button"
+                        onClick={handleToggleGlobalApi}
+                        disabled={globalToggleLoading}
+                        className="px-3.5 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs flex items-center gap-1.5 shrink-0 transition-colors cursor-pointer shadow-sm"
+                    >
+                        {globalToggleLoading ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Power className="w-3.5 h-3.5" />}
+                        Resume API Access
+                    </button>
+                </div>
+            )}
 
             {/* Quick Stats */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
